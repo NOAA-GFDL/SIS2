@@ -61,7 +61,7 @@ public :: redo_update_ice_model_fast, find_excess_fluxes
 type fast_thermo_CS ; private
   ! These two arrarys are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
-  real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy [J m-2], used with
+  real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy [Q R Z ~> J m-2], used with
                                      !! column_check when evaluating the enthalpy conservation
                                      !! with the fast thermodynamics code
   real, pointer, dimension(:,:,:) :: heat_in => NULL() !< The heat input [J m-2],  used with
@@ -616,24 +616,27 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow [degC].
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice [gSalt kg-1].
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
-  real, dimension(0:IG%NkIce) :: SW_abs_col   ! The shortwave absorption within a column of snow and ice [W m-2].
+  real, dimension(0:IG%NkIce) :: SW_abs_col ! The shortwave absorption within a column of snow and
+                  ! ice [Q R Z T-1 ~> W m-2].
   real :: dt_fast ! The fast thermodynamic time step [s].
   real :: Tskin   ! The new skin temperature [degC].
   real :: dTskin  ! The change in the skin temperatue [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [J kg-1].
-  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
-  real :: sw_tot ! sum over all shortwave (dir/dif and vis/nir) components
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: sw_tot  ! sum over all shortwave (dir/dif and vis/nir) components
   real :: snow_wt ! A fractional weighting of snow in the category surface area.
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C [J kg-1].
+  real :: tmelt_tmp   ! A local copy of the accumulated top melting energy [Q R Z ~> J m-2]
+  real :: bmelt_tmp   ! A local copy of the accumulated bottom melting energy [Q R Z ~> J m-2]
   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
   real :: H_to_m_snow    ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
   character(len=8) :: nstr
 
-  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, SW_absorbed
+  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb
+  real :: SW_absorbed ! Absorbed shortwave heating [Q R Z T-1 ~> W m-2]
   real :: I_Nk     ! The inverse of the number of internal ice layers [nondim].
-  real :: kg_H_Nk  ! The conversion factor from units of H to kg/m2 over Nk.
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_fast_thermo: Module must be initialized before it is used.")
@@ -641,7 +644,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Atmos_boundary%t_flux,1) - G%isc
   j_off = LBOUND(Atmos_boundary%t_flux,2) - G%jsc
-  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce ; kg_H_Nk = US%RZ_to_kg_m2 * I_Nk
+  NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce
   nb = size(FIA%flux_sw_top,4)
 
   CS%n_fast = CS%n_fast + 1
@@ -650,10 +653,10 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     CS%heat_in(:,:,:) = 0.0
     CS%enth_prev(:,:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (IST%mH_ice(i,j,k)>0.0) then
-      CS%enth_prev(i,j,k) = (IST%mH_snow(i,j,k)*US%RZ_to_kg_m2) * IST%enth_snow(i,j,k,1)
+      CS%enth_prev(i,j,k) = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
       do m=1,IG%NkIce
         CS%enth_prev(i,j,k) = CS%enth_prev(i,j,k) + &
-                               (IST%mH_ice(i,j,k)*kg_H_Nk) * IST%enth_ice(i,j,k,m)
+                               (IST%mH_ice(i,j,k) * I_Nk) * IST%enth_ice(i,j,k,m)
       enddo
     endif ; enddo ; enddo ; enddo
   endif
@@ -724,7 +727,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt, &
 !$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,&
-!$OMP                                  dt_fast,flux_lh,G,S_col,kg_H_Nk,&
+!$OMP                                  dt_fast,flux_lh,G,S_col,I_Nk,&
 !$OMP                                  LatHtVap,IG,sOSS,FIA,Rad,CS) &
 !$OMP                          private(latent,enth_col,sw_tot,dhf_dt,snow_wt,  &
 !$OMP                                  hf_0,Tskin,dTskin,SW_abs_col,SW_absorbed,enth_here,&
@@ -746,36 +749,42 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       sw_tot = (flux_sw(i,j,k,VIS_DIR) + flux_sw(i,j,k,VIS_DIF)) + &
                (flux_sw(i,j,k,NIR_DIR) + flux_sw(i,j,k,NIR_DIF))
 
-      dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
+      dhf_dt = US%W_m2_to_QRZ_T*( (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k) )
       if (CS%Reorder_0C_heatflux) then
         ! This form seperately projects each contribution to the surface heat
         ! flux back to its value when T=0, so that a bitwise identical result
         ! can be obtained if the heating is redone.  The two forms are
         ! mathematically equivalent.
-        hf_0 = ((flux_sh(i,j,k)  - dshdt(i,j,k) * Rad%t_skin(i,j,k)) + &
+        hf_0 = US%W_m2_to_QRZ_T*( ((flux_sh(i,j,k)  - dshdt(i,j,k) * Rad%t_skin(i,j,k)) + &
                 (evap(i,j,k) - devapdt(i,j,k) * Rad%t_skin(i,j,k)) * latent) - &
                ((flux_lw(i,j,k) - dlwdt(i,j,k) * Rad%t_skin(i,j,k)) + &
-                Rad%sw_abs_sfc(i,j,k) * sw_tot)
+                Rad%sw_abs_sfc(i,j,k) * sw_tot) )
       else
-        hf_0 = ((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
+        hf_0 = US%W_m2_to_QRZ_T*((flux_sh(i,j,k) + evap(i,j,k)*latent) - &
                 (flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)* sw_tot)) - &
                dhf_dt * Rad%t_skin(i,j,k)
       endif
 
-      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
-      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
+      SW_abs_col(0) = US%W_m2_to_QRZ_T*Rad%sw_abs_snow(i,j,k)*sw_tot
+      do m=1,NkIce ; SW_abs_col(m) = US%W_m2_to_QRZ_T*Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
       ! actually lose or gain any mass from freezing or melting.
       ! mw/new - pass melt pond (surface temp fixed at freezing when present)
-      call ice_temp_SIS2(IST%mH_pond(i,j,k)*US%RZ_to_kg_m2, &
-                         IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, &
-                         IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, &
+      ! tmelt_tmp = FIA%tmelt(i,j,k)
+      ! bmelt_tmp = FIA%bmelt(i,j,k)
+      tmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%tmelt(i,j,k)
+      bmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%bmelt(i,j,k)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
-                         dt_fast, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
+                         sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                         US%s_to_T*dt_fast, NkIce, tmelt_tmp, bmelt_tmp, &
                          CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
+      ! FIA%tmelt(i,j,k) = tmelt_tmp
+      ! FIA%bmelt(i,j,k) = bmelt_tmp
+      FIA%tmelt(i,j,k) = US%QRZ_T_to_W_m2*US%T_to_s*tmelt_tmp
+      FIA%bmelt(i,j,k) = US%QRZ_T_to_W_m2*US%T_to_s*bmelt_tmp
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -799,20 +808,19 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
         SW_absorbed = SW_abs_col(0)
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
-          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) + SW_absorbed + &
+          ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) + US%QRZ_T_to_W_m2*SW_absorbed + &
            sOSS%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
 
-        enth_here = (US%RZ_to_kg_m2*IST%mH_snow(i,j,k)) * enth_col(0)
+        enth_here = (IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
-          enth_here = enth_here + (IST%mH_ice(i,j,k)*kg_H_Nk) * enth_col(m)
+          enth_here = enth_here + (IST%mH_ice(i,j,k) * I_Nk) * enth_col(m)
         enddo
-        tot_heat_in = US%J_kg_to_Q * (CS%heat_in(i,j,k) - &
+        tot_heat_in = US%W_m2_to_QRZ_T*US%s_to_T * (CS%heat_in(i,j,k) - &
                                     (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)))
         enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > CS%imb_tol * (abs(enth_here) + &
                   abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
-          norm_enth_imb = enth_imb / (abs(enth_here) + &
-                  abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in))
+          norm_enth_imb = enth_imb / (abs(enth_here) + abs(CS%enth_prev(i,j,k)) + abs(tot_heat_in))
           enth_imb = enth_here - (CS%enth_prev(i,j,k) + tot_heat_in)
         endif
       endif
@@ -877,18 +885,18 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     S_col         ! The thermodynamic salinity of a column of ice [gSalt kg-1].
   real, dimension(0:IG%NkIce) :: &
     T_col, &      ! The temperature of a column of ice and snow [degC].
-    SW_abs_col, & ! The shortwave absorption within a column of snow and ice [W m-2].
+    SW_abs_col, & ! The shortwave absorption within a column of snow and ice [Q R Z T-1 ~> W m-2].
     enth_col, &   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
     enth_col_in   ! The initial enthalpy of a column of snow and ice [Q ~> J kg-1].
 
   real :: dt_here ! The time step here [s].
   real :: Tskin   ! The new skin temperature [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [J kg-1].
-  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [W m-2].
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [W m-2 degC-1].
-  real :: sw_tot  ! sum over dir/dif vis/nir components
-  real :: rho_ice       ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow      ! The nominal density of snow [kg m-3].
+  real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
+  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: sw_tot  ! sum over dir/dif vis/nir components [W m-2]
+  real :: rho_ice       ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow      ! The nominal density of snow [R ~> kg m-3].
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos             ! The ice albedos by directional and wavelength band.
   real, dimension(IG%NkIce) :: &
@@ -937,8 +945,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, US, IG)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow)
-  H_to_m_snow = US%RZ_to_kg_m2 / Rho_snow ; H_to_m_ice = US%RZ_to_kg_m2 / Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow, US=US)
+  H_to_m_snow = US%Z_to_m / Rho_snow ; H_to_m_ice = US%Z_to_m / Rho_ice
 
   !
   ! implicit update of ice surface temperature
@@ -1036,23 +1044,22 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   !           dSWt_dt = dSWt_dt - dAlb_dt(b)*FIA%flux_sw_dn(i,j,b)
           enddo
 
-          dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - &
-                 (FIA%dlwdt(i,j,k) + Rad%sw_abs_sfc(i,j,k)*dSWt_dt)
-          hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
-                 (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)
+          dhf_dt = US%W_m2_to_QRZ_T*( (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - &
+                 (FIA%dlwdt(i,j,k) + Rad%sw_abs_sfc(i,j,k)*dSWt_dt) )
+          hf_0 = US%W_m2_to_QRZ_T*( (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
+                 (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) )
 
-          SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
-          do m=1,NkIce ; SW_abs_col(m) = sw_abs_lay(m)*sw_tot ; enddo
+          SW_abs_col(0) = US%W_m2_to_QRZ_T*Rad%sw_abs_snow(i,j,k)*sw_tot
+          do m=1,NkIce ; SW_abs_col(m) = US%W_m2_to_QRZ_T*sw_abs_lay(m)*sw_tot ; enddo
 
           do m=0,NkIce ; enth_col(m) = enth_col_in(m) ; enddo
           tmelt_tmp = 0.0 ; bmelt_tmp = 0.0 ; Tskin_prev = Tskin
           !   This call only estimates an updated skin temperature for
           ! calculating the ice optical properties.
-          call ice_temp_SIS2(IST%mH_pond(i,j,k)*US%RZ_to_kg_m2, &
-                   IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, &
+          call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                    enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                   sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
-                   0.5*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, US, IST%ITV)
+                   sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                   0.5*US%s_to_T*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, US, IST%ITV)
 
 !         ! These are here to debug the iterations.
 !         Tskin_itt(itt) = Tskin
@@ -1152,24 +1159,30 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       sw_tot = (FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,VIS_DIF)) + &
                (FIA%flux_sw_top(i,j,k,NIR_DIR) + FIA%flux_sw_top(i,j,k,NIR_DIF))
 
-      dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k)
-      hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
-             (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)
+      dhf_dt = US%W_m2_to_QRZ_T*( (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - FIA%dlwdt(i,j,k) )
+      hf_0 = US%W_m2_to_QRZ_T*( (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*latent) - &
+             (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) )
 
-      SW_abs_col(0) = Rad%sw_abs_snow(i,j,k)*sw_tot
-      do m=1,NkIce ; SW_abs_col(m) = Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
+      SW_abs_col(0) = US%W_m2_to_QRZ_T*Rad%sw_abs_snow(i,j,k)*sw_tot
+      do m=1,NkIce ; SW_abs_col(m) = US%W_m2_to_QRZ_T*Rad%sw_abs_ice(i,j,k,m)*sw_tot ; enddo
 
       !   This call updates the snow and ice temperatures and accumulates the
       ! surface and bottom melting/freezing energy.  The ice and snow do not
       ! actually lose or gain any mass from freezing or melting.
       ! mw/new - pass melt pond (surface temp fixed at freezing when present)
-      call ice_temp_SIS2(IST%mH_pond(i,j,k)*US%RZ_to_kg_m2, &
-                         IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, &
-                         IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, &
+      ! tmelt_tmp = FIA%tmelt(i,j,k)
+      ! bmelt_tmp = FIA%bmelt(i,j,k)
+      tmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%tmelt(i,j,k)
+      bmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%bmelt(i,j,k)
+      call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
-                         dt_here, NkIce, FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
+                         sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                         US%s_to_T*dt_here, NkIce, tmelt_tmp, bmelt_tmp, &
                          CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
+      FIA%tmelt(i,j,k) = US%QRZ_T_to_W_m2*US%T_to_s*tmelt_tmp
+      FIA%bmelt(i,j,k) = US%QRZ_T_to_W_m2*US%T_to_s*bmelt_tmp
+      ! FIA%tmelt(i,j,k) = tmelt_tmp
+      ! FIA%bmelt(i,j,k) = bmelt_tmp
       IST%enth_snow(i,j,k,1) = enth_col(0)
       do m=1,NkIce ; IST%enth_ice(i,j,k,m) = enth_col(m) ; enddo
 
@@ -1330,7 +1343,7 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
                  "If true, write out verbose debugging data on the fast ice PEs.", &
                  default=debug, debuggingParam=.true.)
 
-  call SIS2_ice_thm_init(param_file, CS%ice_thm_CSp)
+  call SIS2_ice_thm_init(G%US, param_file, CS%ice_thm_CSp)
 
   if (CS%column_check) then
     allocate(CS%enth_prev(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
