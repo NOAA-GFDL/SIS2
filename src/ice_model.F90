@@ -84,6 +84,7 @@ use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types, only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
 use SIS_types, only : register_unit_conversion_restarts
+use SIS_types, only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
 use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
@@ -2314,11 +2315,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
-      call ice_state_read_alt_restarts(sIST, sG, US, sIG, Ice%Ice_restart, &
+      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
       if (.not.specified_ice) &
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
+
+      call rescale_ice_state_restart_fields(sIST, sG, US, sIG)
 
       ! Approximately initialize state fields that are not present
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
@@ -2698,6 +2701,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
       endif
     endif
+
+    if (Concurrent) then
+      call rescale_fast_to_slow_restart_fields(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
+                                               Ice%fCS%G, US, Ice%fCS%IG)
+    endif
+
 
 !  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
 !    call set_domain(fGD%mpp_domain)

@@ -297,10 +297,10 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
 !        ! Store the snow mass (and related properties?) that will be passed to the ocean at the
 !        ! next opportunity.
 !        if (snow2ocn > 0.0) then
-!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + &
+!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) + &
 !                                       enth_snow2ocn * snow2ocn) / &
-!                                      (IST%snow_to_ocn(i,j) + snow2ocn)
-!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
+!                                      (US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) + snow2ocn)
+!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + US%kg_m2_to_RZ*snow2ocn
 !        endif
 !      endif
 !    enddo ; enddo

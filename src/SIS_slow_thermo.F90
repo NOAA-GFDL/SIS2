@@ -860,10 +860,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (allocated(IST%snow_to_ocn)) then
     !$OMP do
     do j=jsc,jec ; do i=isc,iec ; if (IST%snow_to_ocn(i,j) > 0.0) then
-      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + IST%snow_to_ocn(i,j) * US%s_to_T*Idt_slow
+      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) * US%s_to_T*Idt_slow
       IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
-              IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
-      ! h2o_change(i,j) = h2o_change(i,j) - US%kg_m3_to_R*US%m_to_Z*IST%snow_to_ocn(i,j)
+              US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
+      ! h2o_change(i,j) = h2o_change(i,j) - US%kg_m3_to_R*US%m_to_Z*US%RZ_to_kg_m2*IST%snow_to_ocn(i,j)
       IST%snow_to_ocn(i,j) = 0.0 ;  IST%enth_snow_to_ocn(i,j) = 0.0
     endif ; enddo ; enddo
   endif
