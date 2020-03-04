@@ -2093,7 +2093,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
-    Ice%sCS%OSS%kmelt = kmelt
+    Ice%sCS%OSS%kmelt = US%W_m2_to_QRZ_T*kmelt
 
     call alloc_simple_OSS(Ice%sCS%sOSS, sHI, gas_fields_ocn)
 

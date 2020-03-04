@@ -102,7 +102,7 @@ type ice_state_type
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the SIS tracer registry
 
-  type(ice_thermo_type), pointer  :: ITV => NULL() !< A pointer to the ice thermodyanmics type
+  type(ice_thermo_type), pointer  :: ITV => NULL() !< A pointer to the ice thermodynamics type
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
@@ -118,7 +118,7 @@ type ocean_sfc_state_type
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [L T-1 ~> m s-1].
     v_ocn_C     !< The ocean's meridional velocity on C-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
-                !! to the ice at the base of the ice [W m-2].
+                !! to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
                 !! timestep [J m-2]. This is the input value and is not changed by the ice.
@@ -133,9 +133,9 @@ type ocean_sfc_state_type
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt !< A constant that is used in the calculation of the ocean/ice basal heat flux,
-                !! [W m-2 degC-1].  This could be replaced with an array reflecting the turbulence
-                !! in the under-ice ocean boundary layer and the effective depth of the reported
-                !! value of t_ocn.
+                !! [Q R Z T-1 degC-1 ~> W m-2 degC-1].  This could be replaced with an array
+                !! reflecting the turbulence in the under-ice ocean boundary layer and the effective
+                !! depth of the reported value of t_ocn.
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
 
@@ -158,7 +158,7 @@ type simple_OSS_type
     u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [L T-1 ~> m s-1].
     v_ice_A     !< The sea ice's meridional velocity on A-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
-                !! from the ocean to the ice at the base of the ice [W m-2].
+                !! from the ocean to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
 
   type (coupler_2d_bc_type) :: &
     tr_fields   !< A structure of fields related to properties for additional tracers.

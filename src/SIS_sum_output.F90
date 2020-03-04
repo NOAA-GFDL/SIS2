@@ -769,7 +769,7 @@ end subroutine accumulate_bottom_input
 
 !> Accumulate the net input of fresh water and heat through the top of the
 !! sea-ice for conservation checks with the first phase of the updates
-subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
+subroutine accumulate_input_1(IST, FIA, OSS, dt, G, US, IG, CS)
   type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
   type(fast_ice_avg_type),    intent(in) :: FIA !< A type containing averages of fields
                                                 !! (mostly fluxes) over the fast updates
@@ -777,6 +777,7 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
                                                 !! the ocean's surface state for the ice model.
   real,                       intent(in) :: dt  !< The amount of time over which to average.
   type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
@@ -816,7 +817,7 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
           ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
-           (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
+           (-FIA%flux_lh_top(i,j,k)) + US%QRZ_T_to_W_m2*OSS%bheat(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * &
                    (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
@@ -825,7 +826,7 @@ end subroutine accumulate_input_1
 
 !> Accumulate the net input of fresh water and heat through the top of the
 !! sea-ice for conservation checks, with a second phase of the updates
-subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
+subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
@@ -839,6 +840,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
                               intent(in) :: part_size !< The fractional ice concentration within a
                                                 !! cell in each thickness category [nondim], 0-1.
   real,                       intent(in) :: dt  !< The amount of time over which to average.
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
 
@@ -891,7 +893,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
 
       if (k>0) &
         CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * &
-           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*OSS%bheat(i,j))
+           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*US%QRZ_T_to_W_m2*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 
  ! Runoff and calving do not bring in salt, so salt_in(i,j) = 0.0

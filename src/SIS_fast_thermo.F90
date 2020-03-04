@@ -778,7 +778,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       bmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%bmelt(i,j,k)
       call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          US%s_to_T*dt_fast, NkIce, tmelt_tmp, bmelt_tmp, &
                          CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
       ! FIA%tmelt(i,j,k) = tmelt_tmp
@@ -809,7 +809,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
         do m=1,NkIce ; SW_absorbed = SW_absorbed + SW_abs_col(m) ; enddo
         CS%heat_in(i,j,k) = CS%heat_in(i,j,k) + dt_fast * &
           ((flux_lw(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) + US%QRZ_T_to_W_m2*SW_absorbed + &
-           sOSS%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
+           US%QRZ_T_to_W_m2*sOSS%bheat(i,j) - (flux_sh(i,j,k) + flux_lh(i,j,k)))
 
         enth_here = (IST%mH_snow(i,j,k)) * enth_col(0)
         do m=1,NkIce
@@ -1058,7 +1058,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
           ! calculating the ice optical properties.
           call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                    enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                   sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                   sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                    0.5*US%s_to_T*dt_here, NkIce, tmelt_tmp, bmelt_tmp, CS%ice_thm_CSp, US, IST%ITV)
 
 !         ! These are here to debug the iterations.
@@ -1176,7 +1176,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       bmelt_tmp = US%W_m2_to_QRZ_T*US%s_to_T*FIA%bmelt(i,j,k)
       call ice_temp_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                          enth_col, S_col, hf_0, dhf_dt, SW_abs_col, &
-                         sOSS%T_fr_ocn(i,j), US%W_m2_to_QRZ_T*sOSS%bheat(i,j), Tskin, &
+                         sOSS%T_fr_ocn(i,j), sOSS%bheat(i,j), Tskin, &
                          US%s_to_T*dt_here, NkIce, tmelt_tmp, bmelt_tmp, &
                          CS%ice_thm_CSp, US, IST%ITV, CS%column_check)
       FIA%tmelt(i,j,k) = US%QRZ_T_to_W_m2*US%T_to_s*tmelt_tmp

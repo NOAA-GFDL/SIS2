@@ -364,7 +364,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   ! conservation checks: top fluxes
   !
   call mpp_clock_begin(iceClock7)
-  call accumulate_input_1(IST, FIA, OSS, dt_slow, G, IG, CS%sum_output_CSp)
+  call accumulate_input_1(IST, FIA, OSS, dt_slow, G, US, IG, CS%sum_output_CSp)
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               message="    SIS_slow_thermo", check_column=.true.)
@@ -432,8 +432,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   call disable_SIS_averaging(CS%diag)
 
-  call accumulate_input_2(IST, FIA, IOF, OSS, IST%part_size, dt_slow, G, IG, &
-                          CS%sum_output_CSp)
+  call accumulate_input_2(IST, FIA, IOF, OSS, IST%part_size, dt_slow, G, US, IG, CS%sum_output_CSp)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,IOF)
   do j=jsc,jec ; do i=isc,iec
     IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
@@ -725,7 +724,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       if (cool_nudge(i,J) > 0.0) then
         FIA%frazil_left(i,j) = FIA%frazil_left(i,j) + cool_nudge(i,j)*dt_slow
       elseif (cool_nudge(i,J) < 0.0) then
-        OSS%bheat(i,j) = OSS%bheat(i,j) - cool_nudge(i,j)
+        OSS%bheat(i,j) = OSS%bheat(i,j) - US%W_m2_to_QRZ_T*cool_nudge(i,j)
       endif
     enddo ; enddo
   endif
@@ -763,7 +762,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       elseif (qflx_res_ice(i,j) >  0.0) then
         !There is more ice in model than Obs,
         !so melt ice by increasing heat input to ice from ocean (bheat),
-        !        OSS%bheat(i,j) = OSS%bheat(i,j) + US%QRZ_T_to_W_m2*qflx_res_ice(i,j)
+        !        OSS%bheat(i,j) = OSS%bheat(i,j) + qflx_res_ice(i,j)
         !Note that ice should melt when bheat increases.
         !BUT, here it's too late for the bheat to have a negative feedback on the ice thickness
         !since thickness is determined by the melting energies calculated in the fast ice
@@ -800,7 +799,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       do k=1,ncat ; do i=isc,iec
         if (IST%part_size(i,j,k) > 0.0) then
           heat_in_col(i,j) = heat_in_col(i,j) + IST%part_size(i,j,k) * &
-              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - dt_slow*OSS%bheat(i,j))
+              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - dt_slow*US%QRZ_T_to_W_m2*OSS%bheat(i,j))
         endif
         if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
           enth_prev_col(i,j) = enth_prev_col(i,j) + &
@@ -1005,7 +1004,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
                                  ((US%QRZ_T_to_W_m2*LatHtVap*evap_from_ocn)*Idt_slow)
       IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-             (OSS%bheat(i,j) - US%QRZ_T_to_W_m2*(heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
+             US%QRZ_T_to_W_m2*(OSS%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       sw_tot = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
         sw_tot = sw_tot + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))

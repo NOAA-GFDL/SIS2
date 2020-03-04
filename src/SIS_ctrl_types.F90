@@ -249,7 +249,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT' , diag%axesT1, Time, &
                'bottom surface melting energy flux', 'W/m^2', missing_value=missing)
   FIA%id_bheat    = register_SIS_diag_field('ice_model', 'BHEAT' , diag%axesT1, Time, &
-               'ocean to ice heat flux', 'W/m^2', missing_value=missing)
+               'ocean to ice heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_set_diags(IOF%tr_flux_ocn_top, 'ice_model', diag%axesT1%handles, Time)
