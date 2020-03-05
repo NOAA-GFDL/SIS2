@@ -734,35 +734,37 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
                                                 !! to SIS_sum_output_init.
 
   ! Local variables
-  real :: Flux_SW, LI
+  real :: Flux_SW ! Total shortwave flux [Q R Z T-1 ~> W m-2]
+  real :: LI      ! Latent heat of fusion [Q ~> J kg-1]
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(IOF%flux_sw_ocn, 3)
 
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, US=US)
 
   if (CS%dt < 0.0) CS%dt = US%s_to_T*dt
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
-              (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
+              US%RZ_T_to_kg_m2s*(IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - &
+              US%RZ_T_to_kg_m2s*IOF%evap_ocn_top(i,j) )
     Flux_SW = 0.0
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
     enddo
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * &
-          ( Flux_SW + &
-           ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
-            (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
+          (US%QRZ_T_to_W_m2*Flux_SW + &
+           US%QRZ_T_to_W_m2*((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
+           US%Q_to_J_kg*(-LI)*(US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - &
            (OSS%frazil(i,j)-FIA%frazil_left(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + US%QRZ_T_to_W_m2*US%T_to_s* &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
             (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
-    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%flux_salt(i,j)
+    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * US%RZ_T_to_kg_m2s*IOF%flux_salt(i,j)
   enddo ; enddo
 
 end subroutine accumulate_bottom_input

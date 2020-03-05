@@ -243,7 +243,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', missing_value=missing)
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
-               'ice to ocean salt flux', 'kg/(m^2*s)', missing_value=missing)
+               'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT' , diag%axesT1, Time, &
                'upper surface melting energy flux', 'W/m^2', missing_value=missing)
   FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT' , diag%axesT1, Time, &

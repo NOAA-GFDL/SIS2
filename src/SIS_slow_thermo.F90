@@ -383,15 +383,15 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
     enddo ; enddo
 
     do j=jsc,jec ; do i=isc,iec
-      IOF%flux_sh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_sh_top(i,j,0)
-      IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%evap_top(i,j,0)
-      IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
-      IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lh_top(i,j,0)
+      IOF%flux_sh_ocn_top(i,j) = IST%part_size(i,j,0) * US%W_m2_to_QRZ_T*FIA%flux_sh_top(i,j,0)
+      IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%evap_top(i,j,0)
+      IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * US%W_m2_to_QRZ_T*FIA%flux_lw_top(i,j,0)
+      IOF%flux_lh_ocn_top(i,j) = IST%part_size(i,j,0) * US%W_m2_to_QRZ_T*FIA%flux_lh_top(i,j,0)
       do b=1,nb
-        IOF%flux_sw_ocn(i,j,b) = IST%part_size(i,j,0) * FIA%flux_sw_top(i,j,0,b)
+        IOF%flux_sw_ocn(i,j,b) = IST%part_size(i,j,0) * US%W_m2_to_QRZ_T*FIA%flux_sw_top(i,j,0,b)
       enddo
-      IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%lprec_top(i,j,0)
-      IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%fprec_top(i,j,0)
+      IOF%lprec_ocn_top(i,j) = IST%part_size(i,j,0) * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%lprec_top(i,j,0)
+      IOF%fprec_ocn_top(i,j) = IST%part_size(i,j,0) * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%fprec_top(i,j,0)
     enddo ; enddo
 
   endif
@@ -405,7 +405,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   ! No other thermodynamics need to be done for ice that is specified,
   if (CS%specified_ice) then
-    if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G)
+    if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G, US)
     return
   endif
   ! Otherwise, Continue with the remainder of the prognostic slow thermodynamics
@@ -466,7 +466,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
 
   ! This needs to go after accumulate_bottom_input.
-  if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G)
+  if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G, US)
 
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
@@ -482,15 +482,16 @@ end subroutine slow_thermodynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Add in any excess fluxes due to ice state type into the ice_ocean_flux_type
-subroutine add_excess_fluxes(IOF, XSF, G)
+subroutine add_excess_fluxes(IOF, XSF, G, US)
   type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
   type(total_sfc_flux_type), intent(in)    :: XSF !< A structure of the excess fluxes between the
                                                   !! atmosphere and the ice or ocean relative to
                                                   !! those stored in TSF
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),     intent(in)    :: US  !< A structure with unit conversion factors
 
-  real :: sw_comb  ! A combination of two downward shortwave fluxes [W m-2].
+  real :: sw_comb  ! A combination of two downward shortwave fluxes [Q R Z T-1 ~> W m-2].
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
@@ -498,13 +499,13 @@ subroutine add_excess_fluxes(IOF, XSF, G)
   nb = size(XSF%flux_sw,3)
 
   do j=jsc,jec ; do i=isc,iec
-    IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) - XSF%flux_sh(i,j)
-    IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) - XSF%evap(i,j)
-    IOF%flux_lw_ocn_top(i,j) = IOF%flux_lw_ocn_top(i,j) - XSF%flux_lw(i,j)
-    IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) - XSF%flux_lh(i,j)
+    IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_sh(i,j)
+    IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%evap(i,j)
+    IOF%flux_lw_ocn_top(i,j) = IOF%flux_lw_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_lw(i,j)
+    IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_lh(i,j)
 
-    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - XSF%lprec(i,j)
-    IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - XSF%fprec(i,j)
+    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%lprec(i,j)
+    IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%fprec(i,j)
 
     call coupler_type_increment_data(XSF%tr_flux, IOF%tr_flux_ocn_top, scale_factor=-1.0)
 
@@ -514,7 +515,7 @@ subroutine add_excess_fluxes(IOF, XSF, G)
       ! Combine the direct and diffuse excess fluxes and convert them into
       ! diffuse fluxes, since the ice scatters any light passing through it.
       IOF%flux_sw_ocn(i,j,b) = IOF%flux_sw_ocn(i,j,b) - &
-            (XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
+            US%W_m2_to_QRZ_T*(XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
 
       ! Rearrange shortwave fluxes to prevent any band from having a negative
       ! flux.  (The ocean does not glow.)
@@ -711,8 +712,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
             call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
                            drho_dT,drho_dS,1,1,EOS)
-            IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
-                                  ((Cp_Water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
+            IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-US%W_m2_to_QRZ_T*cool_nudge(i,j)*drho_dT(1)) / &
+                                  ((US%J_kg_to_Q*Cp_Water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
           endif
         endif
       elseif (icec(i,j) > icec_obs(i,j) + CS%nudge_conc_tol) then
@@ -839,29 +840,29 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     part_ocn = 0.0
     if (IST%part_size(i,j,0) > IG%ocean_part_min) part_ocn = IST%part_size(i,j,0)
 
-    IOF%flux_sh_ocn_top(i,j) = part_ocn * FIA%flux_sh_top(i,j,0)
-    IOF%evap_ocn_top(i,j) = part_ocn * FIA%evap_top(i,j,0)
-    IOF%flux_lw_ocn_top(i,j) = part_ocn * FIA%flux_lw_top(i,j,0)
-    IOF%flux_lh_ocn_top(i,j) = part_ocn * FIA%flux_lh_top(i,j,0)
-    do b=1,nb ; IOF%flux_sw_ocn(i,j,b) = part_ocn * FIA%flux_sw_top(i,j,0,b) ; enddo
-    IOF%lprec_ocn_top(i,j) = part_ocn * FIA%lprec_top(i,j,0)
-    IOF%fprec_ocn_top(i,j) = part_ocn * FIA%fprec_top(i,j,0)
+    IOF%flux_sh_ocn_top(i,j) = part_ocn * US%W_m2_to_QRZ_T*FIA%flux_sh_top(i,j,0)
+    IOF%evap_ocn_top(i,j) = part_ocn * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%evap_top(i,j,0)
+    IOF%flux_lw_ocn_top(i,j) = part_ocn * US%W_m2_to_QRZ_T*FIA%flux_lw_top(i,j,0)
+    IOF%flux_lh_ocn_top(i,j) = part_ocn * US%W_m2_to_QRZ_T*FIA%flux_lh_top(i,j,0)
+    do b=1,nb ; IOF%flux_sw_ocn(i,j,b) = part_ocn * US%W_m2_to_QRZ_T*FIA%flux_sw_top(i,j,0,b) ; enddo
+    IOF%lprec_ocn_top(i,j) = part_ocn * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%lprec_top(i,j,0)
+    IOF%fprec_ocn_top(i,j) = part_ocn * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%fprec_top(i,j,0)
   enddo ; enddo
 
 ! mw/new precip will eventually be intercepted by pond eliminating need for next 3 lines
   !$OMP do
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + &
-                             IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
+                             IST%part_size(i,j,k) * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 
   ! Add fluxes of snow and other properties to the ocean due to recent ridging or drifting events.
   if (allocated(IST%snow_to_ocn)) then
     !$OMP do
     do j=jsc,jec ; do i=isc,iec ; if (IST%snow_to_ocn(i,j) > 0.0) then
-      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) * US%s_to_T*Idt_slow
+      IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + IST%snow_to_ocn(i,j) * Idt_slow
       IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
-              US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
+              IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
       ! h2o_change(i,j) = h2o_change(i,j) - US%kg_m3_to_R*US%m_to_Z*US%RZ_to_kg_m2*IST%snow_to_ocn(i,j)
       IST%snow_to_ocn(i,j) = 0.0 ;  IST%enth_snow_to_ocn(i,j) = 0.0
     endif ; enddo ; enddo
@@ -954,18 +955,18 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       enth_snowfall = US%kg_m3_to_R*US%m_to_Z*(dt_slow*FIA%fprec_top(i,j,k)) * enthalpy(0)
       if (FIA%evap_top(i,j,k) < 0.0) &
         enth_snowfall = enth_snowfall - US%kg_m3_to_R*US%m_to_Z*(dt_slow*FIA%evap_top(i,j,k)) * enthalpy(0)
-      IOF%Enth_Mass_in_atm(i,j) = IOF%Enth_Mass_in_atm(i,j) + US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+      IOF%Enth_Mass_in_atm(i,j) = IOF%Enth_Mass_in_atm(i,j) + &
            IST%part_size(i,j,k) * enth_snowfall
 
-!      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + US%RZ_to_kg_m2 * &
+!      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
 
-      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
           IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
 
-      IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+      IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
           IST%part_size(i,j,k) * enth_ice_to_ocn
-      IOF%Enth_Mass_out_atm(i,j) = IOF%Enth_Mass_out_atm(i,j) - US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+      IOF%Enth_Mass_out_atm(i,j) = IOF%Enth_Mass_out_atm(i,j) - &
           IST%part_size(i,j,k) * enth_evap
 
 
@@ -1000,17 +1001,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       endif
 
       IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                  (US%RZ_T_to_kg_m2s*evap_from_ocn*Idt_slow) ! no ice, evaporation left
+                                  (evap_from_ocn*Idt_slow) ! no ice, evaporation left
       IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-                                 ((US%QRZ_T_to_W_m2*LatHtVap*evap_from_ocn)*Idt_slow)
+                                 ((LatHtVap*evap_from_ocn)*Idt_slow)
       IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) + IST%part_size(i,j,k) * &
-             US%QRZ_T_to_W_m2*(OSS%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
+             (OSS%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       sw_tot = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
         sw_tot = sw_tot + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
       enddo
       IOF%flux_sw_ocn(i,j,VIS_DIF) = IOF%flux_sw_ocn(i,j,VIS_DIF) + IST%part_size(i,j,k) * &
-                                     (sw_tot * FIA%sw_abs_ocn(i,j,k))
+                                     US%W_m2_to_QRZ_T * (sw_tot * FIA%sw_abs_ocn(i,j,k))
       net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt*Idt_slow ! bot. melt. ablation
@@ -1156,9 +1157,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       call SIS_repack_passive_ice_tr(i, j, k, nkice, IST%TrReg, TrLay)
 
 !      IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
-!          IST%part_size(i,j,k) * US%RZ_to_kg_m2*enth_ocn_to_ice
+!          IST%part_size(i,j,k) * enth_ocn_to_ice
       IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
-          IST%part_size(i,j,k) * (US%RZ_to_kg_m2*h2o_ocn_to_ice * enthalpy_ocean) * US%Q_to_J_kg
+          IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
       net_melt(i,j) = net_melt(i,j) - &
              (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
 
@@ -1231,7 +1232,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
         enddo
         net_melt(i,j) = net_melt(i,j) + h2o_ice_to_ocn * Idt_slow
         qflx_lim_ice(i,j) = enth_to_melt * Idt_slow
-        IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - US%RZ_to_kg_m2*enth_ice_to_ocn
+        IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (CS%ice_rel_salin > 0.0) then
           salt_change(i,j) = salt_change(i,j) + salt_to_ice
         endif
@@ -1246,7 +1247,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     ! Add back any frazil that has not been used yet.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,heat_in_col,IST,dt_slow,FIA,IOF)
     do j=jsc,jec ; do i=isc,iec
-      heat_in_col(i,j) = heat_in_col(i,j) + FIA%frazil_left(i,j) + IOF%flux_sh_ocn_top(i,j)*dt_slow
+      heat_in_col(i,j) = heat_in_col(i,j) + FIA%frazil_left(i,j) + US%QRZ_T_to_W_m2*IOF%flux_sh_ocn_top(i,j)*dt_slow
     enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
@@ -1264,7 +1265,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     do j=jsc,jec ; do i=isc,iec
       enth_here = enth_col(i,j)
       tot_heat_in = US%J_kg_to_Q*heat_in_col(i,j) + US%RZ_to_kg_m2*enth_mass_in_col(i,j)
-      emic2 = (IOF%Enth_Mass_in_ocn(i,j) + IOF%Enth_Mass_in_atm(i,j) + &
+      emic2 = US%QRZ_T_to_W_m2*US%T_to_s*(IOF%Enth_Mass_in_ocn(i,j) + IOF%Enth_Mass_in_atm(i,j) + &
                IOF%Enth_Mass_out_ocn(i,j) + IOF%Enth_Mass_out_atm(i,j))
       tot_heat_in2 = US%J_kg_to_Q*heat_in_col(i,j) + emic2
 
@@ -1300,7 +1301,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     enddo ; enddo
     do i=isc,iec
       ! Note the conversion here from g m-2 to kg m-2 s-1.
-      IOF%flux_salt(i,j) = US%RZ_T_to_kg_m2s * salt_change(i,j) * (0.001*Idt_slow)
+      IOF%flux_salt(i,j) = salt_change(i,j) * (0.001*Idt_slow)
     enddo
   enddo
 
@@ -1345,7 +1346,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! Combine the liquid precipitation with the net melt of ice and snow for
   ! passing to the ocean. These may later be kept separate.
   do j=jsc,jec ; do i=isc,iec
-    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + US%RZ_to_kg_m2*US%s_to_T*net_melt(i,j)
+    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + net_melt(i,j)
   enddo ; enddo
 
   ! Make sure TrLay is no longer allocated
@@ -1505,7 +1506,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   endif
   if (CS%nudge_sea_ice) then
     CS%id_fwnudge  = register_diag_field('ice_model','FW_NUDGE' ,diag%axesT1, Time, &
-               'nudging freshwater flux', 'kg/(m^2*s)', missing_value=missing)
+               'nudging freshwater flux', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   endif
 
   call SIS2_ice_thm_init(US, param_file, CS%ice_thm_CSp)

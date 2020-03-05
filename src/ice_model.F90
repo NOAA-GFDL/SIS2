@@ -251,7 +251,7 @@ subroutine update_ice_slow_thermo(Ice)
     call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, US, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, sIG, Ice%sCS)
+  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, US, sIG, Ice%sCS)
 
   call mpp_clock_end(ice_clock_slow) ; call mpp_clock_end(iceClock)
 
@@ -534,7 +534,7 @@ end subroutine exchange_fast_to_slow_ice
 !> set_ocean_top_fluxes translates ice-bottom fluxes of heat, mass, salt, and
 !!  tracers from the ice model's internal state to the public ice data type
 !!  for use by the ocean model.
-subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
+subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
@@ -544,6 +544,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
@@ -584,21 +585,21 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
 !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_t(i2,j2) = IOF%flux_sh_ocn_top(i,j)
-    Ice%flux_q(i2,j2) = IOF%evap_ocn_top(i,j)
-    Ice%flux_sw_vis_dir(i2,j2) = IOF%flux_sw_ocn(i,j,VIS_DIR)
-    Ice%flux_sw_vis_dif(i2,j2) = IOF%flux_sw_ocn(i,j,VIS_DIF)
-    Ice%flux_sw_nir_dir(i2,j2) = IOF%flux_sw_ocn(i,j,NIR_DIR)
-    Ice%flux_sw_nir_dif(i2,j2) = IOF%flux_sw_ocn(i,j,NIR_DIF)
-    Ice%flux_lw(i2,j2) = IOF%flux_lw_ocn_top(i,j)
-    Ice%flux_lh(i2,j2) = IOF%flux_lh_ocn_top(i,j)
-    Ice%fprec(i2,j2) = IOF%fprec_ocn_top(i,j)
-    Ice%lprec(i2,j2) = IOF%lprec_ocn_top(i,j)
+    Ice%flux_t(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sh_ocn_top(i,j)
+    Ice%flux_q(i2,j2) = US%RZ_T_to_kg_m2s*IOF%evap_ocn_top(i,j)
+    Ice%flux_sw_vis_dir(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sw_ocn(i,j,VIS_DIR)
+    Ice%flux_sw_vis_dif(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sw_ocn(i,j,VIS_DIF)
+    Ice%flux_sw_nir_dir(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sw_ocn(i,j,NIR_DIR)
+    Ice%flux_sw_nir_dif(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sw_ocn(i,j,NIR_DIF)
+    Ice%flux_lw(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_lw_ocn_top(i,j)
+    Ice%flux_lh(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_lh_ocn_top(i,j)
+    Ice%fprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j)
+    Ice%lprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%lprec_ocn_top(i,j)
     Ice%runoff(i2,j2)  = FIA%runoff(i,j)
     Ice%calving(i2,j2) = FIA%calving(i,j)
     Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
-    Ice%flux_salt(i2,j2) = IOF%flux_salt(i,j)
+    Ice%flux_salt(i2,j2) = US%RZ_T_to_kg_m2s*IOF%flux_salt(i,j)
     Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
 !   It is possible that the ice mass and surface pressure will be needed after
@@ -613,7 +614,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, IG, sCS)
   if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-      Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + IOF%melt_nudge(i,j)
+      Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + US%RZ_T_to_kg_m2s*IOF%melt_nudge(i,j)
     enddo ; enddo
   endif
 
@@ -645,7 +646,7 @@ subroutine ice_mass_from_IST(IST, IOF, G, IG)
   !$OMP parallel do default(shared)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     IOF%mass_ice_sn_p(i,j) = IOF%mass_ice_sn_p(i,j) + IST%part_size(i,j,k) * &
-        (G%US%RZ_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
+          ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine ice_mass_from_IST
@@ -681,7 +682,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%mi(i2,j2) = Ice%mi(i2,j2) + IOF%mass_ice_sn_p(i,j)
+    Ice%mi(i2,j2) = Ice%mi(i2,j2) + US%RZ_to_kg_m2*IOF%mass_ice_sn_p(i,j)
   enddo ; enddo
 
   if (sCS%do_icebergs .and. associated(IOF%mass_berg)) then

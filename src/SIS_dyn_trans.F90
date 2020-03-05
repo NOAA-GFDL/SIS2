@@ -1375,7 +1375,7 @@ subroutine finish_ocean_top_stresses(IOF, G, DS2d, IG)
   endif
 
   if (present(DS2d) .and. present(IG)) then ; if (DS2d%nts > 0) then ; do j=jsc,jec ; do i=isc,iec
-    IOF%mass_ice_sn_p(i,j) = DS2d%mca_step(i, j, DS2d%nts) * G%US%RZ_to_kg_m2
+    IOF%mass_ice_sn_p(i,j) = DS2d%mca_step(i, j, DS2d%nts)
   enddo ; enddo ; endif ; endif
 
   if (allocated(IOF%stress_mag)) then

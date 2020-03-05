@@ -352,12 +352,12 @@ end type ice_rad_type
 type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
-    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere [W m-2].
-    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [kg m-2 s-1].
-    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface [W m-2].
-    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [W m-2].
-    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
-    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
+    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere [Q R Z T-1 ~> W m-2].
+    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [R Z T-1 ~> kg m-2 s-1].
+    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface [Q R Z T-1 ~> W m-2].
+    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [Q R Z T-1 ~> W m-2].
+    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
+    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by
                        !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
@@ -366,23 +366,23 @@ type ice_ocean_flux_type
                        !! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
     stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [R Z L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
-                       !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
-    flux_salt, &       !< The flux of salt out of the ocean [kg m-2].
-    mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [kg m-2].
+                       !! surface salinity to facilitate the retention of sea ice [R Z T-1 ~> kg m-2 s-1].
+    flux_salt, &       !< The flux of salt out of the ocean [kgSalt kg-1 R Z T-1 ~> kgSalt m-2].
+    mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [R Z ~> kg m-2].
     pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
-                       !! snow and ponds, exclusive of atmospheric pressure [Pa].
+                       !! snow and ponds, exclusive of atmospheric pressure [R Z L T-2 ~> Pa].
                        !### What about pressure from bergs?
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
-                       !! at the ocean surface [W m-2].  The third dimension combines
+                       !! at the ocean surface [Q R Z T-1 ~> W m-2].  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency
                        !! (visible or near-IR) bands, with the integer parameters
                        !! from this module helping to distinguish them.
 
-  !Iceberg fields
+  ! Iceberg fields - these are passed unchanged from the icebergs module, so are not rescaled.
   real, pointer, dimension(:,:)   :: &
-    ustar_berg =>NULL(), &  !< ustar contribution below icebergs [m s-1]
-    area_berg =>NULL(),  &  !< fraction of grid cell covered by icebergs [m2 m-2]
-    mass_berg =>NULL()      !< mass of icebergs [kg m-2]
+    ustar_berg => NULL(), & !< ustar contribution below icebergs [m s-1]
+    area_berg => NULL(),  & !< fraction of grid cell covered by icebergs [m2 m-2]
+    mass_berg => NULL()     !< mass of icebergs [kg m-2]
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &
@@ -390,10 +390,12 @@ type ice_ocean_flux_type
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
     ! that add mass to the ice are generally negative.
-    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere [J m-2].
-    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to the atmosphere [J m-2].
-    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [J m-2].
-    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to the ocean [J m-2].
+    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere [Q R Z ~> J m-2].
+    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to
+                         !! the atmosphere [Q R Z ~> J m-2].
+    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [Q R Z ~> J m-2].
+    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to
+                         !! the ocean [Q R Z ~> J m-2].
 
   integer :: stress_count !< The number of times that the stresses from the ice to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two wind
@@ -2347,26 +2349,26 @@ subroutine IOF_chksum(mesg, IOF, G, US)
   type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
 
-  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI)
+  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
 
-  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI)
-  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI)
-  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI)
-  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI)
-  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
-  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
-  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
+  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
   call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
   call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI)
-  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI)
+  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
   if (allocated(IOF%stress_mag)) &
     call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
 
-  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
-  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
-  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI)
-  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI)
+  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
 end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
