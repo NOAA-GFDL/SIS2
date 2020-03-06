@@ -243,7 +243,7 @@ type fast_ice_avg_type
                 !! at the top of the  ice extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) :: &
     dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
-    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [kg m-2 s-1 degC-1].
+    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1].
     dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
 
 !SLOW ONLY
@@ -274,16 +274,16 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u  , & !< The downward flux of zonal momentum on an A-grid [Pa].
-    flux_v  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh , & !< The upward sensible heat flux at the ice top [W m-2].
-    evap    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [W m-2].
-    flux_lh , & !< The upward flux of latent heat at the top of the ice [W m-2].
-    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [kg m-2 s-1].
-    fprec       !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
+    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_sh , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
+    evap    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
+    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [Q R Z T-1 ~> W m-2].
+    flux_lh , & !< The upward flux of latent heat at the top of the ice [Q R Z T-1 ~> W m-2].
+    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    fprec       !< The downward flux of frozen precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:,:) :: flux_sw
-                !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
+                !< The downward flux of shortwave radiation at the top of the sea-ice [Q R Z T-1 ~> W m-2].
                 !! The third dimension combines angular orientation (direct or diffuse) and
                 !! frequency (visible or near-IR) bands, with the integer parameters
                 !! from this module helping to distinguish them.
@@ -841,7 +841,6 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
     FIA%calving(i,j) = RZ_T_rescale * FIA%calving(i,j) ! [R Z T-1 ~> kg m-2 s-1]
     FIA%runoff_hflx(i,j) = QRZ_T_rescale * FIA%runoff_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
     FIA%calving_hflx(i,j) = QRZ_T_rescale * FIA%calving_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
-!    ! Do not rescale FIA%Tskin_avg(i,j) = 1.0 * FIA%Tskin_avg(i,j) ! [degC]
   enddo ; enddo
   do b=1,size(FIA%flux_sw_dn,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
     FIA%flux_sw_dn(i,j,b) = QRZ_T_rescale * FIA%flux_sw_dn(i,j,b) ! [Q R Z T-1 ~> W m-2]
@@ -854,24 +853,24 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
     FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
     FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
     FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
-!    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [Q R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
-!    ! Do not rescale FIA%Tskin_cat(i,j) =  FIA%Tskin_cat(i,j)  ! [degC]
+    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [Q R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
+!    ! Do not rescale FIA%Tskin_cat(i,j,k) =  FIA%Tskin_cat(i,j,k)  ! [degC]
   enddo ; enddo ; enddo ; endif
 
  ! Do not rescale Rad%tskin_rad(i,j) = Rad%tskin_rad(i,j) ! [degC]
  ! Do not rescale Rad%coszen_lastrad(i,j) = Rad%coszen_lastrad(i,j) ! [nondim]
 
-!  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    TSF%flux_sh(i,j) = QRZ_T_rescale * TSF%flux_sh(i,j) ! [Q R Z T-1 ~> W m-2]
-!    TSF%flux_lw(i,j) = QRZ_T_rescale * TSF%flux_lw(i,j) ! [Q R Z T-1 ~> W m-2]
-!    TSF%flux_lh(i,j) = QRZ_T_rescale * TSF%flux_lh(i,j) ! [Q R Z T-1 ~> W m-2]
-!    TSF%evap(i,j) = RZ_T_rescale * TSF%evap(i,j) ! [R Z T-1 ~> kg m-2 s-1]
-!    TSF%lprec(i,j) = RZ_T_rescale * TSF%lprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
-!    TSF%fprec(i,j) = RZ_T_rescale * TSF%fprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
-!  enddo ; enddo
-!  do b=1,size(TSF%flux_sw,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    TSF%flux_sw(i,j,b) = QRZ_T_rescale * TSF%flux_sw(i,j,b) ! [Q R Z T-1 ~> W m-2]
-!  enddo ; enddo ; enddo
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    TSF%flux_sh(i,j) = QRZ_T_rescale * TSF%flux_sh(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%flux_lw(i,j) = QRZ_T_rescale * TSF%flux_lw(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%flux_lh(i,j) = QRZ_T_rescale * TSF%flux_lh(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%evap(i,j) = RZ_T_rescale * TSF%evap(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    TSF%lprec(i,j) = RZ_T_rescale * TSF%lprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    TSF%fprec(i,j) = RZ_T_rescale * TSF%fprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+  enddo ; enddo
+  do b=1,size(TSF%flux_sw,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    TSF%flux_sw(i,j,b) = QRZ_T_rescale * TSF%flux_sw(i,j,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo
 
 end subroutine rescale_fast_to_slow_restart_fields
 

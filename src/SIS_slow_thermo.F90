@@ -488,13 +488,13 @@ subroutine add_excess_fluxes(IOF, XSF, G, US)
   nb = size(XSF%flux_sw,3)
 
   do j=jsc,jec ; do i=isc,iec
-    IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_sh(i,j)
-    IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%evap(i,j)
-    IOF%flux_lw_ocn_top(i,j) = IOF%flux_lw_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_lw(i,j)
-    IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) - US%W_m2_to_QRZ_T*XSF%flux_lh(i,j)
+    IOF%flux_sh_ocn_top(i,j) = IOF%flux_sh_ocn_top(i,j) - XSF%flux_sh(i,j)
+    IOF%evap_ocn_top(i,j) = IOF%evap_ocn_top(i,j) - XSF%evap(i,j)
+    IOF%flux_lw_ocn_top(i,j) = IOF%flux_lw_ocn_top(i,j) - XSF%flux_lw(i,j)
+    IOF%flux_lh_ocn_top(i,j) = IOF%flux_lh_ocn_top(i,j) - XSF%flux_lh(i,j)
 
-    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%lprec(i,j)
-    IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - US%kg_m3_to_R*US%m_to_Z*US%T_to_s*XSF%fprec(i,j)
+    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) - XSF%lprec(i,j)
+    IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) - XSF%fprec(i,j)
 
     call coupler_type_increment_data(XSF%tr_flux, IOF%tr_flux_ocn_top, scale_factor=-1.0)
 
@@ -503,8 +503,7 @@ subroutine add_excess_fluxes(IOF, XSF, G, US)
     do b=2,nb,2
       ! Combine the direct and diffuse excess fluxes and convert them into
       ! diffuse fluxes, since the ice scatters any light passing through it.
-      IOF%flux_sw_ocn(i,j,b) = IOF%flux_sw_ocn(i,j,b) - &
-            US%W_m2_to_QRZ_T*(XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
+      IOF%flux_sw_ocn(i,j,b) = IOF%flux_sw_ocn(i,j,b) - (XSF%flux_sw(i,j,b-1) + XSF%flux_sw(i,j,b))
 
       ! Rearrange shortwave fluxes to prevent any band from having a negative
       ! flux.  (The ocean does not glow.)

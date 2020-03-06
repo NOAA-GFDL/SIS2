@@ -207,7 +207,7 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
     !$OMP parallel do default(shared) private(t_sfc)
     do j=jsc,jec ; do k=0,ncat ; do i=isc,iec
       FIA%dshdt(i,j,k) = FIA%dshdt(i,j,k) + US%W_m2_to_QRZ_T*dshdt(i,j,k)
-      FIA%devapdt(i,j,k) = FIA%devapdt(i,j,k) + devapdt(i,j,k)
+      FIA%devapdt(i,j,k) = FIA%devapdt(i,j,k) + US%kg_m3_to_R*US%m_to_Z*US%T_to_s*devapdt(i,j,k)
       FIA%dlwdt(i,j,k) = FIA%dlwdt(i,j,k) + US%W_m2_to_QRZ_T*dlwdt(i,j,k)
       FIA%flux_sh0(i,j,k) = FIA%flux_sh0(i,j,k) + US%W_m2_to_QRZ_T*sh_T0(i,j,k)
       FIA%evap0(i,j,k) = FIA%evap0(i,j,k) + US%kg_m3_to_R*US%m_to_Z*US%T_to_s*evap_T0(i,j,k)
@@ -387,18 +387,17 @@ subroutine total_top_quantities(FIA, TSF, part_size, G, US, IG)
   call coupler_type_rescale_data(TSF%tr_flux, 0.0)
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    TSF%flux_u(i,j) = TSF%flux_u(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%flux_u_top(i,j,k)
-    TSF%flux_v(i,j) = TSF%flux_v(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%flux_v_top(i,j,k)
-    TSF%flux_sh(i,j) = TSF%flux_sh(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_sh_top(i,j,k)
-    TSF%flux_lw(i,j) = TSF%flux_lw(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_lw_top(i,j,k)
-    TSF%flux_lh(i,j) = TSF%flux_lh(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_lh_top(i,j,k)
+    TSF%flux_u(i,j) = TSF%flux_u(i,j) + part_size(i,j,k) * FIA%flux_u_top(i,j,k)
+    TSF%flux_v(i,j) = TSF%flux_v(i,j) + part_size(i,j,k) * FIA%flux_v_top(i,j,k)
+    TSF%flux_sh(i,j) = TSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
+    TSF%flux_lw(i,j) = TSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
+    TSF%flux_lh(i,j) = TSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
     do b=1,nb
-      TSF%flux_sw(i,j,b) = TSF%flux_sw(i,j,b) + &
-                           part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_sw_top(i,j,k,b)
+      TSF%flux_sw(i,j,b) = TSF%flux_sw(i,j,b) + part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
     enddo
-    TSF%evap(i,j) = TSF%evap(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%evap_top(i,j,k)
-    TSF%fprec(i,j) = TSF%fprec(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%fprec_top(i,j,k)
-    TSF%lprec(i,j) = TSF%lprec(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%lprec_top(i,j,k)
+    TSF%evap(i,j) = TSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
+    TSF%fprec(i,j) = TSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
+    TSF%lprec(i,j) = TSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
   call coupler_type_increment_data(FIA%tr_flux, part_size, TSF%tr_flux)
 
@@ -450,16 +449,15 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, US, IG)
   call coupler_type_rescale_data(XSF%tr_flux, 0.0)
 
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
-    XSF%flux_sh(i,j) = XSF%flux_sh(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_sh_top(i,j,k)
-    XSF%flux_lw(i,j) = XSF%flux_lw(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_lw_top(i,j,k)
-    XSF%flux_lh(i,j) = XSF%flux_lh(i,j) + part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_lh_top(i,j,k)
+    XSF%flux_sh(i,j) = XSF%flux_sh(i,j) + part_size(i,j,k) * FIA%flux_sh_top(i,j,k)
+    XSF%flux_lw(i,j) = XSF%flux_lw(i,j) + part_size(i,j,k) * FIA%flux_lw_top(i,j,k)
+    XSF%flux_lh(i,j) = XSF%flux_lh(i,j) + part_size(i,j,k) * FIA%flux_lh_top(i,j,k)
     do b=1,nb
-      XSF%flux_sw(i,j,b) = XSF%flux_sw(i,j,b) + &
-                           part_size(i,j,k) * US%QRZ_T_to_W_m2*FIA%flux_sw_top(i,j,k,b)
+      XSF%flux_sw(i,j,b) = XSF%flux_sw(i,j,b) + part_size(i,j,k) * FIA%flux_sw_top(i,j,k,b)
     enddo
-    XSF%evap(i,j) = XSF%evap(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%evap_top(i,j,k)
-    XSF%fprec(i,j) = XSF%fprec(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%fprec_top(i,j,k)
-    XSF%lprec(i,j) = XSF%lprec(i,j) + part_size(i,j,k) * US%RZ_T_to_kg_m2s*FIA%lprec_top(i,j,k)
+    XSF%evap(i,j) = XSF%evap(i,j) + part_size(i,j,k) * FIA%evap_top(i,j,k)
+    XSF%fprec(i,j) = XSF%fprec(i,j) + part_size(i,j,k) * FIA%fprec_top(i,j,k)
+    XSF%lprec(i,j) = XSF%lprec(i,j) + part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
   call coupler_type_increment_data(FIA%tr_flux, part_size, XSF%tr_flux)
 
@@ -1038,8 +1036,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   !           dSWt_dt = dSWt_dt - dAlb_dt(b)*US%QRZ_T_to_W_m2*FIA%flux_sw_dn(i,j,b)
           enddo
 
-          dhf_dt = US%W_m2_to_QRZ_T*( (US%QRZ_T_to_W_m2*FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - &
-                 (US%QRZ_T_to_W_m2*FIA%dlwdt(i,j,k) + Rad%sw_abs_sfc(i,j,k)*dSWt_dt) )
+          dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*US%J_kg_to_Q*latent) - &
+                 (FIA%dlwdt(i,j,k) + Rad%sw_abs_sfc(i,j,k)*US%W_m2_to_QRZ_T*dSWt_dt)
           hf_0 = (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*US%J_kg_to_Q*latent) - &
                  (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot)
 
@@ -1125,7 +1123,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       ice_sw_tot = 0.0 ; TSF_sw_tot = 0.0
       do b2=0,nbmerge-1
         ice_sw_tot = ice_sw_tot + sw_tot_ice_band(i,b+b2)
-        TSF_sw_tot = TSF_sw_tot + TSF%flux_sw(i,j,b+b2)
+        TSF_sw_tot = TSF_sw_tot + US%QRZ_T_to_W_m2*TSF%flux_sw(i,j,b+b2)
       enddo
       if (abs(ice_sw_tot) > abs(TSF_sw_tot)) then
         rescale = abs(TSF_sw_tot) /  abs(ice_sw_tot)
@@ -1153,8 +1151,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
       sw_tot = (FIA%flux_sw_top(i,j,k,VIS_DIR) + FIA%flux_sw_top(i,j,k,VIS_DIF)) + &
                (FIA%flux_sw_top(i,j,k,NIR_DIR) + FIA%flux_sw_top(i,j,k,NIR_DIF))
 
-      dhf_dt = US%W_m2_to_QRZ_T*( (US%QRZ_T_to_W_m2*FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*latent) - &
-               US%QRZ_T_to_W_m2*FIA%dlwdt(i,j,k) )
+      dhf_dt = (FIA%dshdt(i,j,k) + FIA%devapdt(i,j,k)*US%J_kg_to_Q*latent) - FIA%dlwdt(i,j,k)
       hf_0 = ( (FIA%flux_sh0(i,j,k) + FIA%evap0(i,j,k)*US%J_kg_to_Q*latent) - &
              (FIA%flux_lw0(i,j,k) + Rad%sw_abs_sfc(i,j,k)*sw_tot) )
 
@@ -1175,9 +1172,9 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
 !      Rad%t_skin(i,j,k) = Tskin
       FIA%flux_sh_top(i,j,k)  = FIA%flux_sh0(i,j,k)  + Tskin * FIA%dshdt(i,j,k)
-      FIA%evap_top(i,j,k)  = FIA%evap0(i,j,k) + Tskin * US%kg_m3_to_R*US%m_to_Z*US%T_to_s*FIA%devapdt(i,j,k)
+      FIA%evap_top(i,j,k)  = FIA%evap0(i,j,k) + Tskin * FIA%devapdt(i,j,k)
       FIA%flux_lw_top(i,j,k) = FIA%flux_lw0(i,j,k) + Tskin * FIA%dlwdt(i,j,k)
-      FIA%flux_lh_top(i,j,k) = US%J_kg_to_Q*latent * US%kg_m2s_to_RZ_T*US%RZ_T_to_kg_m2s*FIA%evap_top(i,j,k)
+      FIA%flux_lh_top(i,j,k) = US%J_kg_to_Q*latent * FIA%evap_top(i,j,k)
 
       ! Copy radiation fields from the fast to the slow states.
       FIA%sw_abs_ocn(i,j,k) = Rad%sw_abs_ocn(i,j,k)
@@ -1224,14 +1221,14 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, US, IG)
     call hchksum(tmp_diag, & ! similar to FIA%flux_sw_top(:,:,1:,b), &
                  trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
     call hchksum(TSF%flux_sw(:,:,b), &
-                 trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI) !, scale=US%QRZ_T_to_W_m2)
+                 trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
   enddo
   call hchksum(FIA%flux_sh0(:,:,1:), trim(mesg)//" FIA%flux_sh0", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%flux_lw0(:,:,1:), trim(mesg)//" FIA%flux_lw0", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%evap0(:,:,1:), trim(mesg)//" FIA%evap0", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI)
+  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI, scale=US%RZ_T_to_kg_m2s)
   do m=1,size(Rad%sw_abs_ice,4)
     write(nstr, '(I4)') m ; nstr = adjustl(nstr)
     tmp_diag(:,:,:) = 0.0
