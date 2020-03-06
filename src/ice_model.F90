@@ -195,7 +195,7 @@ subroutine update_ice_slow_thermo(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_slow_thermo", Ice, check_slow=.true.)
-    call FIA_chksum("Start update_ice_slow_thermo", FIA, sG)
+    call FIA_chksum("Start update_ice_slow_thermo", FIA, sG, US)
     call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG, US)
   endif
 
@@ -210,10 +210,10 @@ subroutine update_ice_slow_thermo(Ice)
     call redo_update_ice_model_fast(sIST, Ice%sCS%sOSS, Ice%sCS%Rad, FIA, Ice%sCS%TSF, &
               Ice%sCS%optics_CSp, Ice%sCS%Time_step_slow, Ice%sCS%fast_thermo_CSp, sG, US, sIG)
 
-    call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, sG, sIG)
+    call find_excess_fluxes(FIA, Ice%sCS%TSF, Ice%sCS%XSF, sIST%part_size, sG, US, sIG)
   endif
 
-  call convert_frost_to_snow(FIA, sG, sIG)
+  call convert_frost_to_snow(FIA, sG, US, sIG)
 
   if (Ice%sCS%do_icebergs) then
     if (Ice%sCS%berg_windstress_bug) then
@@ -234,7 +234,7 @@ subroutine update_ice_slow_thermo(Ice)
     call mpp_clock_begin(iceClock) ; call mpp_clock_begin(ice_clock_slow)
 
     if (Ice%sCS%debug) then
-      call FIA_chksum("After update_icebergs", FIA, sG)
+      call FIA_chksum("After update_icebergs", FIA, sG, US)
     endif
   endif
 
@@ -358,9 +358,9 @@ subroutine ice_model_fast_cleanup(Ice)
       "The pointer to Ice%fCS must be associated in ice_model_fast_cleanup.")
 
   ! average fluxes from update_ice_model_fast
-  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST, Ice%fCS%G, Ice%fCS%IG)
+  call avg_top_quantities(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%IST, Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG)
 
-  call total_top_quantities(Ice%fCS%FIA, Ice%fCS%TSF, Ice%fCS%IST%part_size, Ice%fCS%G, Ice%fCS%IG)
+  call total_top_quantities(Ice%fCS%FIA, Ice%fCS%TSF, Ice%fCS%IST%part_size, Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG)
 
   if (allocated(Ice%fCS%IST%t_surf)) &
     Ice%fCS%IST%t_surf(:,:,1:) = Ice%fCS%Rad%T_skin(:,:,:) + T_0degC
@@ -377,6 +377,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   type(fast_ice_avg_type), pointer :: FIA => NULL()
   type(SIS_hor_grid_type), pointer :: G => NULL()
+  type(unit_scale_type),   pointer :: US => NULL()
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
 
@@ -388,6 +389,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
       "The pointer to Ice%fCS%G must be associated in unpack_land_ice_boundary.")
 
   FIA => Ice%fCS%FIA ; G => Ice%fCS%G
+  US => Ice%fCS%US
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -397,10 +399,10 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
-    FIA%runoff(i,j)  = LIB%runoff(i2,j2)
-    FIA%calving(i,j) = LIB%calving(i2,j2)
-    FIA%runoff_hflx(i,j)  = LIB%runoff_hflx(i2,j2)
-    FIA%calving_hflx(i,j) = LIB%calving_hflx(i2,j2)
+    FIA%runoff(i,j)  = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*LIB%runoff(i2,j2)
+    FIA%calving(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*LIB%calving(i2,j2)
+    FIA%runoff_hflx(i,j)  = US%W_m2_to_QRZ_T*LIB%runoff_hflx(i2,j2)
+    FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*LIB%calving_hflx(i2,j2)
   else
     ! This is a land point from the perspective of the sea-ice.
     ! At some point it might make sense to check for non-zero fluxes, which
@@ -411,7 +413,7 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
   endif ; enddo ; enddo
 
   if (Ice%fCS%debug) then
-    call FIA_chksum("End of unpack_land_ice_boundary", FIA, G)
+    call FIA_chksum("End of unpack_land_ice_boundary", FIA, G, Ice%fCS%US)
   endif
 
 end subroutine unpack_land_ice_boundary
@@ -557,7 +559,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Start set_ocean_top_fluxes", IOF, G, sCS%US)
-    call FIA_chksum("Start set_ocean_top_fluxes", FIA, G)
+    call FIA_chksum("Start set_ocean_top_fluxes", FIA, G, US)
   endif
 
 !   It is possible that the ice mass and surface pressure will be needed after
@@ -595,17 +597,17 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%flux_lh(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%lprec_ocn_top(i,j)
-    Ice%runoff(i2,j2)  = FIA%runoff(i,j)
-    Ice%calving(i2,j2) = FIA%calving(i,j)
-    Ice%runoff_hflx(i2,j2)  = FIA%runoff_hflx(i,j)
-    Ice%calving_hflx(i2,j2) = FIA%calving_hflx(i,j)
+    Ice%runoff(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff(i,j)
+    Ice%calving(i2,j2) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
+    Ice%runoff_hflx(i2,j2)  = US%QRZ_T_to_W_m2*FIA%runoff_hflx(i,j)
+    Ice%calving_hflx(i2,j2) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)
     Ice%flux_salt(i2,j2) = US%RZ_T_to_kg_m2s*IOF%flux_salt(i,j)
     Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
 !   It is possible that the ice mass and surface pressure will be needed after
 ! the themodynamic step, in which case this should be uncommented.
 !  if (IOF%slp2ocean) then
-!     Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
+!     Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
 !   else
 !     Ice%p_surf(i2,j2) = 0.0
 !   endif
@@ -704,7 +706,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
     Ice%flux_v(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
-      Ice%p_surf(i2,j2) = FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
+      Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
     else
       Ice%p_surf(i2,j2) = 0.0
     endif
@@ -861,7 +863,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
     OSS%s_surf(i,j) = OIB%s(i2,j2)
     OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)
     OSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - OSS%T_fr_ocn(i,j))
-    OSS%frazil(i,j) = OIB%frazil(i2,j2)
+    OSS%frazil(i,j) = US%W_m2_to_QRZ_T*US%s_to_T*OIB%frazil(i2,j2)
     OSS%sea_lev(i,j) = OIB%sea_level(i2,j2)
   enddo ; enddo
 
@@ -1245,14 +1247,13 @@ subroutine update_ice_model_fast( Atmos_boundary, Ice )
 
   Ice%Time = Ice%fCS%Time
 
-  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, &
-                                  Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Ice%fCS, &
-                                  Time_start, Time_end)
+  call fast_radiation_diagnostics(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, Ice%fCS%FIA, &
+                                  Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG, Ice%fCS, Time_start, Time_end)
 
   ! Set some of the evolving ocean properties that will be seen by the
   ! atmosphere in the next time-step.
-  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, &
-                                     Ice%fCS%FIA, Ice%fCS%G, Ice%fCS%IG, Time_end, Time_end + dT_fast)
+  call set_fast_ocean_sfc_properties(Atmos_boundary, Ice, Ice%fCS%IST, Ice%fCS%Rad, Ice%fCS%FIA, &
+                                     Ice%fCS%G, Ice%fCS%US, Ice%fCS%IG, Time_end, Time_end + dT_fast)
 
   if (Ice%fCS%debug) &
     call Ice_public_type_chksum("End do_update_ice_model_fast", Ice, check_fast=.true.)
@@ -1267,7 +1268,7 @@ end subroutine update_ice_model_fast
 !> set_fast_ocean_sfc_properties updates the ocean surface properties like
 !! roughness and albedo for the rapidly evolving atmospheric updates
 subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
-                                          G, IG, Time_start, Time_end)
+                                          G, US, IG, Time_start, Time_end)
   type(atmos_ice_boundary_type), intent(in)    :: Atmos_boundary !< A type containing atmospheric boundary
                                                       !! forcing fields that are used to drive the ice
   type(ice_data_type),           intent(inout) :: Ice !< The publicly visible ice data type.
@@ -1277,6 +1278,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(fast_ice_avg_type),       intent(inout) :: FIA !< A type containing averages of fields
                                                       !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
   type(time_type),               intent(in)    :: Time_start !< The start of the time covered by this call
   type(time_type),               intent(in)    :: Time_end   !< The end of the timee covered by this call
@@ -1299,7 +1301,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
-    FIA%p_atm_surf(i,j) = Atmos_boundary%p(i3,j3,1)
+    FIA%p_atm_surf(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*US%m_s_to_L_T*Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 
   !$OMP parallel do default(shared) private(i2,j2,k2)
@@ -1360,7 +1362,7 @@ end subroutine set_ocean_albedo
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> fast_radiation_diagnostics offers diagnostics of the rapidly changing shortwave
 !! radiative and other properties of the ice
-subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
+subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
                                       Time_start, Time_end)
   type(atmos_ice_boundary_type), &
                            intent(in)    :: ABT !< A type containing atmospheric boundary
@@ -1372,6 +1374,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
   type(fast_ice_avg_type), intent(inout) :: FIA !< A type containing averages of fields
                                                 !! (mostly fluxes) over the fast updates
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_fast_CS),       intent(inout) :: CS  !< The fast ice thermodynamics control structure
   type(time_type),         intent(in)    :: Time_start !< The start time of the diagnostics in this call
@@ -1516,7 +1519,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, IG, CS, &
 
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     do b=1,size(FIA%flux_sw_dn,3)
-      FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b) + sw_dn_bnd(i,j,b)
+      FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b) + US%W_m2_to_QRZ_T*sw_dn_bnd(i,j,b)
     enddo
   endif ; enddo ; enddo
 

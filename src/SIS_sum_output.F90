@@ -748,7 +748,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
-           ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
+           ( ((US%RZ_T_to_kg_m2s*FIA%runoff(i,j) + US%RZ_T_to_kg_m2s*FIA%calving(i,j)) + &
               US%RZ_T_to_kg_m2s*(IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - &
               US%RZ_T_to_kg_m2s*IOF%evap_ocn_top(i,j) )
     Flux_SW = 0.0
@@ -758,9 +758,9 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * &
           (US%QRZ_T_to_W_m2*Flux_SW + &
            US%QRZ_T_to_W_m2*((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
-           US%Q_to_J_kg*(-LI)*(US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - &
-           (OSS%frazil(i,j)-FIA%frazil_left(i,j))
+           US%Q_to_J_kg*(-LI)*(US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j) + US%RZ_T_to_kg_m2s*FIA%calving(i,j)) )
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - US%QRZ_T_to_W_m2*US%T_to_s * &
+           (OSS%frazil(i,j) - FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + US%QRZ_T_to_W_m2*US%T_to_s* &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
             (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
@@ -797,7 +797,8 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, US, IG, CS)
                   ! over a time step and summed over space [kg].
   real :: heat_input ! The total heat added by surface fluxes, integrated
                   ! over a time step and summed over space [J].
-  real :: area_h, area_pt, Flux_SW
+  real :: area_h, area_pt
+  real :: Flux_SW  ! Total shortwave flux [Q R Z T-1 ~> W m-2]
   type(EFP_type) :: &
     FW_in_EFP, &   ! Extended fixed point version of FW_input [kg]
     salt_in_EFP, & ! Extended fixed point version of salt_input [gSalt]
@@ -816,11 +817,11 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, US, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * US%QRZ_T_to_W_m2 * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
-          ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
-           (-FIA%flux_lh_top(i,j,k)) + US%QRZ_T_to_W_m2*OSS%bheat(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * &
+           (FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k))  + &
+           (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * US%QRZ_T_to_W_m2*US%T_to_s * &
                    (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
@@ -865,15 +866,15 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
     CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
-          (FIA%runoff(i,j) + FIA%calving(i,j))
+          (US%RZ_T_to_kg_m2s*FIA%runoff(i,j) + US%RZ_T_to_kg_m2s*FIA%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * US%QRZ_T_to_W_m2* &
           ((FIA%flux_lw_top(i,j,0) - FIA%flux_lh_top(i,j,0)) - FIA%flux_sh_top(i,j,0))
 
     ! These are mass fluxes that are simply passed through to the ocean.
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + dt * (-LI) * &
-                      (area_pt * FIA%fprec_top(i,j,0) + FIA%calving(i,j))
+                      (area_pt * US%RZ_T_to_kg_m2s*FIA%fprec_top(i,j,0) + US%RZ_T_to_kg_m2s*FIA%calving(i,j))
 
   enddo ; enddo
 
@@ -885,17 +886,17 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
       pen_frac = 1.0 ; if (k>0) pen_frac = FIA%sw_abs_ocn(i,j,k)
       Flux_SW = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
-        Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
+        Flux_SW = Flux_SW + US%QRZ_T_to_W_m2*(FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
       enddo
 
-      CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
+      CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * US%RZ_T_to_kg_m2s * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )
       CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
            ( pen_frac*Flux_SW )
 
       if (k>0) &
-        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * &
-           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*US%QRZ_T_to_W_m2*OSS%bheat(i,j))
+        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * US%QRZ_T_to_W_m2*US%T_to_s * &
+           ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - US%s_to_T*dt*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 
  ! Runoff and calving do not bring in salt, so salt_in(i,j) = 0.0

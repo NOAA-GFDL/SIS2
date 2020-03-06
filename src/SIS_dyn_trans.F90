@@ -208,6 +208,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness [m].
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
+    calving, &        ! A local copy of the calving rate [kg m-2 s-1]
+    calving_hflx, &   ! A local copy of the calving heat flux [W m-2]
     windstr_x, &      ! The area-weighted average ice thickness [Pa].
     windstr_y         ! The area-weighted average ice thickness [Pa].
   real, dimension(G%isc-2:G%iec+1, G%jsc-1:G%jec+1)   :: &
@@ -235,6 +237,10 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     hi_avg(i,j) = hi_avg(i,j) * H_to_m_Ice
   enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec
+    calving(i,j) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
+    calving_hflx(i,j) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)
+  enddo ; enddo
 
   if (CS%berg_windstress_bug) then
     ! This code reproduces a long-standing bug, in that the old ice-ocean
@@ -246,8 +252,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     stress_stagger = IOF%flux_uv_stagger
   else
     do j=jsc,jec ; do i=isc,iec
-      windstr_x(i,j) = FIA%WindStr_ocn_x(i,j)
-      windstr_y(i,j) = FIA%WindStr_ocn_y(i,j)
+      windstr_x(i,j) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%WindStr_ocn_x(i,j)
+      windstr_y(i,j) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%WindStr_ocn_y(i,j)
     enddo ; enddo
     stress_stagger = AGRID
   endif
@@ -259,10 +265,10 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     do J=jsc-2,jec+1 ; do i=isc-1,iec+1
       v_ice_C(i,J) = US%L_T_to_m_s*IST%v_ice_C(i,J) ; v_ocn_C(i,J) = US%L_T_to_m_s*OSS%v_ocn_C(i,J)
     enddo ; enddo
-    call icebergs_run( icebergs_CS, CS%Time, FIA%calving(isc:iec,jsc:jec), &
+    call icebergs_run( icebergs_CS, CS%Time, calving, &
             u_ocn_C, v_ocn_C, u_ice_C, v_ice_C, windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec), &
-            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
             stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
@@ -272,16 +278,20 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
       u_ice_B(I,J) = US%L_T_to_m_s*IST%u_ice_B(I,J) ; u_ocn_B(I,J) = US%L_T_to_m_s*OSS%u_ocn_B(I,J)
       v_ice_B(I,J) = US%L_T_to_m_s*IST%v_ice_B(I,J) ; v_ocn_B(I,J) = US%L_T_to_m_s*OSS%v_ocn_B(I,J)
     enddo ; enddo
-    call icebergs_run( icebergs_CS, CS%Time, FIA%calving(isc:iec,jsc:jec), &
+    call icebergs_run( icebergs_CS, CS%Time, calving, &
             u_ocn_B, v_ocn_B, u_ice_B, v_ice_B, windstr_x, windstr_y, &
             OSS%sea_lev(isc-1:iec+1,jsc-1:jec+1), OSS%SST_C(isc:iec,jsc:jec),  &
-            FIA%calving_hflx(isc:iec,jsc:jec), FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
             stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   endif
 
+  do j=jsc,jec ; do i=isc,iec
+    FIA%calving(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*calving(i,j)
+    FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*calving_hflx(i,j)
+  enddo ; enddo
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
   if (IOF%id_ustar_berg>0 .and. associated(IOF%ustar_berg)) then
     call post_data(IOF%id_ustar_berg, IOF%ustar_berg, CS%diag)
@@ -1902,7 +1912,7 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  stress_scale = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
+  stress_scale = 1.0 ! US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
 
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied
@@ -2021,7 +2031,7 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  stress_scale = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
+  stress_scale = 1.0 ! US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
 
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied

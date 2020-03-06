@@ -132,7 +132,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
   endif
 
   wt_now = 1.0 / (real(IOF%stress_count) + 1.0) ; wt_prev = 1.0 - wt_now
-  stress_scale = US%RZ_to_kg_m2*US%m_s_to_L_T*US%T_to_s
+  stress_scale = 1.0 ! US%RZ_to_kg_m2*US%m_s_to_L_T*US%T_to_s
 
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.

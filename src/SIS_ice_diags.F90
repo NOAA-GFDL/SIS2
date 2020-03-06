@@ -219,7 +219,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-  call post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
+  call post_ocean_sfc_diagnostics(OSS, US%s_to_T*dt_slow, Time, G, diag)
 
   if (IDs%id_e2m>0) then
     tmp2d(:,:) = 0.0
@@ -263,12 +263,12 @@ end subroutine post_ice_state_diagnostics
 subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
   type(ocean_sfc_state_type), intent(in)    :: OSS  !< A structure containing the arrays that describe
                                                     !! the ocean's surface state for the ice model.
-  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
+  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics [T ~> s]
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G    !< The horizontal grid type
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
 
-  real :: Idt_slow ! The inverse of the thermodynamic step [s-1].
+  real :: Idt_slow ! The inverse of the thermodynamic step [T-1 ~> s-1].
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.

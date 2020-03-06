@@ -121,7 +121,7 @@ type ocean_sfc_state_type
                 !! to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
-                !! timestep [J m-2]. This is the input value and is not changed by the ice.
+                !! timestep [Q R Z ~> J m-2]. This is the input value and is not changed by the ice.
   real, allocatable, dimension(:,:) :: sea_lev !< The equivalent sea-level, after any non-levitating
                 !! ice has been converted to sea-water, as determined by the ocean [m].
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
@@ -180,16 +180,16 @@ type fast_ice_avg_type
   ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
-    flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [Pa].
-    flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh_top , & !< The upward sensible heat flux at the ice top [W m-2].
-    evap_top    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice [W m-2].
-    flux_lh_top , & !< The upward flux of latent heat at the top of the ice [W m-2].
-    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [kg m-2 s-1].
-    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
-    tmelt       , & !< Ice-top melt energy into the ice/snow [J m-2].
-    bmelt       , & !< Ice-bottom melting energy into the ice [J m-2].
+    flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_sh_top , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
+    evap_top    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
+    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice [Q R Z T-1 ~> W m-2].
+    flux_lh_top , & !< The upward flux of latent heat at the top of the ice [Q R Z T-1 ~> W m-2].
+    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    tmelt       , & !< Ice-top melt energy into the ice/snow [Q R Z ~> J m-2].
+    bmelt       , & !< Ice-bottom melting energy into the ice [Q R Z ~> J m-2].
     Tskin_cat       !< The ice skin temperature by category [degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
                     !! shortwave radiation that is absorbed in the ocean, <=1, [nondim].
@@ -197,29 +197,29 @@ type fast_ice_avg_type
                     !! ice_rad_type because it is used as a part of the slow thermodynamic updates.
   ! The last dimension in each of the following is angular and frequency radiation band.
   real, allocatable, dimension(:,:,:,:) :: flux_sw_top
-                    !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
+                    !< The downward flux of shortwave radiation at the top of the sea-ice [Q R Z T-1 ~> W m-2].
                     !! The fourth dimension combines angular orientation (direct or diffuse) and
                     !! frequency (visible or near-IR) bands, with the integer parameters
                     !! from this module helping to distinguish them.
   real, allocatable, dimension(:,:,:) :: flux_sw_dn !< The total downward shortwave flux
-                    !! by wavelength band, averaged across all thickness categories [W m-2].
+                    !! by wavelength band, averaged across all thickness categories [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: &
-    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [Pa].
-    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [Pa].
-    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [Pa].
-    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [Pa].
-    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [Pa].
-    runoff, &       !< Liquid runoff into the ocean [kg m-2].
-    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [kg m-2].
+    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
+    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R L Z T-2 ~> Pa].
+    runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2].
+    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
-                    !! on the temperature difference relative to a reference temperature, in ???.
+                    !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_hflx !< The heat flux associated with calving, based
-                    !! on the temperature difference relative to a reference temperature, in ???.
+                    !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_preberg !< Calving of ice or runoff of frozen fresh
-                    !! water into the ocean, exclusive of any iceberg contributions [kg m-2].
+                    !! water into the ocean, exclusive of any iceberg contributions [R Z T-1 ~> kg m-2].
   real, allocatable, dimension(:,:) :: calving_hflx_preberg !< The heat flux associated with calving
                     !! exclusive of any iceberg contributions, based on the temperature difference
-                    !! relative to a reference temperature, in ???.
+                    !! relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: Tskin_avg !< The area-weighted average skin temperature
                     !! across all ice thickness categories [degC], or 0 if there is no ice.
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
@@ -236,19 +236,19 @@ type fast_ice_avg_type
   ! then interpolated into unoccupied categories for the purpose of redoing
   ! the application of the fast thermodynamics
   real, allocatable, dimension(:,:,:) ::  flux_sh0 !< The upward sensible heat flux at the ice top
-                !! extrapolated to a skin temperature of 0 degC [W m-2].
+                !! extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) ::  evap0 !< The upward evaporative moisture flux
-                !! at the top of the ice extrapolated to a skin temperature of 0 degC [kg m-2 s-1].
+                !! at the top of the ice extrapolated to a skin temperature of 0 degC [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
-                !! at the top of the  ice extrapolated to a skin temperature of 0 degC [W m-2].
+                !! at the top of the  ice extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) :: &
-    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [W m-2 degC-1].
+    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
     devapdt, &  !< The partial derivative of evap0 with ice skin temperature [kg m-2 s-1 degC-1].
-    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [W m-2 degC-1].
+    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: frazil_left !< The frazil heat flux that has not yet been
-                    !! consumed in making ice [J m-2]. This array is decremented by the ice
+                    !! consumed in making ice [Q R Z ~> J m-2]. This array is decremented by the ice
                     !! model as the heat flux is used up.
 !SLOW ONLY
   !!@{ Diagnostic IDs
@@ -819,44 +819,44 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
 
   if ((QRZ_T_rescale == 1.0) .and. (RZ_T_rescale == 1.0) .and. (RZL_T2_rescale == 1.0)) return
 
-!  do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    FIA%flux_sh_top(i,j,k) = QRZ_T_rescale * FIA%flux_sh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%evap_top(i,j,k)    = RZ_T_rescale * FIA%evap_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
-!    FIA%flux_lw_top(i,j,k) = QRZ_T_rescale * FIA%flux_lw_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%flux_lh_top(i,j,k) = QRZ_T_rescale * FIA%flux_lh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%lprec_top(i,j,k)   = QRZ_T_rescale * FIA%lprec_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%fprec_top(i,j,k)   = QRZ_T_rescale * FIA%fprec_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!  enddo ; enddo ; enddo
-!  do b=1,size(FIA%flux_sw_top,4) ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    FIA%flux_sw_top(i,j,k,b) = QRZ_T_rescale * FIA%flux_sw_top(i,j,k,b) ! [Q R Z T-1 ~> W m-2]
-!  enddo ; enddo ; enddo ; enddo
+  do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sh_top(i,j,k) = QRZ_T_rescale * FIA%flux_sh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%evap_top(i,j,k)    = RZ_T_rescale * FIA%evap_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%flux_lw_top(i,j,k) = QRZ_T_rescale * FIA%flux_lw_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%flux_lh_top(i,j,k) = QRZ_T_rescale * FIA%flux_lh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%lprec_top(i,j,k)   = RZ_T_rescale * FIA%lprec_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%fprec_top(i,j,k)   = RZ_T_rescale * FIA%fprec_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+  enddo ; enddo ; enddo
+  do b=1,size(FIA%flux_sw_top,4) ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sw_top(i,j,k,b) = QRZ_T_rescale * FIA%flux_sw_top(i,j,k,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo ; enddo
 
-!  do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    FIA%WindStr_x(i,j) = RZL_T2_rescale * FIA%WindStr_x(i,j) ! [Pa]
-!    FIA%WindStr_y(i,j) = RZL_T2_rescale * FIA%WindStr_y(i,j) ! [Pa]
-!    FIA%WindStr_ocn_x(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_x(i,j) ! [Pa]
-!    FIA%WindStr_ocn_y(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_y(i,j) ! [Pa]
-!    FIA%p_atm_surf(i,j) = RZL_T2_rescale * FIA%p_atm_surf(i,j) ! [Pa]
-!    FIA%runoff(i,j) = QRZ_T_rescale * FIA%runoff(i,j) ! [R Z T-1 ~> kg m-2 s-1]
-!    FIA%calving(i,j) = QRZ_T_rescale * FIA%calving(i,j) ! [R Z T-1 ~> kg m-2 s-1]
-!    FIA%runoff_hflx(i,j) = QRZ_T_rescale * FIA%runoff_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
-!    FIA%calving_hflx(i,j) = QRZ_T_rescale * FIA%calving_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%WindStr_x(i,j) = RZL_T2_rescale * FIA%WindStr_x(i,j) ! [Pa]
+    FIA%WindStr_y(i,j) = RZL_T2_rescale * FIA%WindStr_y(i,j) ! [Pa]
+    FIA%WindStr_ocn_x(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_x(i,j) ! [Pa]
+    FIA%WindStr_ocn_y(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_y(i,j) ! [Pa]
+    FIA%p_atm_surf(i,j) = RZL_T2_rescale * FIA%p_atm_surf(i,j) ! [Pa]
+    FIA%runoff(i,j) = RZ_T_rescale * FIA%runoff(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%calving(i,j) = RZ_T_rescale * FIA%calving(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%runoff_hflx(i,j) = QRZ_T_rescale * FIA%runoff_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
+    FIA%calving_hflx(i,j) = QRZ_T_rescale * FIA%calving_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
 !    ! Do not rescale FIA%Tskin_avg(i,j) = 1.0 * FIA%Tskin_avg(i,j) ! [degC]
-!  enddo ; enddo
-!  do b=1,size(FIA%flux_sw_dn,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    FIA%flux_sw_dn(i,j,b) = QRZ_T_rescale * FIA%flux_sw_dn(i,j,b) ! [Q R Z T-1 ~> W m-2]
-!  enddo ; enddo ; enddo
+  enddo ; enddo
+  do b=1,size(FIA%flux_sw_dn,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sw_dn(i,j,b) = QRZ_T_rescale * FIA%flux_sw_dn(i,j,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo
 
 
-!  if (allocated(FIA%flux_sh0)) then ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
-!    FIA%flux_sh0(i,j,k) = QRZ_T_rescale * FIA%flux_sh0(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%flux_lw0(i,j,k) = QRZ_T_rescale * FIA%flux_lw0(i,j,k) ! [Q R Z T-1 ~> W m-2]
-!    FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
-!    FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
-!    FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
+  if (allocated(FIA%flux_sh0)) then ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sh0(i,j,k) = QRZ_T_rescale * FIA%flux_sh0(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%flux_lw0(i,j,k) = QRZ_T_rescale * FIA%flux_lw0(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
+    FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
 !    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [Q R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
 !    ! Do not rescale FIA%Tskin_cat(i,j) =  FIA%Tskin_cat(i,j)  ! [degC]
-!  enddo ; enddo ; enddo ; endif
+  enddo ; enddo ; enddo ; endif
 
  ! Do not rescale Rad%tskin_rad(i,j) = Rad%tskin_rad(i,j) ! [degC]
  ! Do not rescale Rad%coszen_lastrad(i,j) = Rad%coszen_lastrad(i,j) ! [nondim]
@@ -2373,57 +2373,58 @@ end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in a fast_ice_avg_type.
-subroutine FIA_chksum(mesg, FIA, G, check_ocean)
+subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(unit_scale_type),   intent(in)    :: US !< A structure with unit conversion factors
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
   character(len=8) :: nstr
   integer :: b
 
-  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI)
-  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI)
+  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI, scale=US%RZ_T_to_kg_m2s)
   do b=1,size(FIA%flux_sw_top,4)
     write(nstr, '(I4)') b ; nstr = adjustl(nstr)
     call hchksum(FIA%flux_sw_top(:,:,1:,b), &
-                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI)
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
   enddo
-  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI)
-  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI)
-  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI)
-  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI)
+  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
 
   if (present(check_ocean)) then ; if (check_ocean) then
-    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI)
-    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI)
+    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
     do b=1,size(FIA%flux_sw_top,4)
       write(nstr, '(I4)') b ; nstr = adjustl(nstr)
       call hchksum(FIA%flux_sw_top(:,:,0,b), &
-                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI)
+                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
     enddo
-    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI)
-    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI)
-    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI)
-    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI)
+    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
   endif ; endif
 
-  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI)
-  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
+  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI)
-  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI)
-  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI)
-  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI)
-  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI)
-  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI)
-  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI)
-  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI)
-  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI)
+  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%ice_free, trim(mesg)//" FIA%ice_free", G%HI)
   call hchksum(FIA%ice_cover, trim(mesg)//" FIA%ice_cover", G%HI)
-  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI)
+  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
 
 end subroutine FIA_chksum
 
