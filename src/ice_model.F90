@@ -243,7 +243,7 @@ subroutine update_ice_slow_thermo(Ice)
     call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG, US)
   endif
 
-  call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
+  call slow_thermodynamics(sIST, US%s_to_T*dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
                            Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)

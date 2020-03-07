@@ -95,7 +95,7 @@ type slow_thermo_CS ; private
   real    :: fraz_fill_time !< A timescale with which the filling frazil causes
                             !! the thinest cells to attain similar thicknesses,
                             !! or a negative number to apply the frazil flux
-                            !! uniformly [s].
+                            !! uniformly [T ~> s].
 
   logical :: do_ridging     !<   If true, apply a ridging scheme to the convergent
                             !! ice.  The original SIS2 implementation is based on
@@ -113,7 +113,7 @@ type slow_thermo_CS ; private
   logical :: nudge_sea_ice = .false. !< If true, nudge sea ice concentrations towards observations.
   real    :: nudge_sea_ice_rate = 0.0 !< The rate of cooling of ice-free water that should be ice
                             !! covered in order to constrained the ice concentration to track
-                            !! observations.  A suggested value is of order 10000 W m-2.
+                            !! observations [Q R Z T-1 ~> W m-2].  A suggested value is of order 10000 W m-2.
   real    :: nudge_stab_fac !< A factor that determines whether the buoyancy flux associated with
                             !! the sea ice nudging of warm water includes a freshwater flux so as to
                             !! be destabilizing on net (<1), stabilizing (>1), or neutral (=1).
@@ -181,8 +181,7 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
   if (FIA%id_runoff_hflx>0) call post_data(FIA%id_runoff_hflx, FIA%runoff_hflx, CS%diag)
   if (FIA%id_calving_hflx>0) call post_data(FIA%id_calving_hflx, FIA%calving_hflx_preberg, CS%diag)
   ! The frazil diagnostic is with the other ocean surface diagnostics.
-  ! if (IST%id_frazil>0) &
-  !   call post_data(IST%id_frazil, FIA%frazil_left*US%s_to_T*Idt_slow, CS%diag)
+  ! if (IST%id_frazil>0) call post_data(IST%id_frazil, FIA%frazil_left*Idt_slow, CS%diag)
   if (FIA%id_sh>0) call post_avg(FIA%id_sh, FIA%flux_sh_top, IST%part_size, CS%diag, G=G)
   if (FIA%id_lh>0) call post_avg(FIA%id_lh, FIA%flux_lh_top, IST%part_size, CS%diag, G=G)
   if (FIA%id_evap>0) call post_avg(FIA%id_evap, FIA%evap_top, IST%part_size, CS%diag, G=G)
@@ -297,7 +296,7 @@ end subroutine post_flux_diagnostics
 subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [T ~> s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -331,7 +330,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed ; NkIce = IG%NkIce
   nb = size(FIA%flux_sw_top,4)
 !  I_Nk = 1.0 / NkIce
-  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/(US%s_to_T*dt_slow)
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   CS%n_calls = CS%n_calls + 1
 
@@ -414,7 +413,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
     enddo ; enddo ; enddo
   endif
 
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
 
   ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
   call post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
@@ -448,8 +447,8 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   !  Other routines that do thermodynamic vertical processes should be added here
 
   ! Do tracer column physics
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
-  call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
+  call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
+  call SIS_call_tracer_column_fns(US%T_to_s*dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
@@ -551,7 +550,7 @@ end subroutine add_excess_fluxes
 !! including freezing or melting, and the accumulation of snow and frazil ice.
 subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
-  real,                       intent(in)    :: dt_slow !< The thermodynamic step [s].
+  real,                       intent(in)    :: dt_slow !< The thermodynamic step [T ~> s].
   type(slow_thermo_CS),       pointer       :: CS  !< The control structure for the SIS_slow_thermo module
   type(ocean_sfc_state_type), intent(inout) :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -578,12 +577,19 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
     cool_nudge, &         ! A heat flux out of the sea ice that
-                          ! acts to create sea-ice [W m-2].
+                          ! acts to create sea-ice [Q R Z T-1 ~> W m-2].
     net_melt              ! The net mass flux from the ice and snow into the
                           ! ocean due to melting and freezing integrated
                           ! across all categories [R Z T-1 ~> kg m-2 s-1].
-  real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce)   :: heat_in, enth_prev, enth
-  real, dimension(SZI_(G),SZJ_(G))   :: heat_in_col, enth_prev_col, enth_col, enth_mass_in_col
+  real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: &
+    heat_in, &            ! The input heat [Q R Z ~> J m-2]
+    enth_prev, &
+    enth
+  real, dimension(SZI_(G),SZJ_(G)) :: &
+    heat_in_col, &        ! The total heat in each column [Q R Z ~> J m-2]
+    enth_prev_col, &
+    enth_col, &
+    enth_mass_in_col
 
   real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [gSalt kg-1].
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
@@ -613,14 +619,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                           ! for all tracers
 
   type(EOS_type), pointer :: EOS => NULL()
-  real :: Cp_water
+  real :: Cp_water    ! The heat capacity of sea water [Q degC-1 ~> J kg-1 degC-1]
   real :: drho_dT(1), drho_dS(1)
   real :: pres_0(1)
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
-  real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step, used
-                      ! to change the units of several diagnostics to rate yr-1
+  real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step times some scaling
+                      ! factors, used to change the units of several diagnostics to rate yr-1.
   real :: heat_to_ocn ! The heat passed from the ice to the ocean [Q R Z ~> J m-2]
   real :: h2o_ice_to_ocn ! The downward water flux from the ice to the ocean [R Z ~> kg m-2]
   real :: h2o_ocn_to_ice ! The upward water flux from the ocean to the ice [R Z ~> kg m-2]
@@ -636,7 +642,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: enth_ice_to_ocn ! The heat flux associated with melting at the ice-ocean interface [Q R Z ~> J m-2]
   real :: enth_ocn_to_ice ! The heat flux associated with freezing at the ice-ocean interface [Q R Z ~> J m-2]
   real :: enth_snowfall ! The heat flux associated with snowfall [Q R Z ~> J m-2]
-  real :: tot_heat, heating, tot_frazil, heat_mass_in, heat_input
+  real :: tot_heat, heating, tot_frazil, heat_mass_in
+  real :: heat_input   ! The input heat [Q R Z ~> J m-2]
   real :: mass_in, mass_here, mass_prev, mass_imb
   real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove [nondim].
   real :: ice_melt_lay ! The amount of excess ice removed from each layer [R Z ~> kg m-2].
@@ -651,7 +658,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: fill_frac    ! The fraction of the difference between the thicknesses
                        ! in thin categories that will be removed within a single
                        ! timestep with filling_frazil.
-  real :: sw_tot       ! The total shortwave radiation incident on a category [W m-2].
+  real :: sw_tot       ! The total shortwave radiation incident on a category [Q R Z T-1 ~> W m-2].
   integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice [Q ~> J kg-1].
@@ -663,7 +670,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce
   nb = size(FIA%flux_sw_top,4)
-  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/(US%s_to_T*dt_slow)
+  Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0 / dt_slow
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
                    rho_ice=rho_ice, specified_thermo_salinity=spec_thermo_sal, &
@@ -691,7 +698,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
     pres_0(:) = 0.0
-    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
+    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS, US=US)
     do j=jsc,jec ; do i=isc,iec
       if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
@@ -700,8 +707,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
             call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
                            drho_dT,drho_dS,1,1,EOS)
-            IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-US%W_m2_to_QRZ_T*cool_nudge(i,j)*drho_dT(1)) / &
-                                  ((US%J_kg_to_Q*Cp_Water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
+            IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
+                                  ((Cp_water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
           endif
         endif
       elseif (icec(i,j) > icec_obs(i,j) + CS%nudge_conc_tol) then
@@ -711,9 +718,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       endif
 
       if (cool_nudge(i,J) > 0.0) then
-        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) + US%W_m2_to_QRZ_T*cool_nudge(i,j)*US%s_to_T*dt_slow
+        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) + cool_nudge(i,j)*dt_slow
       elseif (cool_nudge(i,J) < 0.0) then
-        OSS%bheat(i,j) = OSS%bheat(i,j) - US%W_m2_to_QRZ_T*cool_nudge(i,j)
+        OSS%bheat(i,j) = OSS%bheat(i,j) - cool_nudge(i,j)
       endif
     enddo ; enddo
   endif
@@ -746,7 +753,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       if (qflx_res_ice(i,j) < 0.0) then
         !There is less ice in model than Obs,
         !so make some ice by increasing frazil heat
-        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*US%s_to_T*dt_slow
+        FIA%frazil_left(i,j) = FIA%frazil_left(i,j) - qflx_res_ice(i,j)*dt_slow
         !Note that ice should grow when frazil heat is positive
       elseif (qflx_res_ice(i,j) >  0.0) then
         !There is more ice in model than Obs,
@@ -760,7 +767,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
         !(as prescribed in ice_temp_SIS2) to have a restoring effect on the ice thickness
         !later in the call ice_resize_SIS2() in this module.
         do k=1,ncat
-          FIA%bmelt(i,j,k) = FIA%bmelt(i,j,k) + US%s_to_T*dt_slow*qflx_res_ice(i,j)
+          FIA%bmelt(i,j,k) = FIA%bmelt(i,j,k) + dt_slow*qflx_res_ice(i,j)
         enddo
       endif
     enddo ; enddo
@@ -781,14 +788,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       endif ; enddo ; enddo
 
       do i=isc,iec
-        heat_in_col(i,j) = heat_in_col(i,j) - US%QRZ_T_to_W_m2*US%T_to_s*FIA%frazil_left(i,j)
-        heat_in_col(i,j) = heat_in_col(i,j) - IST%part_size(i,j,0) * dt_slow*US%QRZ_T_to_W_m2*FIA%flux_sh_top(i,j,0)
+        heat_in_col(i,j) = heat_in_col(i,j) - FIA%frazil_left(i,j)
+        heat_in_col(i,j) = heat_in_col(i,j) - IST%part_size(i,j,0) * dt_slow*FIA%flux_sh_top(i,j,0)
       enddo
 
       do k=1,ncat ; do i=isc,iec
         if (IST%part_size(i,j,k) > 0.0) then
-          heat_in_col(i,j) = heat_in_col(i,j) + IST%part_size(i,j,k) * US%QRZ_T_to_W_m2*US%T_to_s * &
-              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - US%s_to_T*dt_slow*OSS%bheat(i,j))
+          heat_in_col(i,j) = heat_in_col(i,j) + IST%part_size(i,j,k) * &
+              (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - dt_slow*OSS%bheat(i,j))
         endif
         if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
           enth_prev_col(i,j) = enth_prev_col(i,j) + &
@@ -850,7 +857,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       IOF%fprec_ocn_top(i,j) = IOF%fprec_ocn_top(i,j) + IST%snow_to_ocn(i,j) * Idt_slow
       IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - &
               IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j)
-      ! h2o_change(i,j) = h2o_change(i,j) - US%kg_m3_to_R*US%m_to_Z*US%RZ_to_kg_m2*IST%snow_to_ocn(i,j)
+      ! h2o_change(i,j) = h2o_change(i,j) - IST%snow_to_ocn(i,j)
       IST%snow_to_ocn(i,j) = 0.0 ;  IST%enth_snow_to_ocn(i,j) = 0.0
     endif ; enddo ; enddo
   endif
@@ -906,11 +913,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
       ! mw/new - melt pond size is now adjusted here (rain ignored in resize, for now)
       call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), m_lay, &
-                   enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*US%s_to_T*dt_slow, &
-                   FIA%lprec_top(i,j,k)*US%s_to_T*dt_slow, &
-                   FIA%evap_top(i,j,k)*US%s_to_T*dt_slow, &
-                   FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), &
-                   NkIce, npassive, TrLay, &
+                   enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*dt_slow, &
+                   FIA%lprec_top(i,j,k)*dt_slow, FIA%evap_top(i,j,k)*dt_slow, &
+                   FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, npassive, TrLay, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    snow_to_ice(i,j,k), salt_to_ice, IST%ITV, US, CS%ice_thm_CSp, bablt, &
                    enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
@@ -939,9 +944,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       ! The snow enthalpy should not have changed.  This should do nothing.
       ! IST%enth_snow(i,j,k,1) = Enthalpy(0)
 
-      enth_snowfall = (US%s_to_T*dt_slow*FIA%fprec_top(i,j,k)) * enthalpy(0)
+      enth_snowfall = (dt_slow*FIA%fprec_top(i,j,k)) * enthalpy(0)
       if (FIA%evap_top(i,j,k) < 0.0) &
-        enth_snowfall = enth_snowfall - (US%s_to_T*dt_slow*FIA%evap_top(i,j,k)) * enthalpy(0)
+        enth_snowfall = enth_snowfall - (dt_slow*FIA%evap_top(i,j,k)) * enthalpy(0)
       IOF%Enth_Mass_in_atm(i,j) = IOF%Enth_Mass_in_atm(i,j) + &
            IST%part_size(i,j,k) * enth_snowfall
 
@@ -958,16 +963,15 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
 
       if (CS%column_check) then
-        heat_in(i,j,k) = heat_in(i,j,k) + US%QRZ_T_to_W_m2*US%T_to_s*FIA%tmelt(i,j,k) + &
-                     US%QRZ_T_to_W_m2*US%T_to_s*FIA%bmelt(i,j,k) - &
-                     US%QRZ_T_to_W_m2*US%T_to_s*(heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
+        heat_in(i,j,k) = heat_in(i,j,k) + FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k) - &
+                     (heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
 
         heat_input = (FIA%tmelt(i,j,k) + FIA%bmelt(i,j,k)) - &
                      (heat_to_ocn - (LatHtVap+LatHtFus)*evap_from_ocn)
         heat_mass_in = (enth_snowfall + enth_ocn_to_ice - enth_ice_to_ocn - enth_evap)
-        mass_in = US%s_to_T*dt_slow*FIA%fprec_top(i,j,k) & ! +FIA%lprec_top(i,j,k) <- eventually
+        mass_in = dt_slow*FIA%fprec_top(i,j,k) & ! +FIA%lprec_top(i,j,k) <- eventually
                 + h2o_ocn_to_ice - h2o_ice_to_ocn &
-                - (US%s_to_T*dt_slow*FIA%evap_top(i,j,k) - evap_from_ocn)
+                - (dt_slow*FIA%evap_top(i,j,k) - evap_from_ocn)
 
         mass_here = IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k) + IST%mH_ice(i,j,k)
         enth_here = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
@@ -996,10 +1000,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
              (OSS%bheat(i,j) - (heat_to_ocn - LatHtFus*evap_from_ocn)*Idt_slow)
       sw_tot = 0.0
       do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
-        sw_tot = sw_tot + US%QRZ_T_to_W_m2*(FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
+        sw_tot = sw_tot + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
       enddo
       IOF%flux_sw_ocn(i,j,VIS_DIF) = IOF%flux_sw_ocn(i,j,VIS_DIF) + IST%part_size(i,j,k) * &
-                                     US%W_m2_to_QRZ_T * (sw_tot * FIA%sw_abs_ocn(i,j,k))
+                                     (sw_tot * FIA%sw_abs_ocn(i,j,k))
       net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt*Idt_slow ! bot. melt. ablation
@@ -1152,14 +1156,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
              (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
 
       if (CS%column_check) then
-        heat_in(i,j,k) = heat_in(i,j,k) - US%QRZ_T_to_W_m2*US%T_to_s*frazil_cat(k)
+        heat_in(i,j,k) = heat_in(i,j,k) - frazil_cat(k)
 
         enth_here = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*I_Nk) * IST%enth_ice(i,j,k,m)
         enddo
         enth_here = enth_here * IST%part_size(i,j,k)
-        tot_heat_in = (US%J_kg_to_Q * heat_in(i,j,k) + US%RZ_to_kg_m2*enth_ocn_to_ice) * IST%part_size(i,j,k)
+        tot_heat_in = (heat_in(i,j,k) + enth_ocn_to_ice) * IST%part_size(i,j,k)
         enth_imb = enth_here - (enth_prev(i,j,k) + tot_heat_in)
         if (abs(enth_imb) > CS%imb_tol * &
             (abs(enth_here) + abs(enth_prev(i,j,k)) + abs(tot_heat_in)) ) then
@@ -1235,8 +1239,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     ! Add back any frazil that has not been used yet.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,heat_in_col,IST,dt_slow,FIA,IOF)
     do j=jsc,jec ; do i=isc,iec
-      heat_in_col(i,j) = heat_in_col(i,j) + US%QRZ_T_to_W_m2*US%T_to_s*FIA%frazil_left(i,j) + &
-                         US%QRZ_T_to_W_m2*IOF%flux_sh_ocn_top(i,j)*dt_slow
+      heat_in_col(i,j) = heat_in_col(i,j) + FIA%frazil_left(i,j) + &
+                         IOF%flux_sh_ocn_top(i,j)*dt_slow
     enddo ; enddo
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,enth_col,IST,I_Nk,NkIce)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
@@ -1253,10 +1257,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 !$OMP                                  enth_imb,norm_enth_imb,enth_imb2)
     do j=jsc,jec ; do i=isc,iec
       enth_here = enth_col(i,j)
-      tot_heat_in = US%J_kg_to_Q*heat_in_col(i,j) + US%RZ_to_kg_m2*enth_mass_in_col(i,j)
-      emic2 = US%QRZ_T_to_W_m2*US%T_to_s*(IOF%Enth_Mass_in_ocn(i,j) + IOF%Enth_Mass_in_atm(i,j) + &
+      tot_heat_in = heat_in_col(i,j) + enth_mass_in_col(i,j)
+      emic2 = (IOF%Enth_Mass_in_ocn(i,j) + IOF%Enth_Mass_in_atm(i,j) + &
                IOF%Enth_Mass_out_ocn(i,j) + IOF%Enth_Mass_out_atm(i,j))
-      tot_heat_in2 = US%J_kg_to_Q*heat_in_col(i,j) + emic2
+      tot_heat_in2 = heat_in_col(i,j) + emic2
 
       enth_imb = enth_here - (enth_prev_col(i,j) + tot_heat_in)
       if (abs(enth_imb) > CS%imb_tol * &
@@ -1296,20 +1300,20 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   !   The remainder of this routine deals with any thermodynamics diagnostic
   ! output that has been requested.
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
 
-  yr_dtslow = (864e2*365*US%s_to_T*Idt_slow)
+  yr_dtslow = US%RZ_to_kg_m2*(864e2*365*US%s_to_T*Idt_slow)
   if (CS%id_lsnk>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = min(h2o_change(i,j),0.0) * US%RZ_to_kg_m2*yr_dtslow
+      tmp2d(i,j) = min(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(CS%id_lsnk, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
   if (CS%id_lsrc>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = max(h2o_change(i,j),0.0) * US%RZ_to_kg_m2*yr_dtslow
+      tmp2d(i,j) = max(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(CS%id_lsrc, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1410,7 +1414,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                "A timescale with which the filling frazil causes the \n"//&
                "thinest cells to attain similar thicknesses, or a negative \n"//&
                "number to apply the frazil flux uniformly.", default=0.0, &
-               units="s", do_not_log=.not.CS%filling_frazil)
+               units="s", scale=US%s_to_T, do_not_log=.not.CS%filling_frazil)
 
   call get_param(param_file, mdl, "APPLY_ICE_LIMIT", CS%do_ice_limit, &
                  "If true, restore the sea ice state toward climatology.", &
@@ -1434,7 +1438,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "The rate of cooling of ice-free water that should be ice \n"//&
                  "covered in order to constrained the ice concentration to \n"//&
                  "track observations.  A suggested value is ~10000 W m-2.", &
-                 units = "W m-2", default=0.0, do_not_log=.not.CS%nudge_sea_ice)
+                 units = "W m-2", default=0.0, scale=US%W_m2_to_QRZ_T, do_not_log=.not.CS%nudge_sea_ice)
   call get_param(param_file, mdl, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
                  "The tolerance for mismatch in the sea ice concentations \n"//&
                  "before nudging begins to be applied.  Values of order 0.1\n"//&

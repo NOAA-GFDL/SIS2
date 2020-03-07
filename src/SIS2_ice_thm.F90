@@ -1881,23 +1881,23 @@ function latent_sublimation(enth_snow, enth_ice, wt_snow, ITV) result (latent)
   real, intent(in) :: wt_snow    !< A weighting factor (0-1) for the snow areal
                                  !! coverage; the complement is for the ice.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real :: latent !< The latent heat of sublimation [J kg-1].
+  real :: latent !< The latent heat of sublimation [Q ~> J kg-1].
 
   real :: enth_liq_0 ! The value of enthalpy for liquid fresh water at 0 degC [Q ~> J kg-1].
                      ! This should become ITV%Enth_liq_0, but it is not due to
                      ! a bug in how this is calculated.
 
   if (ITV%sublimation_bug) then  ! This is false by default and should be obsoleted.
-    enth_liq_0 = Enth_from_TS(0.0, 0.0, ITV)
+    enth_liq_0 = ITV%J_kg_to_Q*Enth_from_TS(0.0, 0.0, ITV)
   else
-    enth_liq_0 = ITV%Enth_liq_0
+    enth_liq_0 = ITV%J_kg_to_Q*ITV%Enth_liq_0
   endif
 
   if (ITV%slab_ice) then
-    latent = ITV%Lat_Vapor + ITV%LI
+    latent = ITV%J_kg_to_Q*ITV%Lat_Vapor + ITV%J_kg_to_Q*ITV%LI
   else
-    latent = ITV%Lat_Vapor + (enth_liq_0 - ((1.0 - wt_snow) * enth_ice + &
-                                       wt_snow * enth_snow)) * ITV%Q_to_J_kg
+    latent = ITV%J_kg_to_Q*ITV%Lat_Vapor + (enth_liq_0 - ((1.0 - wt_snow) * enth_ice + &
+                                       wt_snow * enth_snow))
   endif
 
 end function latent_sublimation
