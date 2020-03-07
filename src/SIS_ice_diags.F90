@@ -80,7 +80,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 
   ! Local variables
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: mass, mass_ice, mass_snow ! Masses per unit area [R Z ~> kg m-2]
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp2d ! A local temporary variable.
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp2d ! A local temporary variable, here in [Q R Z ~> J m-2].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce) :: &
     temp_ice    ! A diagnostic array with the ice temperature [degC].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
@@ -226,16 +226,13 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)>0.0) then
       tmp2d(i,j) = tmp2d(i,j) + IST%part_size(i,j,k)*IST%mH_snow(i,j,k) * &
-                       ((enthalpy_liquid_freeze(0.0, IST%ITV) - &
-                         IST%enth_snow(i,j,k,1)) * US%Q_to_J_kg)
+                       (enthalpy_liquid_freeze(0.0, IST%ITV) - IST%enth_snow(i,j,k,1))
       if (spec_thermo_sal) then ; do m=1,NkIce
         tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
-                       ((enthalpy_liquid_freeze(S_col(m), IST%ITV) - &
-                         IST%enth_ice(i,j,k,m)) * US%Q_to_J_kg)
+                        (enthalpy_liquid_freeze(S_col(m), IST%ITV) - IST%enth_ice(i,j,k,m))
       enddo ; else ; do m=1,NkIce
         tmp2d(i,j) = tmp2d(i,j) + (IST%part_size(i,j,k)*IST%mH_ice(i,j,k)*I_Nk) * &
-                       ((enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - &
-                         IST%enth_ice(i,j,k,m)) * US%Q_to_J_kg)
+                        (enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - IST%enth_ice(i,j,k,m))
       enddo ; endif
     endif ; enddo ; enddo ; enddo
     call post_data(IDs%id_e2m,  tmp2d(:,:), diag)
@@ -367,7 +364,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
                'ice + snow + bergs mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
-               'heat needed to melt ice', 'J/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
+               'heat needed to melt ice', 'J/m^2', conversion=US%Q_to_J_kg*US%RZ_to_kg_m2, missing_value=missing)
 
 !### THIS DIAGNOSTIC IS MISSING.
 !  IDs%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &

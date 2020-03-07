@@ -63,11 +63,11 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called [J].
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [kg m-2].
+                                !! the last time that write_ice_statistics was called [R Z ~> kg m-2].
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [J m-2].
+                                !! the last time that write_ice_statistics was called [Q R Z ~> J m-2].
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [kg m-2].
+                                !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2].
     water_col_prev, &           !< The column integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
     heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
@@ -512,9 +512,9 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   else
     do j=js,je ; do i=is,ie
       area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
-      CS%water_in_col(i,j) = area_h * CS%water_in_col(i,j)
-      CS%heat_in_col(i,j) = area_h * CS%heat_in_col(i,j)
-      CS%salt_in_col(i,j) = area_h * CS%salt_in_col(i,j)
+      CS%water_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%water_in_col(i,j)
+      CS%heat_in_col(i,j) = US%Q_to_J_kg*US%RZ_to_kg_m2*area_h * CS%heat_in_col(i,j)
+      CS%salt_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%salt_in_col(i,j)
     enddo ; enddo
 
     CS%fresh_water_input = reproducing_sum(CS%water_in_col, EFP_sum=CS%fresh_water_in_EFP)
@@ -747,22 +747,21 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
   if (CS%dt < 0.0) CS%dt = dt
 
   do j=jsc,jec ; do i=isc,iec
-    CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * US%RZ_to_kg_m2 * &
+    CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
               (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
     Flux_SW = 0.0
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * &
           (Flux_SW + ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
            (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - US%Q_to_J_kg*US%RZ_to_kg_m2 * &
-           (OSS%frazil(i,j) - FIA%frazil_left(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (OSS%frazil(i,j) - FIA%frazil_left(i,j))
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
             (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
-    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * US%RZ_to_kg_m2*IOF%flux_salt(i,j)
+    CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%flux_salt(i,j)
   enddo ; enddo
 
 end subroutine accumulate_bottom_input
@@ -815,12 +814,11 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, US, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
            (FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k))  + &
            (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
-                   (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine accumulate_input_1
@@ -863,15 +861,14 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
   !$OMP parallel do default(shared) private(area_pt)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
-    CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * US%RZ_to_kg_m2 * &
-          (FIA%runoff(i,j) + FIA%calving(i,j))
+    CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * (FIA%runoff(i,j) + FIA%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
           ((FIA%flux_lw_top(i,j,0) - FIA%flux_lh_top(i,j,0)) - FIA%flux_sh_top(i,j,0))
 
     ! These are mass fluxes that are simply passed through to the ocean.
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + dt * (-LI) * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + dt * (-LI) * &
                       (area_pt * FIA%fprec_top(i,j,0) + FIA%calving(i,j))
 
   enddo ; enddo
@@ -887,13 +884,12 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
         Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
       enddo
 
-      CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * US%RZ_to_kg_m2 * &
+      CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )
-      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
-           ( pen_frac*Flux_SW )
+      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * ( pen_frac*Flux_SW )
 
       if (k>0) &
-        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * &
            ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 
