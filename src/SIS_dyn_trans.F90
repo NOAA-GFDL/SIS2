@@ -918,9 +918,9 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
     WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
-    WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [kg m-2 L T-2 ~> Pa].
-    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [kg m-2 L T-2 ~> Pa].
-    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [kg m-2 L T-2 ~> Pa].
+    WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
+    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
+    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
     WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
@@ -1150,8 +1150,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     WindStr_y_B, &      ! averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
     WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
-    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [kg m-2 L T-2 ~> Pa].
-    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [kg m-2 L T-2 ~> Pa].
+    str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
+    str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
     WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
@@ -1354,7 +1354,6 @@ subroutine finish_ocean_top_stresses(IOF, G, DS2d, IG)
                                                   !! integrated across thickness categories and layers.
   type(ice_grid_type), optional, intent(in)   :: IG  !< The sea-ice specific grid type
 
-  real :: taux2, tauy2  ! squared wind stresses [Pa2]
   real :: I_count ! The number of times IOF has been incremented.
 
   integer :: i, j, isc, iec, jsc, jec
@@ -1423,7 +1422,7 @@ subroutine stresses_to_stress_mag(G, str_x, str_y, stagger, stress_mag)
                                                   !! in the same units as str_x and str_y [R Z L T-2 ~> Pa].
 
   ! Local variables
-  real :: taux2, tauy2  ! squared wind stress components [Pa2]
+  real :: taux2, tauy2  ! squared wind stress components [R2 Z2 L2 T-4 ~> Pa2]
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1899,11 +1898,10 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [kg m-2 L T-2 ~> Pa].
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [kg m-2 L T-2 ~> Pa].
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
   real :: weights       ! A sum of the weights around a point.
-  real :: stress_scale  ! A unit rescaling factor from the FIA stresses to the IOF stresses.
   real :: I_wts         ! 1.0 / wts or 0 if wts is 0 [nondim].
   real :: FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
@@ -1911,8 +1909,6 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-
-  stress_scale = 1.0 ! US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
 
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied
@@ -1924,23 +1920,23 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
     FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
 
     if (ice_cover_now > FIA_ice_cover) then
-      WindStr_x_A(i,j) = stress_scale*((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
-                                       FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
-      WindStr_y_A(i,j) = stress_scale*((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
-                                       FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
+      WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+      WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
     else
-      WindStr_x_A(i,j) = stress_scale*FIA%WindStr_x(i,j)
-      WindStr_y_A(i,j) = stress_scale*FIA%WindStr_y(i,j)
+      WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+      WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
     endif
 
     if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-      WindStr_x_ocn_A(i,j) = stress_scale*FIA%WindStr_ocn_x(i,j)
-      WindStr_y_ocn_A(i,j) = stress_scale*FIA%WindStr_ocn_y(i,j)
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
     else
-      WindStr_x_ocn_A(i,j) = stress_scale*((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                                           FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
-      WindStr_y_ocn_A(i,j) = stress_scale*((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                                           FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
+      WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
+      WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
     endif
   enddo ;  enddo
 
@@ -2018,11 +2014,10 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [kg m-2 L T-2 ~> Pa].
+    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
     WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [kg m-2 L T-2 ~> Pa].
+    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
   real :: weights       ! A sum of the weights around a point.
-  real :: stress_scale  ! A unit rescaling factor from the FIA stresses to the IOF stresses.
   real :: I_wts         ! 1.0 / wts or 0 if wts is 0 [nondim].
   real :: FIA_ice_cover, ice_cover_now
   integer :: i, j, isc, iec, jsc, jec
@@ -2030,8 +2025,6 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-
-  stress_scale = 1.0 ! US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s
 
   !$OMP parallel do default(shared) private(FIA_ice_cover, ice_cover_now)
   do j=jsd,jed ; do i=isd,ied
@@ -2043,23 +2036,23 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
     FIA_ice_cover = min(FIA%ice_cover(i,j), max_ice_cover)
 
     if (ice_cover_now > FIA_ice_cover) then
-      WindStr_x_A(i,j) = stress_scale*((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
-                                       FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
-      WindStr_y_A(i,j) = stress_scale*((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
-                                       FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
+      WindStr_x_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_x(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_x(i,j)) / ice_cover_now
+      WindStr_y_A(i,j) = ((ice_cover_now-FIA_ice_cover)*FIA%WindStr_ocn_y(i,j) + &
+                          FIA_ice_cover*FIA%WindStr_y(i,j)) / ice_cover_now
     else
-      WindStr_x_A(i,j) = stress_scale*FIA%WindStr_x(i,j)
-      WindStr_y_A(i,j) = stress_scale*FIA%WindStr_y(i,j)
+      WindStr_x_A(i,j) = FIA%WindStr_x(i,j)
+      WindStr_y_A(i,j) = FIA%WindStr_y(i,j)
     endif
 
     if (ice_free(i,j) <= FIA%ice_free(i,j)) then
-      WindStr_x_ocn_A(i,j) = stress_scale*FIA%WindStr_ocn_x(i,j)
-      WindStr_y_ocn_A(i,j) = stress_scale*FIA%WindStr_ocn_y(i,j)
+      WindStr_x_ocn_A(i,j) = FIA%WindStr_ocn_x(i,j)
+      WindStr_y_ocn_A(i,j) = FIA%WindStr_ocn_y(i,j)
     else
-      WindStr_x_ocn_A(i,j) = stress_scale*((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
-                                           FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
-      WindStr_y_ocn_A(i,j) = stress_scale*((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
-                                           FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
+      WindStr_x_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_x(i,j) + &
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_x(i,j)) / ice_free(i,j)
+      WindStr_y_ocn_A(i,j) = ((ice_free(i,j)-FIA%ice_free(i,j))*FIA%WindStr_y(i,j) + &
+                              FIA%ice_free(i,j)*FIA%WindStr_ocn_y(i,j)) / ice_free(i,j)
     endif
   enddo ;  enddo
 

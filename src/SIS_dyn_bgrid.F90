@@ -457,14 +457,14 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
              + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
 
-        if ( del2 > 4e-18*US%T_to_s**2 ) then
+        if ( del2 > 4.0e-18*US%T_to_s**2 ) then
           zeta = 0.5*prs(i,j) / sqrt(del2)
         else
-          zeta = 2.5e8*US%s_to_T * prs(i,j)
+          zeta = 2.50e8*US%s_to_T * prs(i,j)
         endif
 
         ! Hibler uses the following dimensonal constant ceiling to prevent nonlinear instability.
-        zeta = max(zeta, 4e8*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2*US%T_to_s)
+        zeta = max(zeta, 4.0e8*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2*US%T_to_s)
 
         eta = zeta*EC2I
         !
@@ -523,7 +523,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
         rr = CS%cdw*US%L_to_Z*CS%Rho_ocean * abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-             exp(sign(CS%blturn*pi/180,US%s_to_T*G%CoriolisBu(i,j))*(0.0,1.0))
+             exp(sign(CS%blturn*pi/180, G%CoriolisBu(i,j)) * (0.0,1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !

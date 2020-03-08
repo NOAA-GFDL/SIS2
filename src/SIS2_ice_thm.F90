@@ -265,7 +265,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   ! Set the effective thickness of each ice and snow layer, limited to avoid
   ! instabilities for thin layers.
   hL_ice_eff = max(mL_ice / rho_ice, CS%H_lo_lim)
-  hsnow_eff = mL_snow / rho_snow + max(1e-35*US%m_to_Z, 1e-20*CS%H_lo_lim)
+  hsnow_eff = mL_snow / rho_snow + max(1.0e-35*US%m_to_Z, 1.0e-20*CS%H_lo_lim)
 
   ! Set the surface freezing temperature
   tsf = tfi(1) ; if (mL_snow>0.0) tsf = 0.0
@@ -609,7 +609,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   ! Set the effective thickness of each ice and snow layer, limited to avoid
   ! instabilities for thin layers.
   hL_ice_eff = max(mL_ice / rho_ice, CS%H_lo_lim)
-  hsnow_eff = mL_snow / rho_snow + max(1e-35*US%m_to_Z, 1e-20*CS%H_lo_lim)
+  hsnow_eff = mL_snow / rho_snow + max(1.0e-35*US%m_to_Z, 1.0e-20*CS%H_lo_lim)
 
   ! Set the surface freezing temperature
   tsf = tfi(1) ; if (mL_snow>0.0) tsf = 0.0
@@ -1060,14 +1060,6 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
       new_temp = T_g ! Use the best guess.
 
       enth = enth_from_TS(new_temp, sice, ITV)
-  !   write (*,'("T_itt = ",8F14.8)') T_itt(1:8)
-  !   write (*,'("Err_itt = ",8(1PE14.6))') Err_itt(1:8)
-  !   write (*,'("dTemp = ",8(1Pe12.4))') dTemp(1:8)
-  !    if (m_lay > 1e-5*US%kg_m2_to_RZ) then
-  !      ! Check the answers...
-  !      write (*,'("  Enth, Enth_in, Enth_err = ",3(1Pe14.4))') enth, En_J, &
-  !        (enth - En_J) - dtt * (htg - fb*new_temp) / m_lay
-  !    endif
     endif
   endif
 
@@ -1472,7 +1464,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     h2o_to_ocn = h2o_orig + snow - (evap-evap_from_ocn) - (m_lay(0) + mtot_ice)
     h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
     if (abs(h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)) > &
-        max(1e-10*US%kg_m3_to_R*US%m_to_Z, 1e-12*h2o_orig, 1e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
+        max(1.0e-10*US%kg_m3_to_R*US%m_to_Z, 1.0e-12*h2o_orig, &
+            1.0e-12*(abs(h2o_ice_to_ocn)+abs(h2o_ocn_to_ice)))) then
       h2o_imb = h2o_to_ocn - (h2o_ice_to_ocn - h2o_ocn_to_ice)
     endif
 
@@ -1580,7 +1573,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
     h2o_to_ocn = h2o_orig - (m_lay(0) + mtot_ice)
     h2o_imb = h2o_to_ocn + h2o_ocn_to_ice
     if (abs(h2o_to_ocn + h2o_ocn_to_ice) > &
-        max(1e-10*US%kg_m3_to_R*US%m_to_Z, 1e-12*h2o_orig, 1e-12*(abs(h2o_ocn_to_ice)))) then
+        max(1.0e-10*US%kg_m3_to_R*US%m_to_Z, 1.0e-12*h2o_orig, 1.0e-12*(abs(h2o_ocn_to_ice)))) then
       h2o_imb = h2o_to_ocn + h2o_ocn_to_ice
     endif
 
