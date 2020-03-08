@@ -156,7 +156,7 @@ type, public :: dyn_state_2d ; private
   integer :: nts = 0      !< The number of accumulated transport steps since the last update.
   real :: ridge_rate_count !< The number of contributions to av_ridge_rate
 
-  real, allocatable, dimension(:,:) :: avg_ridge_rate !< The time average ridging rate in [s-1].
+  real, allocatable, dimension(:,:) :: avg_ridge_rate !< The time average ridging rate in [T-1 ~> s-1].
 
   real, allocatable, dimension(:,:) :: mi_sum !< The total mass of ice per unit total area [R Z ~> kg m-2].
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
@@ -358,7 +358,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
   real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
   real :: wt_new, wt_prev ! Weights in an average.
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    rdg_rate  ! A ridging rate [s-1], this will be calculated from the strain rates in the dynamics.
+    rdg_rate  ! A ridging rate [T-1 ~> s-1], calculated from the strain rates in the dynamics.
   type(dyn_state_2d), pointer :: DS2d => NULL()  ! A simplified 2-d description of the ice state
                                                  ! integrated across thickness categories and layers.
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
@@ -537,12 +537,12 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             call SIS_B_dynamics(1.0-ice_free(:,:), misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                                 OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                                 str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                                rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                                rdg_rate, dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
           else
             call SIS_B_dynamics(ice_cover, misp_sum, mi_sum, IST%u_ice_B, IST%v_ice_B, &
                                 OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                                 str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                                rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                                rdg_rate, dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
           endif
           call mpp_clock_end(iceClocka)
 
@@ -912,7 +912,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
     ice_free, &         ! The fractional open water [nondim], between 0 & 1.
-    rdg_rate            ! A ridging rate [s-1], this will be calculated from the strain rates
+    rdg_rate            ! A ridging rate [T-1 ~> s-1], this will be calculated from the strain rates
                         ! in the dynamics.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
@@ -1044,7 +1044,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
                           DS2d%u_ice_B, DS2d%v_ice_B, &
                           OSS%u_ocn_B, OSS%v_ocn_B, WindStr_x_B, WindStr_y_B, OSS%sea_lev, &
                           str_x_ice_ocn_B, str_y_ice_ocn_B, CS%do_ridging, &
-                          rdg_rate(isc:iec,jsc:jec), dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
+                          rdg_rate, dt_slow_dyn, G, US, CS%SIS_B_dyn_CSp)
       call mpp_clock_end(iceClocka)
 
       if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", DS2d%u_ice_B, DS2d%v_ice_B, G, scale=US%L_T_to_m_s)

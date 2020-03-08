@@ -271,7 +271,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [R Z L T-2 ~> Pa]
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [R Z L T-2 ~> Pa]
   logical,                            intent(in   ) :: do_ridging !< If true, the ice can ridge
-  real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: rdg_rate !< ridging rate from drift state in UNITS?
+  real, dimension(SZI_(G),SZJ_(G)),   intent(  out) :: rdg_rate !< ridging rate from drift state [T-1 ~> s-1]
   real,                               intent(in   ) :: dt_slow !< The amount of time over which the ice
                                                              !! dynamics are to be advanced [T ~> s].
   type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
@@ -635,17 +635,14 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
   endif
 
-  !
-  ! compute deformation rate for ridging
-  !
+  ! Compute the deformation rate for ridging
   if (do_ridging) then
     do j=jsc,jec ; do i=isc,iec ; if (ice_present(i,j)) then
-      del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I)     &
-           + 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
-
-      rdg_rate(i,j)=ridge_rate(US%s_to_T**2*del2, US%s_to_T*(strn11(i,j)+strn22(i,j)))
+      del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I) +  &
+             4.0*EC2I*strn12(i,j)*strn12(i,j) + 2.0*strn11(i,j)*strn22(i,j)*(1-EC2I) ! H&D eqn 9
+      rdg_rate(i,j) = ridge_rate(del2, (strn11(i,j)+strn22(i,j)))
     else
-      rdg_rate(i,j)=0.0
+      rdg_rate(i,j) = 0.0
     endif ; enddo ; enddo
   endif
 

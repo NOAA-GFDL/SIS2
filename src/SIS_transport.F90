@@ -40,7 +40,8 @@ public :: ice_cat_transport, finish_ice_transport
 !> The SIS_transport_CS contains parameters for doing advective and parameterized advection.
 type, public :: SIS_transport_CS ; private
 
-  real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3], used here only in rolling.
+  real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3], used here only in
+                              !! rolling and setting ridging parameters
   real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
                               !! Sensible values are 0 or larger than 1.
@@ -228,7 +229,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
-  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [s-1].
+  real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [T-1 ~> s-1].
 
   ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: &
@@ -239,11 +240,11 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
     mca0_ice, &  ! The initial mass of ice per unit ocean area in a cell [R Z ~> kg m-2].
     mca0_snow    ! The initial mass of snow per unit ocean area in a cell [R Z ~> kg m-2].
 !### These will be needed when the ice ridging is properly implemented.
-!  real :: snow2ocn !< Snow dumped into ocean during ridging [kg m-2]
-!  real :: enth_snow2ocn !< Mass-averaged enthalpy of the now dumped into ocean during ridging [J kg-1]
+!  real :: snow2ocn !< Snow dumped into ocean during ridging [R Z ~> kg m-2]
+!  real :: enth_snow2ocn !< Mass-averaged enthalpy of the now dumped into ocean during ridging [Q ~> J kg-1]
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
-!    rdg_open, & ! formation rate of open water due to ridging
-!    rdg_vosh    ! rate of ice mass shifted from level to ridged ice
+!    rdg_open, & ! formation rate of open water due to ridging [T-1 ~> s-1]
+!    rdg_vosh    ! rate of ice mass shifted from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
   real :: yr_dt           ! Tne number of timesteps in a year [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv ! The convergence of frozen water transport [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
@@ -290,17 +291,17 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
 !      if (sum(IST%mH_ice(i,j,:)) > 1.e-10*US%m_to_Z*CS%Rho_ice .and. &
 !          sum(IST%part_size(i,j,1:nCat)) > 0.01) then
 !        call ice_ridging(nCat, IST%part_size(i,j,:), IST%mH_ice(i,j,:), &
-!            IST%mH_snow(i,j,:), &
+!            IST%mH_snow(i,j,:), CS%Rho_ice, &
 !            heat_ice(i,j,:,1), heat_ice(i,j,:,2), & !Niki: Is this correct? Bob: No, 2-layers hard-coded.
 !            age_ice(i,j,:), snow2ocn, enth_snow2ocn, rdg_rate(i,j), IST%rgd_mice(i,j,:), &
-!            CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j))
+!            CAS%dt_sum, IG%mH_cat_bound, rdg_open(i,j), rdg_vosh(i,j), US)
 !        ! Store the snow mass (and related properties?) that will be passed to the ocean at the
 !        ! next opportunity.
 !        if (snow2ocn > 0.0) then
-!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) + &
+!          IST%enth_snow_to_ocn(i,j) = (IST%enth_snow_to_ocn(i,j) * IST%snow_to_ocn(i,j) + &
 !                                       enth_snow2ocn * snow2ocn) / &
-!                                      (US%RZ_to_kg_m2*IST%snow_to_ocn(i,j) + snow2ocn)
-!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + US%kg_m2_to_RZ*snow2ocn
+!                                      (IST%snow_to_ocn(i,j) + snow2ocn)
+!          IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + snow2ocn
 !        endif
 !      endif
 !    enddo ; enddo
@@ -1211,12 +1212,12 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
                'frozen water transport convergence', 'kg/(m^2*yr)', conversion=US%RZ_to_kg_m2, &
                missing_value=missing)
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
-               'ice ridging rate', '1/sec', missing_value=missing)
+               'ice ridging rate', '1/sec', conversion=US%s_to_T, missing_value=missing)
 !### THESE DIAGNOSTICS DO NOT EXIST YET.
-!  CS%id_rdgo    = register_diag_field('ice_model','RDG_OPEN' ,diag%axesT1, Time, &
-!               'rate of opening due to ridging', '1/s', missing_value=missing)
-!  CS%id_rdgv    = register_diag_field('ice_model','RDG_VOSH' ,diag%axesT1, Time, &
-!               'volume shifted from level to ridged ice', 'm^3/s', conversion=US%L_to_m**2, &
+!  CS%id_rdgo = register_diag_field('ice_model', 'RDG_OPEN', diag%axesT1, Time, &
+!               'rate of opening due to ridging', '1/s', conversion=US%s_to_T, missing_value=missing)
+!  CS%id_rdgv = register_diag_field('ice_model', 'RDG_VOSH', diag%axesT1, Time, &
+!               'volume shifted from level to ridged ice', 'm^3/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
 !                missing_value=missing)
 
 end subroutine SIS_transport_init
