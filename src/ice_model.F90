@@ -998,22 +998,14 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
                    ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v
   real :: area_pt
-  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
-  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   type(time_type) :: dt_r   ! A temporary radiation timestep.
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
-  real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow    ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
-
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, US=US)
-  H_to_m_snow = US%Z_to_m / Rho_snow ; H_to_m_ice = US%Z_to_m / Rho_ice
-
 
   if (fCS%bounds_check) &
     call IST_bounds_check(IST, G, US, IG, "Start of set_ice_surface_state", Rad=Rad) !, OSS=OSS)
@@ -1058,12 +1050,11 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay,albedos)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-             IST%mH_ice(i,j,k)*H_to_m_ice, &
+    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
              Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, albedos, &
              Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
              sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-             fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
+             US, fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
     Ice%albedo_vis_dir(i2,j2,k2) = albedos(VIS_DIR)
     Ice%albedo_vis_dif(i2,j2,k2) = albedos(VIS_DIF)
     Ice%albedo_nir_dir(i2,j2,k2) = albedos(NIR_DIR)
@@ -1174,11 +1165,12 @@ end subroutine set_ice_surface_state
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !### set_ice_optics might not be used.
 !> Determine the sea ice shortwave optical properties
-subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
+subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, US, IG, optics_CSp)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(simple_OSS_type),   intent(in)    :: OSS !< A structure containing the arrays that describe
                                                 !! the ocean's surface state for the ice model.
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
                            intent(in)    :: Tskin_ice !< The sea ice skin temperature [degC].
@@ -1189,26 +1181,19 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, IG, optics_CSp)
   type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
   real, dimension(IG%NkIce) :: sw_abs_lay
-  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
-  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
-  real :: H_to_m_ice  ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_snow=rho_snow, US=G%US)
-  H_to_m_snow = G%US%Z_to_m / Rho_snow ; H_to_m_ice = G%US%Z_to_m / Rho_ice
-
   !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-             IST%mH_ice(i,j,k)*H_to_m_ice, Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
+    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
+             Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
              albedos, Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
              sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-             optics_CSp, IST%ITV, coszen_in=coszen(i,j))
+             US, optics_CSp, IST%ITV, coszen_in=coszen(i,j))
 
     do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
@@ -2633,7 +2618,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (Ice%sCS%redo_fast_update) then
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                                 Ice%sCS%fast_thermo_CSp)
-      call SIS_optics_init(param_file, Ice%sCS%optics_CSp, slab_optics=slab_ice)
+      call SIS_optics_init(param_file, US, Ice%sCS%optics_CSp, slab_optics=slab_ice)
     endif
 
   !   Initialize any tracers that will be handled via tracer flow control.
@@ -2748,7 +2733,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call SIS_fast_thermo_init(Ice%fCS%Time, fG, Ice%fCS%IG, param_file, Ice%fCS%diag, &
                               Ice%fCS%fast_thermo_CSp)
-    call SIS_optics_init(param_file, Ice%fCS%optics_CSp, slab_optics=slab_ice)
+    call SIS_optics_init(param_file, US, Ice%fCS%optics_CSp, slab_optics=slab_ice)
 
     Ice%fCS%Time_step_fast = Time_step_fast
     Ice%fCS%Time_step_slow = Time_step_slow

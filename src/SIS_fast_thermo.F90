@@ -631,8 +631,6 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   real :: sw_tot  ! sum over all shortwave (dir/dif and vis/nir) components [Q R Z T-1 ~> W m-2].
   real :: snow_wt ! A fractional weighting of snow in the category surface area [nondim].
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
-!   real :: H_to_m_ice     ! The specific volumes of ice and snow times the
-!   real :: H_to_m_snow    ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
   character(len=8) :: nstr
 
@@ -888,14 +886,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
   real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components [Q R Z T-1 ~> W m-2]
-  real :: rho_ice       ! The nominal density of sea ice [R ~> kg m-3].
-  real :: rho_snow      ! The nominal density of snow [R ~> kg m-3].
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos             ! The ice albedos by directional and wavelength band.
   real, dimension(IG%NkIce) :: &
     sw_abs_lay          ! The fractional shortwave absorption by each ice layer.
-  real :: H_to_m_ice    ! The specific volumes of ice and snow times the
-  real :: H_to_m_snow   ! conversion factor from thickness units [m R-1 Z-1 ~> m3 kg-1].
   real :: snow_wt       ! A fractional weighting of snow in the category surface area.
   real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
     sw_tot_ice_band     !   The total shortwave radiation by band, integrated
@@ -938,8 +932,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, US, IG)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow, US=US)
-  H_to_m_snow = US%Z_to_m / Rho_snow ; H_to_m_ice = US%Z_to_m / Rho_ice
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, US=US)
 
   !
   ! implicit update of ice surface temperature
@@ -995,7 +988,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   !$OMP parallel do default(none) &
   !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,sOSS,Rad,IG,CS,optics_CSp, &
-  !$OMP            dt_here,use_new_albedos,H_to_m_snow,H_to_m_ice, &
+  !$OMP            dt_here,use_new_albedos, &
   !$OMP            sw_top_chg,S_col,T_bright,max_itt,do_any_j,do_optics) &
   !$OMP    private(albedos,sw_abs_lay,flux_sw_prev, &
   !$OMP            latent,enth_col,sw_tot,dSWt_dt,dhf_dt,hf_0,Tskin,SW_abs_col, &
@@ -1007,11 +1000,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     ! can depend on the surface skin temperature, which is not yet well known,
     ! there may be some iteration for self-consistency.
     do k=1,ncat ; do i=isc,iec ; if (do_optics(i,j) .and. IST%part_size(i,j,k) > 0.0) then
-      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-               IST%mH_ice(i,j,k)*H_to_m_ice, Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
+      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
+               Rad%Tskin_Rad(i,j,k), sOSS%T_fr_ocn(i,j), IG%NkIce, &
                albedos, Rad%sw_abs_sfc(i,j,k), Rad%sw_abs_snow(i,j,k), &
                sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-               optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
+               US, optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
 
       if (CS%max_Tskin_itt > 0) then
         ! Determine a new skin temperature that is consistent with the updated
@@ -1058,11 +1051,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 !         Tskin_itt(itt) = Tskin
 !         SW_tot_itt(itt) = SW_tot
 
-          call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k)*H_to_m_snow, &
-                  IST%mH_ice(i,j,k)*H_to_m_ice, Tskin, sOSS%T_fr_ocn(i,j), IG%NkIce, &
+          call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), &
+                  IST%mH_ice(i,j,k), Tskin, sOSS%T_fr_ocn(i,j), IG%NkIce, &
                   albedos, Rad%sw_abs_sfc(i,j,k), Rad%sw_abs_snow(i,j,k), &
                   sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-                  optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
+                  US, optics_CSp, IST%ITV, coszen_in=Rad%coszen_lastrad(i,j))
           ! The feedbacks on the shortwave radiation are destabilizing, but only
           ! over a limited temperature range, so stop iterating (1) if the skin
           ! temperature is changing by a small enough amount, (2) there is
@@ -1098,7 +1091,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   !$OMP parallel do default(none) &
   !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,CS, &
-  !$OMP            dt_here,H_to_m_snow,H_to_m_ice,nbmerge,S_col,do_any_j,do_optics) &
+  !$OMP            dt_here,nbmerge,S_col,do_any_j,do_optics) &
   !$OMP    private(rescale,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot, &
   !$OMP            latent,enth_col,sw_tot,dhf_dt,hf_0,Tskin,SW_abs_col, &
   !$OMP            snow_wt,enth_col_in)

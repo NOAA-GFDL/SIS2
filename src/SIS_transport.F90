@@ -403,7 +403,7 @@ subroutine ice_state_to_cell_ave_state(IST, G, US, IG, CS, CAS)
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
-  real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness [kg m-2].
+  real, dimension(SZI_(G),SZJ_(G)) :: mHi_avg   ! The average ice mass-thickness [R Z ~> kg m-2].
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
@@ -547,7 +547,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                            intent(inout) :: part_sz !< The fractional ice concentration
                                                 !! within a cell in each thickness
-                                                !! category [nondim], 0-1.
+                                                !! camcategory [nondim], 0-1.
   type(SIS_tracer_registry_type), &
                            pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),  pointer       :: CS  !< A pointer to the control structure for this module
@@ -556,18 +556,18 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
 ! thicker than the bounding limits of each category.
 
   ! Local variables
-  real :: mca_trans  ! The cell-averaged ice mass transfered between categories [kg m-2].
+  real :: mca_trans  ! The cell-averaged ice mass transfered between categories [R Z ~> kg m-2].
   real :: part_trans ! The fractional area transfered between categories [nondim].
-  real :: snow_trans ! The cell-averaged snow transfered between categories [kg m-2].
-  real :: pond_trans ! The cell-averaged pond transfered between categories [kg m-2].
-  real :: I_mH_lim1  ! The inverse of the lower thickness limit [m2 kg-1].
+  real :: snow_trans ! The cell-averaged snow transfered between categories [R Z ~> kg m-2].
+  real :: pond_trans ! The cell-averaged pond transfered between categories [R Z ~> kg m-2].
+  real :: I_mH_lim1  ! The inverse of the lower thickness limit [R-1 Z-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     ! The mass of snow, pond and ice per unit total area in a cell [R Z ~> kg m-2].
     ! "mca" stands for "mass cell averaged"
     mca_ice, mca_snow, mca_pond, &
-    ! Initial ice, snow and pond masses per unit cell area [kg m-2].
+    ! Initial ice, snow and pond masses per unit cell area [R Z ~> kg m-2].
     mca0_ice, mca0_snow, mca0_pond, &
-    ! Cross-catagory transfers of ice, snow and pond mass [kg m-2].
+    ! Cross-catagory transfers of ice, snow and pond mass [R Z ~> kg m-2].
     trans_ice, trans_snow, trans_pond
   real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
   logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
