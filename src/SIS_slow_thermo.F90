@@ -321,9 +321,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   integer :: isd, ied, jsd, jed
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-    rdg_frac, & ! fraction of ridged ice per category
-    mi_old      ! Ice mass per unit area before thermodynamics.
-  real    :: tmp3  ! This is a bad name - make it more descriptive!
+    rdg_frac, & ! fraction of ridged ice per category [nondim]
+    mi_old      ! Ice mass per unit area before thermodynamics [R Z ~> kg m-2].
+  real :: mass_part  ! The mass per unit cell area in a thickness category [R Z ~> kg m-2]
 
   mi_old(:,:,:) = 0.0
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -404,12 +404,11 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   !TOM> derive ridged ice fraction prior to thermodynamic changes of ice thickness
   !     in order to subtract ice melt proportionally from ridged ice volume (see below)
   if (CS%do_ridging) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,IST,rdg_frac) &
-!$OMP                          private(tmp3)
+    !$OMP parallel do default(shared) private(mass_part)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-      tmp3 = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-      rdg_frac(i,j,k) = 0.0 ; if (tmp3 > 0.0) &
-          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp3
+      mass_part = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
+      rdg_frac(i,j,k) = 0.0 ; if (mass_part > 0.0) &
+          rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / mass_part
     enddo ; enddo ; enddo
   endif
 
@@ -448,7 +447,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
 
   ! Do tracer column physics
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
-  call SIS_call_tracer_column_fns(US%T_to_s*dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
+  call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
@@ -1299,7 +1298,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! output that has been requested.
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
 
-  yr_dtslow = US%RZ_to_kg_m2*(864e2*365*US%s_to_T*Idt_slow)
+  yr_dtslow = US%RZ_T_to_kg_m2s*(864e2*365*Idt_slow)
   if (CS%id_lsnk>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
@@ -1475,16 +1474,16 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                'frozen water local sink', 'kg/(m^2*yr)', missing_value=missing)
   CS%id_bsnk = register_diag_field('ice_model','BSNK',diag%axesT1, Time, &
                'frozen water local bottom sink', &
-               'kg/(m^2*yr)', conversion= 864e2*365.*US%RZ_to_kg_m2*US%s_to_T, &
+               'kg/(m^2*yr)', conversion= 864e2*365.*US%RZ_T_to_kg_m2s, &
                missing_value=missing)
   CS%id_sn2ic = register_diag_field('ice_model','SN2IC'  ,diag%axesT1,Time, &
                'rate of snow to ice conversion', 'kg/(m^2*s)', missing_value=missing)
   CS%id_net_melt = register_diag_field('ice_model','net_melt' ,diag%axesT1, Time, &
                'net mass flux from ice & snow to ocean due to melting & freezing', &
-               'kg m-2 s-1', conversion=US%RZ_to_kg_m2*US%s_to_T, missing_value=missing)
+               'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   CS%id_CMOR_melt = register_diag_field('ice_model','fsitherm' ,diag%axesT1, Time, &
                'water_flux_into_sea_water_due_to_sea_ice_thermodynamics', &
-               'kg m-2 s-1', conversion=US%RZ_to_kg_m2*US%s_to_T, missing_value=missing)
+               'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
 
   if (CS%do_ice_restore) then
     CS%id_qfres = register_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
