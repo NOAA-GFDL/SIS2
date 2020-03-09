@@ -539,7 +539,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   type(ice_state_type), pointer :: IST => NULL()
   real :: icebergs_value
-  real :: LI
+  real :: LI  ! Latent heat of fusion [Q ~> J kg-1]
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
@@ -566,7 +566,7 @@ subroutine ice_stock_pe(Ice, index, value)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice, US=G%US)
 
   select case (index)
 
@@ -583,7 +583,7 @@ subroutine ice_stock_pe(Ice, index, value)
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
               value = value - (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                              (kg_H * IST%mH_ice(i,j,k)) * LI
+                              (kg_H * IST%mH_ice(i,j,k)) * LI*G%US%Q_to_J_kg
           endif
         enddo ; enddo ; enddo
       else !### Should this be changed to raise the temperature to 0 degC?

@@ -2154,17 +2154,13 @@ end function energy_melt_enthS
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> get_SIS2_thermo_coefs returns various thermodynamic coefficients, rescaling the units
 !! appropriately if an optional unit_scale_type argument is provided.
-subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
-                                 Cp_Ice, Cp_brine, Cp_water, &
-                                 rho_ice, rho_snow, rho_water, &
-                                 Latent_fusion, Latent_vapor, &
+subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, Cp_brine, Cp_water, &
+                                 rho_ice, rho_snow, rho_water, Latent_fusion, Latent_vapor, &
                                  EOS, specified_thermo_salinity, slab_ice, US)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, dimension(:), &
            optional, intent(out) :: ice_salinity  !< The specified salinity of each layer when the
                     !! thermodynamic salinities are pre-specified [gSalt kg-1].
-  real,    optional, intent(out) :: enthalpy_units !< A unit conversion factor for enthalpy from its
-                    !! internal representation to Joules kg-1.
   real,    optional, intent(out) :: Cp_Ice    !< The heat capacity of ice [J kg-1 degC-1].
   real,    optional, intent(out) :: Cp_Water  !< The heat capacity of seawater [J kg-1 degC-1].
   real,    optional, intent(out) :: Cp_Brine  !< The heat capacity of liquid water in brine pockets
@@ -2190,19 +2186,26 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, enthalpy_units, &
 
   call get_thermo_coefs(ice_salinity=ice_salinity)
 
-  rho_scale = 1.0 ; if (present(US)) rho_scale = US%kg_m3_to_R
-  Q_scale = 1.0 ; if (present(US)) Q_scale = US%J_kg_to_Q
+  if ((present(Cp_Ice) .or. present(Cp_Water) .or. present(Cp_Brine) .or. &
+       present(rho_ice) .or. present(rho_snow) .or. present(rho_water) .or. &
+       present(Latent_fusion) .or. present(Latent_vapor)) .and. .not.present(US) ) &
+    call SIS_error(FATAL, "get_SIS2_thermo_coefs :: US must be present when a heat capacity, density "//&
+                          "or latent heat is requested.")
+
+  if (present(US)) then
+    rho_scale = US%kg_m3_to_R ; Q_scale = US%J_kg_to_Q
+  endif
 
   if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice*Q_scale
   if (present(Cp_Water)) Cp_Water = ITV%Cp_Water*Q_scale
   if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine*Q_scale
-  if (present(enthalpy_units)) enthalpy_units = ITV%J_kg_to_Q
-  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
   if (present(rho_ice)) rho_ice = ITV%rho_ice*rho_scale
   if (present(rho_snow)) rho_snow = ITV%rho_snow*rho_scale
   if (present(rho_water)) rho_water = ITV%rho_water*rho_scale
   if (present(Latent_fusion)) Latent_fusion = ITV%LI*Q_scale
   if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor*Q_scale
+
+  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
   if (present(slab_ice)) slab_ice = ITV%slab_ice
   if (present(EOS)) then
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &
