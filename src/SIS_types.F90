@@ -2509,35 +2509,35 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
 
   tOcn_min = -100. ; tOcn_max = 60.
   if (present(OSS)) then
-    do j=jsc,jec ; do i=isc,iec
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0) .or. &
           (OSS%SST_C(i,j) < tOcn_min) .or. (OSS%SST_C(i,j) > tOcn_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
       endif
-    enddo ; enddo
+    endif ; enddo ; enddo
   endif
-  do j=jsc,jec ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if (abs(sum_part_sz(i,j) - 1.0) > 2.0*(ncat+1)*epsilon(sum_part_sz(i,j))) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "sum_part_sz" ; endif
     endif
-  enddo ; enddo
+  endif ; enddo ; enddo
 
   tsurf_min = tOcn_min ; tsurf_max = tOcn_max
   tice_min = -100. ; tice_max = 1.0
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
   enth_max = enth_from_TS(tice_max, 0., IST%ITV)
   if (present(Rad)) then
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       if ((Rad%t_skin(i,j,k) < tsurf_min) .or. (Rad%t_skin(i,j,k) > tsurf_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
       endif
-    enddo ; enddo ; enddo
+    endif ; enddo ; enddo ; enddo
   endif
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "large mass" ; endif
@@ -2546,9 +2546,9 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_snow" ; endif
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo ; enddo ; enddo
 
-  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif
@@ -2557,7 +2557,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "sal_ice" ; endif
     endif
-  enddo ; enddo ; enddo ; enddo
+  endif ; enddo ; enddo ; enddo ; enddo
 
   if (n_bad > 0) then
     i = i_bad ; j=j_bad ; k = k_bad

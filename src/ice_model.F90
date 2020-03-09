@@ -2718,7 +2718,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%fCS%Rad%t_skin(:,:,:) = 0.0
     elseif (do_mask_restart) then
       do k=1,CatIce
-        Ice%fCS%Rad%t_skin(:,:,k) = Ice%fCS%Rad%t_skin(:,:,k) * sG%mask2dT(:,:)
+        Ice%fCS%Rad%t_skin(:,:,k) = Ice%fCS%Rad%t_skin(:,:,k) * fG%mask2dT(:,:)
       enddo
     endif
     if (init_rough) then
