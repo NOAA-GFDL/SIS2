@@ -123,7 +123,7 @@ type ocean_sfc_state_type
                 !! associated with the formation of frazil ice in the ocean integrated over a
                 !! timestep [Q R Z ~> J m-2]. This is the input value and is not changed by the ice.
   real, allocatable, dimension(:,:) :: sea_lev !< The equivalent sea-level, after any non-levitating
-                !! ice has been converted to sea-water, as determined by the ocean [m].
+                !! ice has been converted to sea-water, as determined by the ocean [Z ~> m].
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
                 !! (partially) converted back to its equivalent by the ocean.
 

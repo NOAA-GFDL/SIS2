@@ -148,7 +148,7 @@ type, public :: SIS_hor_grid_type
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: &
     df_dx, &      !< Derivative d/dx f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
     df_dy         !< Derivative d/dy f (Coriolis parameter) at h-points [T-1 L-1 ~> s-1 m-1].
-  real :: g_Earth !<   The gravitational acceleration [m s-2].
+  real :: g_Earth !<   The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
 
   type(unit_scale_type), pointer :: US => NULL() !< A dimensional unit scaling type
 

@@ -267,7 +267,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJB_(G)), intent(in   ) :: fyat  !< Meridional air stress on ice [R Z L T-2 ~> Pa]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: sea_lev !< The height of the sea level, including
                                                              !! contributions from non-levitating ice from
-                                                             !! an earlier time step [m].
+                                                             !! an earlier time step [Z ~> m].
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fxoc  !< Zonal ice stress on ocean [R Z L T-2 ~> Pa]
   real, dimension(SZIB_(G),SZJB_(G)), intent(  out) :: fyoc  !< Meridional ice stress on ocean [R Z L T-2 ~> Pa]
   logical,                            intent(in   ) :: do_ridging !< If true, the ice can ridge
@@ -371,10 +371,10 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
   ! sea level slope force
   do J=jsc-1,jec ; do I=isc-1,iec
-    sldx(I,J) = -dt_Rheo * US%m_s_to_L_T**2*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) &
-         + (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
-    sldy(I,J) = -dt_Rheo * US%m_s_to_L_T**2*G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) &
-         + (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
+    sldx(I,J) = -dt_Rheo * G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i,j+1)) + &
+                                           (sea_lev(i+1,j)-sea_lev(i,j)))) * G%IdxBu(i,J)
+    sldy(I,J) = -dt_Rheo * G%g_Earth*(0.5*((sea_lev(i+1,j+1)-sea_lev(i+1,j)) + &
+                                           (sea_lev(i,j+1)-sea_lev(i,j)))) * G%IdyBu(I,J)
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
