@@ -395,8 +395,8 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
 
   ! Store liquid runoff and other fluxes from the land to the ice or ocean.
   i_off = LBOUND(LIB%runoff,1) - G%isc ; j_off = LBOUND(LIB%runoff,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off,G) &
-!$OMP                          private(i2,j2)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,LIB,i_off,j_off,G,US) &
+  !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
     FIA%runoff(i,j)  = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*LIB%runoff(i2,j2)
@@ -583,8 +583,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   call coupler_type_rescale_data(Ice%ocean_fluxes, 0.0)
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G,OSS) &
-!$OMP                           private(i2,j2)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,Ice,IST,IOF,FIA,i_off,j_off,G,US,OSS) &
+  !$OMP                           private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
     Ice%flux_t(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_sh_ocn_top(i,j)
@@ -850,15 +850,13 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
 
   ! Pass the ocean state through ice on partition 0, unless using specified ice.
   if (.not. specified_ice) then
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,i_off,j_off) &
-!$OMP                           private(i2,j2)
+    !$OMP parallel do default(shared) private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
       OSS%SST_C(i,j) = OIB%t(i2,j2) - T_0degC
     enddo ; enddo
   endif
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,OSS,OIB,ITV,i_off,j_off) &
-!$OMP                           private(i2,j2)
+  !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
     OSS%s_surf(i,j) = OIB%s(i2,j2)
     OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)

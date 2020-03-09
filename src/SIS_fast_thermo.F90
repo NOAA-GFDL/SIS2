@@ -725,13 +725,12 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   !
   dt_fast = US%s_to_T*time_type_to_real(Time_step)
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt, &
-!$OMP                                  dlwdt,flux_sw,flux_sh,evap,flux_lw,&
-!$OMP                                  dt_fast,flux_lh,G,S_col,I_Nk,&
-!$OMP                                  LatHtVap,IG,sOSS,FIA,Rad,CS) &
-!$OMP                          private(latent,enth_col,sw_tot,dhf_dt,snow_wt,  &
-!$OMP                                  hf_0,Tskin,dTskin,SW_abs_col,SW_absorbed,enth_here,&
-!$OMP                                  tot_heat_in,enth_imb,norm_enth_imb     )
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,nb,IST,dshdt,devapdt,dlwdt, &
+  !$OMP                                  flux_sw,flux_sh,evap,flux_lw,dt_fast,flux_lh,G,US,&
+  !$OMP                                  S_col,I_Nk,LatHtVap,IG,sOSS,FIA,Rad,CS) &
+  !$OMP                          private(latent,enth_col,sw_tot,dhf_dt,snow_wt,hf_0,Tskin,dTskin, &
+  !$OMP                                  SW_abs_col,SW_absorbed,enth_here,tot_heat_in,enth_imb,&
+  !$OMP                                  norm_enth_imb)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     if (IST%part_size(i,j,k) > 0.0) then
       enth_col(0) = IST%enth_snow(i,j,k,1)
@@ -987,12 +986,11 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   endif
 
   !$OMP parallel do default(none) &
-  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,sOSS,Rad,IG,CS,optics_CSp, &
-  !$OMP            dt_here,use_new_albedos, &
-  !$OMP            sw_top_chg,S_col,T_bright,max_itt,do_any_j,do_optics) &
-  !$OMP    private(albedos,sw_abs_lay,flux_sw_prev, &
-  !$OMP            latent,enth_col,sw_tot,dSWt_dt,dhf_dt,hf_0,Tskin,SW_abs_col, &
-  !$OMP            snow_wt,enth_col_in,tmelt_tmp,bmelt_tmp,Tskin_prev) !,Tskin_itt,SW_tot_itt)
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,sOSS,Rad,US,IG,CS,optics_CSp,dt_here, &
+  !$OMP            use_new_albedos,sw_top_chg,S_col,T_bright,max_itt,do_any_j,do_optics) &
+  !$OMP    private(albedos,sw_abs_lay,flux_sw_prev,latent,enth_col,sw_tot,dSWt_dt,dhf_dt,hf_0, &
+  !$OMP            Tskin,SW_abs_col,snow_wt,enth_col_in,tmelt_tmp,bmelt_tmp,Tskin_prev)
+   !,Tskin_itt,SW_tot_itt)
   do j=jsc,jec ; if (do_any_j(j)) then
     ! Only work on j-rows with some ice in them.
 
@@ -1090,11 +1088,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   endif
 
   !$OMP parallel do default(none) &
-  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,CS, &
-  !$OMP            dt_here,nbmerge,S_col,do_any_j,do_optics) &
-  !$OMP    private(rescale,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot, &
-  !$OMP            latent,enth_col,sw_tot,dhf_dt,hf_0,Tskin,SW_abs_col, &
-  !$OMP            snow_wt,enth_col_in)
+  !$OMP    shared( isc,iec,jsc,jec,nb,ncat,NkIce,FIA,IST,TSF,sOSS,Rad,IG,US,CS,dt_here, &
+  !$OMP            nbmerge,S_col,do_any_j,do_optics) &
+  !$OMP    private(rescale,sw_tot_ice_band,ice_sw_tot,TSF_sw_tot,latent,enth_col,sw_tot, &
+  !$OMP            dhf_dt,hf_0,Tskin,SW_abs_col,snow_wt,enth_col_in)
   do j=jsc,jec ; if (do_any_j(j)) then
     ! Only work on j-rows with some ice in them.
 

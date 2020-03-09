@@ -867,11 +867,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   npassive = SIS_count_passive_tracers(IST%TrReg)
   if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,IST,S_col0,NkIce,S_col, &
-!$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK, &
-!$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt,LatHtFus,LatHtVap,&
-!$OMP                                  IG,CS,OSS,FIA,IOF,npassive,nb) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,US,IST,S_col0,NkIce,S_col,dt_slow, &
+!$OMP                                  snow_to_ice,heat_in,I_NK,enth_prev,enth_mass_in_col,bsnk, &
+!$OMP                                  Idt_slow,salt_change,net_melt,LatHtFus,LatHtVap,IG,CS,OSS, &
+!$OMP                                  FIA,IOF,npassive,nb) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -1011,19 +1010,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
 
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,IG,IST,S_col0,NkIce,S_col, &
-!$OMP                                  dt_slow,snow_to_ice,heat_in,I_NK, &
-!$OMP                                  enth_prev,enth_mass_in_col,Idt_slow,bsnk,      &
-!$OMP                                  salt_change,net_melt,LatHtFus,FIA,CS,OSS,&
-!$OMP                                  IOF) &
-!$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
-!$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
-!$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
-!$OMP                                  enth_ice_to_ocn,enth_ocn_to_ice,heat_input,  &
-!$OMP                                  heat_mass_in,mass_in,mass_here,enth_here,    &
-!$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb, &
-!$OMP                                  m_lay,mtot_ice,frazil_cat,k_merge,part_sum,  &
-!$OMP                                  fill_frac,d_enth,TrLay,I_part,sn2ic,enth_snowfall)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,US,IG,IST,S_col0,NkIce,  &
+  !$OMP                                  S_col,dt_slow,snow_to_ice,heat_in,I_NK,enth_mass_in_col, &
+  !$OMP                                  enth_prev,Idt_slow,bsnk,salt_change,net_melt,LatHtFus,   &
+  !$OMP                                  FIA,CS,OSS,IOF) &
+  !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,heat_to_ocn,     &
+  !$OMP                                  h2o_ice_to_ocn,h2o_ocn_to_ice,evap_from_ocn,salt_to_ice, &
+  !$OMP                                  bablt,enth_evap,enth_ice_to_ocn,enth_ocn_to_ice,         &
+  !$OMP                                  heat_input,heat_mass_in,mass_in,mass_here,enth_here,     &
+  !$OMP                                  tot_heat_in,enth_imb,mass_imb,norm_enth_imb,m_lay,       &
+  !$OMP                                  mtot_ice,frazil_cat,k_merge,part_sum,fill_frac,d_enth,   &
+  !$OMP                                  TrLay,I_part,sn2ic,enth_snowfall)
   do j=jsc,jec ; do i=isc,iec ; if (FIA%frazil_left(i,j)>0.0) then
 
     frazil_cat(1:ncat) = 0.0
