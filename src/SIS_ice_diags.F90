@@ -71,7 +71,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
                                                    !! the ocean's surface state for the ice model.
   type(ice_ocean_flux_type),  intent(in)    :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics
+  real,                       intent(in)    :: dt_slow  !< The time interval of these diagnostics [T ~> s]
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
@@ -219,7 +219,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
   ! These fields do not change over the course of the sea-ice time stepping.
-  call post_ocean_sfc_diagnostics(OSS, US%s_to_T*dt_slow, Time, G, diag)
+  call post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag)
 
   if (IDs%id_e2m>0) then
     tmp2d(:,:) = 0.0

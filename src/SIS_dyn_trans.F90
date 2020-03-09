@@ -80,13 +80,13 @@ type dyn_trans_CS ; private
   logical :: Cgrid_dyn    !< If true use a C-grid discretization of the sea-ice dynamics.
   real    :: dt_ice_dyn   !< The time step used for the slow ice dynamics, including
                           !! stepping the continuity equation and interactions
-                          !! between the ice mass field and velocities [s]. If
+                          !! between the ice mass field and velocities [T ~> s]. If
                           !! 0 or negative, the coupling time step will be used.
   logical :: merged_cont  !< If true, update the continuity equations for the ice, snow,
                           !! and melt pond water together with proportionate fluxes.
                           !! Otherwise the three media are updated separately.
   real    :: dt_advect    !< The time step used for the advecting tracers and masses as
-                          !! partitioned by thickness categories when merged_cont it true [s].
+                          !! partitioned by thickness categories when merged_cont it true [T ~> s].
                           !! If 0 or negative, the coupling time step will be used.
   logical :: do_ridging   !<   If true, apply a ridging scheme to the convergent
                           !! ice.  The original SIS2 implementation is based on
@@ -293,7 +293,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   endif
 
   do j=jsc,jec ; do i=isc,iec
-    FIA%calving(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*calving(i,j)
+    FIA%calving(i,j) = US%kg_m2s_to_RZ_T*calving(i,j)
     FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*calving_hflx(i,j)
   enddo ; enddo
   call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
@@ -320,7 +320,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -359,7 +359,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
-  real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
+  real :: dt_adv_cycle ! The length of the advective cycle timestep [T ~> s].
   real :: wt_new, wt_prev ! Weights in an average.
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_rate  ! A ridging rate [T-1 ~> s-1], calculated from the strain rates in the dynamics.
@@ -391,11 +391,11 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
 
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_adv_cycle)) &
     ndyn_steps = max(CEILING(dt_adv_cycle/CS%dt_ice_dyn - 1e-6), 1)
-  dt_slow_dyn_sec = dt_adv_cycle / real(ndyn_steps)
-  dt_slow_dyn = US%s_to_T*dt_slow_dyn_sec
+  dt_slow_dyn = dt_adv_cycle / real(ndyn_steps)
+  dt_slow_dyn_sec = US%T_to_s*dt_slow_dyn
 
   do nac=1,nadv_cycle
-    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
+    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*US%T_to_s*dt_adv_cycle)
 
     if (CS%merged_cont) then
       ! Convert the category-resolved ice state into the simplified 2-d ice state.
@@ -654,7 +654,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US    !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -670,10 +670,9 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
                                                    !! in a time-stepping cycle; missing is like true.
   real,             optional, intent(in)    :: cycle_length !< The duration of a coupled time stepping cycle [s].
 
-
   ! Local variables
-  real :: dt_adv_cycle ! The length of the advective cycle timestep [s].
-  real :: dt_diags     ! The length of time over which the diagnostics are valid [s].
+  real :: dt_adv_cycle ! The length of the advective cycle timestep [T ~> s].
+  real :: dt_diags     ! The length of time over which the diagnostics are valid [T ~> s].
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   integer :: nadv_cycle, nac ! The number of tracer advective cycles within this call.
   logical :: cycle_start, cycle_end, end_of_cycle
@@ -683,7 +682,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
   cycle_start = .true. ; if (present(start_cycle)) cycle_start = start_cycle
   cycle_end = .true. ; if (present(end_cycle)) cycle_end = end_cycle
-  dt_diags = dt_slow ; if (present(cycle_length)) dt_diags = cycle_length
+  dt_diags = dt_slow ; if (present(cycle_length)) dt_diags = US%s_to_T*cycle_length
 
   if (.not.CS%merged_cont) call SIS_error(FATAL, &
           "SIS_multi_dyn_trans should not be called unless MERGED_CONTINUITY=True.")
@@ -701,7 +700,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
 
     ! Update the category-merged dynamics and use the merged continuity equation.
     ! This could be called as many times as necessary.
-    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*dt_adv_cycle)
+    Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*US%T_to_s*dt_adv_cycle)
     end_of_cycle = (nac < nadv_cycle) .or. cycle_end
     call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, US, IG, CS, &
                              end_call=end_of_cycle)
@@ -733,7 +732,7 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
   type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
                                                    !! integrated across thickness categories and layers.
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
-  real,                          intent(in)    :: dt_adv_cycle !< The time since the last IST transport [s].
+  real,                          intent(in)    :: dt_adv_cycle !< The time since the last IST transport [T ~> s].
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),         intent(in)    :: US    !< A structure with unit conversion factors
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
@@ -748,7 +747,7 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
 
   call mpp_clock_begin(iceClock8)
   ! Do the transport of mass and tracers by category and vertical layer.
-  call ice_cat_transport(CS%CAS, IST%TrReg, US%s_to_T*dt_adv_cycle, DS2d%nts, G, US, IG, &
+  call ice_cat_transport(CS%CAS, IST%TrReg, dt_adv_cycle, DS2d%nts, G, US, IG, &
                          CS%SIS_transport_CSp, mca_tot=DS2d%mca_step(:,:,0:DS2d%nts), &
                          uh_tot=DS2d%uh_step(:,:,1:DS2d%nts), vh_tot=DS2d%vh_step(:,:,1:DS2d%nts))
   ! Convert the cell-averaged state back to the ice-state type, adjusting the
@@ -785,7 +784,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
                                                    !! the ocean's surface state for the ice model.
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -809,7 +808,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
   ! Calculate and output various diagnostics of the ice state.
   call mpp_clock_begin(iceClock9)
 
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
@@ -817,7 +816,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
   if (CS%debug) call IST_chksum("End ice_state_cleanup", IST, G, US, IG)
   if (CS%bounds_check) call IST_bounds_check(IST, G, US, IG, "End of ice_state_cleanup", OSS=OSS)
 
-  if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
+  if (CS%Time + real_to_time(0.5*US%T_to_s*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               tracer_CSp=tracer_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
@@ -900,7 +899,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
                                                    !! the ocean that are calculated by the ice model.
   type(dyn_state_2d),         intent(inout) :: DS2d !< A simplified 2-d description of the ice state
                                                    !! integrated across thickness categories and layers.
-  real,                       intent(in)    :: dt_cycle !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_cycle !< The slow ice dynamics timestep [T ~> s].
   type(time_type),            intent(in)    :: TIme_start !< The starting time for this update cycle.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
@@ -954,8 +953,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
   ndyn_steps = 1
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_cycle)) &
     ndyn_steps = max(CEILING(dt_cycle/CS%dt_ice_dyn - 1e-6), 1)
-  dt_slow_dyn_sec = dt_cycle / ndyn_steps
-  dt_slow_dyn = US%s_to_T*dt_slow_dyn_sec
+  dt_slow_dyn = dt_cycle / ndyn_steps
+  dt_slow_dyn_sec = US%T_to_s*dt_slow_dyn
   dt_adv = dt_slow_dyn / real(CS%adv_substeps)
   if (ndyn_steps*CS%adv_substeps > DS2d%max_nts) &
     call increase_max_tracer_step_memory(DS2d, G, ndyn_steps*CS%adv_substeps)
@@ -1137,7 +1136,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -1168,7 +1167,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
   real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
-  real :: dt_slow_dyn  ! The slow dynamics timestep [s].
+  real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
+  real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
   integer :: ndyn_steps, nds ! The number of dynamic steps.
@@ -1183,10 +1183,11 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
   if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_ice_dyn < dt_slow)) &
     ndyn_steps = max(CEILING(dt_slow/CS%dt_ice_dyn - 0.000001), 1)
   dt_slow_dyn = dt_slow / ndyn_steps
+  dt_slow_dyn_sec = US%T_to_s*dt_slow_dyn
 
   do nds=1,ndyn_steps
 
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn_sec, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn_sec), CS%diag)
 
     call mpp_clock_begin(iceClock4)
     !$OMP parallel do default(shared)
@@ -1328,10 +1329,10 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
     call mpp_clock_begin(iceClock8)
     if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, scale=US%L_T_to_m_s)
-    call enable_SIS_averaging(dt_slow_dyn, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn), CS%diag)
+    call enable_SIS_averaging(dt_slow_dyn_sec, CS%Time - real_to_time((ndyn_steps-nds)*dt_slow_dyn_sec), CS%diag)
 
     call slab_ice_advect(IST%u_ice_C, IST%v_ice_C, IST%mH_ice(:,:,1), 4.0*US%kg_m3_to_R*US%m_to_Z, &
-                         US%s_to_T*dt_slow_dyn, G, US, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
+                         dt_slow_dyn, G, US, IST%part_size(:,:,1), nsteps=CS%adv_substeps)
     call mpp_clock_end(iceClock8)
 
     if (CS%column_check) &
@@ -2208,7 +2209,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                  "stepping the continuity equation and interactions \n"//&
                  "between the ice mass field and velocities.  If 0 or \n"//&
                  "negative the coupling time step will be used.", &
-                 units="seconds", default=-1.0)
+                 units="seconds", scale=US%s_to_T, default=-1.0)
   call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
                  "If true, update the continuity equations for the ice, snow, \n"//&
                  "and melt pond water together summed across categories, with \n"//&
@@ -2218,7 +2219,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                  "The time step used for the advecting tracers and masses as \n"//&
                  "partitioned by thickness categories when merged_cont it true. \n"//&
                  "If 0 or negative, the coupling time step will be used.", &
-                 units="seconds", default=-1.0, do_not_log=.not.CS%merged_cont)
+                 units="seconds", scale=US%s_to_T, default=-1.0, do_not_log=.not.CS%merged_cont)
   if (.not.CS%merged_cont) CS%dt_advect = CS%dt_ice_dyn
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
                  "If true, apply a ridging scheme to the convergent ice. \n"//&

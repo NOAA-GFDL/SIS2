@@ -67,7 +67,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
                                                    !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
-  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [s].
+  real,                       intent(in)    :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
@@ -93,14 +93,14 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
     enddo ; enddo ; enddo
   endif
 
-  call enable_SIS_averaging(dt_slow, CS%Time, CS%diag)
+  call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
   if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, US, IG)
   if (CS%bounds_check) call IST_bounds_check(IST, G, US, IG, "End of specified_ice_dynamics", OSS=OSS)
 
-  if (CS%Time + real_to_time(0.5*dt_slow) > CS%write_ice_stats_time) then
+  if (CS%Time + real_to_time(0.5*US%T_to_s*dt_slow) > CS%write_ice_stats_time) then
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp)
     CS%write_ice_stats_time = CS%write_ice_stats_time + CS%ice_stats_interval
   endif
