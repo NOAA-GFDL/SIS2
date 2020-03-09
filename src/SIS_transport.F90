@@ -1203,10 +1203,10 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
-               'x-direction ice transport', 'kg/s', conversion=US%RZ_to_kg_m2*US%L_to_m**2*US%s_to_T, &
+               'x-direction ice transport', 'kg/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                missing_value=missing, interp_method='none')
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
-               'y-direction ice transport', 'kg/s', conversion=US%RZ_to_kg_m2*US%L_to_m**2*US%s_to_T, &
+               'y-direction ice transport', 'kg/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                missing_value=missing, interp_method='none')
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
                'frozen water transport convergence', 'kg/(m^2*yr)', conversion=US%RZ_to_kg_m2, &

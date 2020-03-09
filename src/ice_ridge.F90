@@ -146,8 +146,8 @@ subroutine ice_ridging_init(km, cn, hi, rho_ice, part_undef, part_undef_sum, &
        ! *   Bii    *
        ! ************
   ! set in namelist: dist_par = 50.0   ! 25m suggested by CICE and is appropriate for multi-year ridges
-                                       ! [Flato and Hibler, 1995, JGR],
-                                       ! 50m gives better fit to first-year ridges [Amundrud et al., 2004, JGR]
+                                       ! (Flato and Hibler, 1995, JGR),
+                                       ! 50m gives better fit to first-year ridges (Amundrud et al., 2004, JGR)
     dist_par = 50.0*US%m_to_Z * rho_ice
     do k=2,km
       if (hi(k)>0.0) then

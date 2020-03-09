@@ -223,8 +223,8 @@ subroutine update_ice_slow_thermo(Ice)
       !$OMP parallel do default(none) shared(Ice,sG,US,i_off,j_off) private(i2,j2)
       do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
-        Ice%sCS%IOF%flux_u_ocn(i,j) = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s*Ice%flux_u(i2,j2)
-        Ice%sCS%IOF%flux_v_ocn(i,j) = US%kg_m3_to_R*US%m_to_Z*US%m_s_to_L_T*US%T_to_s*Ice%flux_v(i2,j2)
+        Ice%sCS%IOF%flux_u_ocn(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Ice%flux_u(i2,j2)
+        Ice%sCS%IOF%flux_v_ocn(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Ice%flux_v(i2,j2)
       enddo ; enddo
     endif
 
@@ -399,8 +399,8 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
   !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
     i2 = i+i_off ; j2 = j+j_off
-    FIA%runoff(i,j)  = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*LIB%runoff(i2,j2)
-    FIA%calving(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*LIB%calving(i2,j2)
+    FIA%runoff(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff(i2,j2)
+    FIA%calving(i,j) = US%kg_m2s_to_RZ_T*LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = US%W_m2_to_QRZ_T*LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*LIB%calving_hflx(i2,j2)
   else
@@ -702,8 +702,8 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
+    Ice%flux_u(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
       Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
@@ -716,7 +716,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
     i_off = LBOUND(Ice%stress_mag,1) - G%isc ; j_off = LBOUND(Ice%stress_mag,2) - G%jsc
     !$OMP parallel do default(shared) private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%stress_mag(i2,j2) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%stress_mag(i,j)
+      Ice%stress_mag(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%stress_mag(i,j)
     enddo ; enddo
   endif
 
@@ -1284,7 +1284,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
-    FIA%p_atm_surf(i,j) = US%kg_m3_to_R*US%m_to_Z*US%T_to_s*US%m_s_to_L_T*Atmos_boundary%p(i3,j3,1)
+    FIA%p_atm_surf(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Atmos_boundary%p(i3,j3,1)
   enddo ; enddo
 
   !$OMP parallel do default(shared) private(i2,j2,k2)
@@ -1681,11 +1681,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: rho_ice        ! The nominal density of sea ice [R ~> kg m-3].
   real :: rho_snow       ! The nominal density of snow [R ~> kg m-3].
   real :: rho_Ocean      ! The nominal density of seawater [R ~> kg m-3].
-  real :: kmelt          ! A constant that is used in the calculation of the
-                         ! ocean/ice basal heat flux [W m-2 degC-1].  This could
-                         ! be changed to reflect the turbulence in the under-ice
-                         ! ocean boundary layer and the effective depth of the
-                         ! reported value of t_ocn.
+  real :: kmelt          ! A constant that is used in the calculation of the ocean/ice basal heat
+                         ! flux [Q R Z T-1 degC-1 ~> W m-2 degC-1]. This could be changed to reflect
+                         ! the turbulence in the under-ice ocean boundary layer and the effective
+                         ! depth of the reported value of t_ocn.
   real :: opm_dflt       ! The default value for ocean_part_min, which is the
                          ! minimum value for the fractional open-ocean
                          ! area.  With redo_fast_update, this is set to 1e-40 so
@@ -1854,7 +1853,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "base heat flux to the tempature difference, given by \n"//&
                  "the product of the heat capacity per unit volume of sea \n"//&
                  "water times a molecular diffusive piston velocity.", &
-                 units="W m-2 K-1", default=6e-5*4e6)
+                 units="W m-2 K-1", scale=US%W_m2_to_QRZ_T, default=6e-5*4e6)
+  !### This parameter appears to be unused and should be obsoleted.
   call get_param(param_file, mdl, "SNOW_CONDUCT", k_snow, &
                  "The conductivity of heat in snow.", units="W m-1 K-1", &
                  default=0.31)
@@ -1915,6 +1915,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "PASS_STRESS_MAG_TO_OCEAN", pass_stress_mag, &
                  "If true, provide the time and area weighted mean magnitude \n"//&
                  "of the stresses on the ocean to the ocean.", default=.false.)
+  !### This parameter is not used here, although a similar parameter is used elsewhere.
   call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
                  "The minimum ice thickness at which to do temperature \n"//&
                  "calculations.", units="m", default=0.0)
@@ -2080,7 +2081,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart, restart_file)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
-    Ice%sCS%OSS%kmelt = US%W_m2_to_QRZ_T*kmelt
+    Ice%sCS%OSS%kmelt = kmelt
 
     call alloc_simple_OSS(Ice%sCS%sOSS, sHI, gas_fields_ocn)
 

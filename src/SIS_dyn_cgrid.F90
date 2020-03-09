@@ -284,16 +284,16 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             'ice strength at start of rheology', &
             'Pa*m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
-            'ice internal stress - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'ice internal stress - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,   &
-            'ice internal stress - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'ice internal stress - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesCu1, Time,   &
-            'Coriolis force - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Coriolis force - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesCv1, Time,   &
-            'Coriolis force - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Coriolis force - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_Coru   = register_diag_field('ice_model', 'Cor_ui', diag%axesCu1, Time,&
             'Coriolis ice acceleration - x component', &
@@ -305,11 +305,11 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             missing_value=missing, interp_method='none')
   CS%id_fpx   = register_diag_field('ice_model', 'FP_X', diag%axesCu1, Time,   &
             'Pressure force - x component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fpy   = register_diag_field('ice_model', 'FP_Y', diag%axesCv1, Time,   &
             'Pressure force - y component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_PFu   = register_diag_field('ice_model', 'Pfa_ui', diag%axesCu1, Time, &
             'Pressure-force ice acceleration - x component', &
@@ -321,11 +321,11 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             missing_value=missing,  interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesCu1, Time,   &
             'water stress on ice - x component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,   &
             'water stress on ice - y component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesCu1, Time,     &
             'ice velocity - x component', 'm/s', missing_value=missing,        &
@@ -350,27 +350,27 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 
   CS%id_fix_d   = register_diag_field('ice_model', 'FI_d_X', diag%axesCu1, Time,         &
             'ice divergence internal stress - x component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fiy_d   = register_diag_field('ice_model', 'FI_d_Y', diag%axesCv1, Time,         &
             'ice divergence internal stress - y component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fix_t   = register_diag_field('ice_model', 'FI_t_X', diag%axesCu1, Time,        &
             'ice tension internal stress - x component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fiy_t   = register_diag_field('ice_model', 'FI_t_Y', diag%axesCv1, Time,        &
             'ice tension internal stress - y component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fix_s   = register_diag_field('ice_model', 'FI_s_X', diag%axesCu1, Time,        &
             'ice shearing internal stress - x component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fiy_s   = register_diag_field('ice_model', 'FI_s_Y', diag%axesCv1, Time,        &
             'ice shearing internal stress - y component', &
-            'Pa',  conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
 
   !### In the following 4 diagnostics, 'Pa' should be 'Pa m'
@@ -526,7 +526,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     fyic_t, & ! Meridional force due to tension internal stress [R Z L T-2 ~> Pa].
     fyic_s, & ! Meridional force due to shearing internal stress [R Z L T-2 ~> Pa].
     vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
-    vi_max_trunc, &  ! are truncated [m s-1], or 0 for land cells.
+    vi_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration [L T-2 ~> m s-2].
     PFv, &   ! Meridional hydrostatic pressure driven acceleration [L T-2 ~> m s-2].
     diag_val_v, & ! A temporary diagnostic array.
@@ -560,10 +560,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
   real :: tot_area  ! The sum of the area of the four neighboring cells [L2 ~> m2].
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings [L ~> m].
   real :: muq2, mvq2  ! The product of the u- and v-face masses per unit cell
-                      ! area surrounding a vorticity point [kg2 m-4].
+                      ! area surrounding a vorticity point [R2 Z2 ~> kg2 m-4].
   real :: muq, mvq    ! The u- and v-face masses per unit cell area extrapolated
-                      ! to a vorticity point on the coast [kg m-2].
- !  real :: pres_sum    ! The sum of the internal ice pressures aroung a point [Pa].
+                      ! to a vorticity point on the coast [R Z ~> kg m-2].
   real :: min_rescale ! The smallest of the 4 surrounding values of rescale [nondim].
   real :: I_1pdt_T    ! 1.0 / (1.0 + dt_2Tdamp) [nondim].
   real :: I_1pE2dt_T  ! 1.0 / (1.0 + EC^2 * dt_2Tdamp) [nondim].
@@ -856,7 +855,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
 
   if (CS%debug .or. CS%debug_redundant) then
     call uvchksum("PF[uv] in SIS_C_dynamics", PFu, PFv, G, scale=US%L_T_to_m_s*US%s_to_T)
-    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
     call uvchksum("[uv]i pre-steps SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     call uvchksum("[uv]o in SIS_C_dynamics", uo, vo, G, scale=US%L_T_to_m_s)
   endif
@@ -1176,8 +1175,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
                    haloshift=0, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
     endif
     if (CS%debug_EVP .and. (CS%debug .or. CS%debug_redundant)) then
-      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
       call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     endif

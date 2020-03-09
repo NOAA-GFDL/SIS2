@@ -152,22 +152,22 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
             'ice strength', 'Pa*m', missing_value=missing, conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,    &
-            'ice internal stress - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'ice internal stress - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesB1, Time,    &
-            'ice internal stress - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'ice internal stress - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesB1, Time,    &
-            'coriolis force - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'coriolis force - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesB1, Time,    &
-            'coriolis force - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'coriolis force - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesB1, Time,    &
-            'water stress on ice - x component', 'Pa', conversion=-US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'water stress on ice - x component', 'Pa', conversion=-US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesB1, Time,    &
-            'water stress on ice - y component', 'Pa', conversion=-US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+            'water stress on ice - y component', 'Pa', conversion=-US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesB1, Time,      &
             'ice velocity - x component', 'm/s', conversion=US%L_T_to_m_s,     &
@@ -418,7 +418,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   if (CS%debug .or. CS%debug_redundant) then
     call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true., scale=US%L_T_to_m_s)
     call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true., &
-                      scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                      scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
     call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true., scale=US%L_T_to_m_s)
     call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true., scale=US%L_T_to_m_s)
     call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true., scale=US%L_to_m)
@@ -464,7 +464,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         endif
 
         ! Hibler uses the following dimensonal constant ceiling to prevent nonlinear instability.
-        zeta = max(zeta, 4.0e8*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2*US%T_to_s)
+        zeta = max(zeta, 4.0e8*US%kg_m2s_to_RZ_T*US%m_to_L**2)
 
         eta = zeta*EC2I
         !
@@ -572,12 +572,12 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
       call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
       call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
 
-      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
-      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
       call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
     endif

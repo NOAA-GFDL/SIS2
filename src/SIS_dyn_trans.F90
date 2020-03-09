@@ -250,8 +250,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     ! This code reproduces a long-standing bug, in that the old ice-ocean
     ! stresses are being passed in place of the wind stresses on the icebergs.
     do j=jsc,jec ; do i=isc,iec
-      windstr_x(i,j) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_u_ocn(i,j)
-      windstr_y(i,j) = US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T*IOF%flux_v_ocn(i,j)
+      windstr_x(i,j) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_u_ocn(i,j)
+      windstr_y(i,j) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_v_ocn(i,j)
     enddo ; enddo
     stress_stagger = IOF%flux_uv_stagger
   else
@@ -471,7 +471,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             call hchksum(ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
             call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
             call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
-                          halos=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                          halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
     !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
           endif
 
@@ -532,7 +532,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1, scale=US%Z_to_m)
             call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G, scale=US%L_T_to_m_s)
             call Bchksum_pair("WindStr_[xy]_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1, &
-                              scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                              scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
           endif
 
           call mpp_clock_begin(iceClocka)
@@ -988,7 +988,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
         call hchksum(DS2d%ice_cover, "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
         call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
-                      halos=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                      halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
       endif
 
@@ -1039,7 +1039,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
         call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1, scale=US%Z_to_m)
         call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G, scale=US%L_T_to_m_s)
         call Bchksum_pair("WindStr_[xy]_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1, &
-                          scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                          scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       endif
 
       call mpp_clock_begin(iceClocka)
@@ -1224,7 +1224,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
         call hchksum(IST%part_size(:,:,1), "ice_cover before SIS_C_dynamics", G%HI, haloshift=1)
         call uvchksum("[uv]_ocn before SIS_C_dynamics", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=1, scale=US%L_T_to_m_s)
         call uvchksum("WindStr_[xy] before SIS_C_dynamics", WindStr_x_Cu, WindStr_y_Cv, G, &
-                      halos=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                      halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
       endif
 
@@ -1274,7 +1274,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
         call hchksum(OSS%sea_lev, "sea_lev before ice_dynamics", G%HI, haloshift=1, scale=US%Z_to_m)
         call Bchksum_pair("[uv]_ocn before ice_dynamics", OSS%u_ocn_B, OSS%v_ocn_B, G, scale=US%L_T_to_m_s)
         call Bchksum_pair("WindStr_[xy]_B before ice_dynamics", WindStr_x_B, WindStr_y_B, G, halos=1, &
-                          scale=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T)
+                          scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       endif
 
       call mpp_clock_begin(iceClocka)
@@ -2327,17 +2327,17 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   ! Stress dagnostics that are specific to the C-grid or B-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
-               'Air stress on ice on C-grid - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+               'Air stress on ice on C-grid - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
                 missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
-               'Air stress on ice on C-grid - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+               'Air stress on ice on C-grid - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
                missing_value=missing, interp_method='none')
   else
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
-               'air stress on ice - x component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+               'air stress on ice - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
                missing_value=missing, interp_method='none')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
-               'air stress on ice - y component', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s*US%s_to_T, &
+               'air stress on ice - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
                missing_value=missing, interp_method='none')
   endif
 

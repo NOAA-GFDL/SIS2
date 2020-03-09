@@ -265,7 +265,7 @@ subroutine defineAxes(diag_cs, handles, axes)
   axes%id = i2s(handles, n) ! Identifying string
   axes%rank = n
   axes%handles(:) = handles(:)
-  axes%diag_cs => diag_cs ! A [circular] link back to the SIS_diag_ctrl structure
+  axes%diag_cs => diag_cs ! A (circular) link back to the SIS_diag_ctrl structure
 end subroutine defineAxes
 
 !> Set up the current grid for the diag mediator
