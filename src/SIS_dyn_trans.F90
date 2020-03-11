@@ -232,7 +232,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, US=US)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   H_to_m_ice = US%Z_to_m / rho_ice
   call get_avg(IST%mH_ice, IST%part_size(:,:,1:), hi_avg, wtd=.true.)
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1

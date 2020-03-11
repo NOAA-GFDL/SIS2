@@ -566,7 +566,7 @@ subroutine ice_stock_pe(Ice, index, value)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice, US=G%US)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice)
 
   select case (index)
 

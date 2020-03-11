@@ -714,7 +714,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI, scale=US%QRZ_T_to_W_m2)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_vapor=LatHtVap, US=US)
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_vapor=LatHtVap)
 
   do j=jsc,jec ; do i=isc,iec
     flux_lh(i,j,0) = LatHtVap * evap(i,j,0)
@@ -931,7 +931,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, US, IG)
   endif
 
-  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, US=US)
+  call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col)
 
   !
   ! implicit update of ice surface temperature

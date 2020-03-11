@@ -144,7 +144,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   do_temp_diags = (IDs%id_tsn > 0)
   do m=1,NkIce ; if (IDs%id_t(m)>0) do_temp_diags = .true. ; enddo
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, rho_ice=rho_ice, rho_snow=rho_snow, &
-                             specified_thermo_salinity=spec_thermo_sal, US=US)
+                             spec_thermo_salin=spec_thermo_sal)
 
   if (do_temp_diags) then
     !$OMP parallel do default(shared)

@@ -255,7 +255,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   call temp_from_Enth_S(enthalpy(1:), sice(1:), temp_IC(1:), ITV)
 
   call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, &
-                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine, US=US)
+                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine)
 
   mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
   mL_snow = m_snow         ! snow mass per unit area [R Z ~> kg m-2].
@@ -599,7 +599,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   call temp_from_Enth_S(enthalpy(1:), sice(1:), temp_IC(1:), ITV)
 
   call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, &
-                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine, US=US)
+                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine)
 
   mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
   mL_snow = m_snow         ! snow mass per unit area (in kg m-2).
@@ -735,7 +735,7 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
 !  real :: T_itt(20), dTemp(20), Err_itt(20)
 
   call get_SIS2_thermo_coefs(ITV, Cp_Ice=Cp_ice, Latent_Fusion=LI, &
-                             Cp_Brine=Cp_Brine, Cp_Water=Cp_Water, US=US)
+                             Cp_Brine=Cp_Brine, Cp_Water=Cp_Water)
 
   if ( T_fr == 0.0 ) then
     ! For fresh water, avoid the degeneracy of the enthalpy-temperature
@@ -914,7 +914,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
   ! real :: T_itt(20), dTemp(20), Err_itt(20)
 
   call get_SIS2_thermo_coefs(ITV, Latent_Fusion=LI, &
-                             Cp_Ice=Cp_ice, Cp_Brine=Cp_brine, Cp_Water=Cp_water, US=US)
+                             Cp_Ice=Cp_ice, Cp_Brine=Cp_brine, Cp_Water=Cp_water)
 
   ! Solve m_lay*(enth - enth_in) + extra_heat = dt * (ht_body + ftop - fbot)
   !  ftop = ftop_in + temp*dftop_dT
@@ -1231,7 +1231,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   logical :: debug = .false.
 
   call get_SIS2_thermo_coefs(ITV, Latent_Fusion=LI, &
-                             Latent_vapor=Lat_vapor, Rho_water=rho_water, Rho_ice=rho_ice, US=US)
+                             Latent_vapor=Lat_vapor, Rho_water=rho_water, Rho_ice=rho_ice)
   min_dEnth_freeze = LI * (1.0-CS%liq_lim)
 
   pond_rate = CS%r_min_pond + (CS%r_max_pond-CS%r_min_pond)*a_ice
@@ -1517,7 +1517,7 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   integer :: k, tr
   logical :: debug = .false.
 
-  call get_SIS2_thermo_coefs(ITV, Latent_Fusion=LI, US=US)
+  call get_SIS2_thermo_coefs(ITV, Latent_Fusion=LI)
   min_dEnth_freeze = LI * (1.0-CS%liq_lim)
 
   ! set mass mark; will subtract the mass at end to find the melt flux to ocean
@@ -2140,7 +2140,7 @@ end function energy_melt_enthS
 !! appropriately if an optional unit_scale_type argument is provided.
 subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, Cp_brine, Cp_water, &
                                  rho_ice, rho_snow, rho_water, Latent_fusion, Latent_vapor, &
-                                 EOS, specified_thermo_salinity, slab_ice, US)
+                                 EOS, spec_thermo_salin, slab_ice)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real, dimension(:), &
            optional, intent(out) :: ice_salinity  !< The specified salinity of each layer when the
@@ -2157,38 +2157,24 @@ subroutine get_SIS2_thermo_coefs(ITV, ice_salinity, Cp_Ice, Cp_brine, Cp_water, 
   real,    optional, intent(out) :: Latent_vapor !< The latent heat of vaporization [Q ~> J kg-1].
   type(EOS_type), &
            optional, pointer     :: EOS       !< A pointer to the MOM6/SIS2 ocean equation-of-state type.
-  logical, optional, intent(out) ::  specified_thermo_salinity !< If true, all thermodynamic calculations
+  logical, optional, intent(out) ::  spec_thermo_salin !< If true, all thermodynamic calculations
                     !! are done with a specified salinity profile that may be independent of the ice
                     !! bulk salinity.
   logical, optional, intent(out) ::  slab_ice !< If true, use the very old slab ice thermodynamics,
                     !! with effectively zero heat capacity of ice and snow.
-  type(unit_scale_type), optional, intent(in) :: US  !< A structure with unit conversion factors
-
-  ! Local variables
-  real :: Q_scale    ! A heat capacity conversion factor
 
   call get_thermo_coefs(ice_salinity=ice_salinity)
 
-  if ((present(Cp_Ice) .or. present(Cp_Water) .or. present(Cp_Brine) .or. &
-       present(rho_ice) .or. present(rho_snow) .or. present(rho_water) .or. &
-       present(Latent_fusion) .or. present(Latent_vapor)) .and. .not.present(US) ) &
-    call SIS_error(FATAL, "get_SIS2_thermo_coefs :: US must be present when a heat capacity, density "//&
-                          "or latent heat is requested.")
-
-  if (present(US)) then
-    Q_scale = ITV%Q_to_J_kg*US%J_kg_to_Q
-  endif
-
-  if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice*Q_scale
-  if (present(Cp_Water)) Cp_Water = ITV%Cp_Water*Q_scale
-  if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine*Q_scale
+  if (present(Cp_Ice)) Cp_Ice = ITV%Cp_Ice
+  if (present(Cp_Water)) Cp_Water = ITV%Cp_Water
+  if (present(Cp_Brine)) Cp_Brine = ITV%Cp_Brine
   if (present(rho_ice)) rho_ice = ITV%rho_ice
   if (present(rho_snow)) rho_snow = ITV%rho_snow
   if (present(rho_water)) rho_water = ITV%rho_water
-  if (present(Latent_fusion)) Latent_fusion = ITV%Lat_Fus*Q_scale
-  if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor*Q_scale
+  if (present(Latent_fusion)) Latent_fusion = ITV%Lat_Fus
+  if (present(Latent_vapor)) Latent_vapor = ITV%Lat_Vapor
 
-  if (present(specified_thermo_salinity)) specified_thermo_salinity = .true.
+  if (present(spec_thermo_salin)) spec_thermo_salin = .true.
   if (present(slab_ice)) slab_ice = ITV%slab_ice
   if (present(EOS)) then
     if (.not.associated(ITV%EOS)) call SIS_error(FATAL, &

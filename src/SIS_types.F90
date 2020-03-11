@@ -2587,8 +2587,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
     call SIS_error(WARNING, "Bad ice state "//trim(err)//" "//trim(msg)//" ; "//trim(mesg1)//&
                             " ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
-      call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
-                                 specified_thermo_salinity=spec_thermo_sal)
+      call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, spec_thermo_salin=spec_thermo_sal)
       if (.not.spec_thermo_sal) then
         do m=1,NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
       endif

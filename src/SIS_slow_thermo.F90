@@ -365,7 +365,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
     h_ice_input(:,:) = 0.0
     call get_sea_surface(CS%Time, OSS%SST_C(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,:), &
                          h_ice_input(isc:iec,jsc:jec), ts_in_K=.false.)
-    call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, US=US)
+    call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
     do j=jsc,jec ; do i=isc,iec
       IST%mH_ice(i,j,1) = US%m_to_Z*h_ice_input(i,j) * rho_ice
     enddo ; enddo
@@ -672,8 +672,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0 / dt_slow
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
-                   rho_ice=rho_ice, specified_thermo_salinity=spec_thermo_sal, &
-                   Latent_fusion=LatHtFus, Latent_vapor=LatHtVap, US=US)
+                   rho_ice=rho_ice, spec_thermo_salin=spec_thermo_sal, &
+                   Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
   S_col0(0) = 0.0 ; do m=1,NkIce ; S_col0(m) = S_col(m) ; enddo
   call calculate_T_Freeze(S_col0(0:NkIce), Tfr_col0(0:NkIce), IST%ITV)
 
@@ -697,7 +697,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
     pres_0(:) = 0.0
-    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS, US=US)
+    call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
     do j=jsc,jec ; do i=isc,iec
       if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
@@ -726,7 +726,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (CS%do_ice_restore) then
     ! get observed ice thickness for ice restoring, if calculating qflux
     call get_sea_surface(CS%Time, Obs_SST, Obs_cn_ice, Obs_h_ice)
-    call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus, US=US)
+    call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
     qflx_res_ice(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec
       e2m_tot = 0.0

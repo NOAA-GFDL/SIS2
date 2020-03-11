@@ -742,7 +742,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(IOF%flux_sw_ocn, 3)
 
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, US=US)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
   if (CS%dt < 0.0) CS%dt = dt
 
@@ -857,7 +857,7 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
   ! not include the enthalpy changes due to net mass changes in the ice,
   ! as these are not yet known.
 
-  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, US=US)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
   !$OMP parallel do default(shared) private(area_pt)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.

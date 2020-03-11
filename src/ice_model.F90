@@ -2286,7 +2286,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G
 
     allocate(S_col(NkIce)) ; S_col(:) = 0.0
-    call get_SIS2_thermo_coefs(sIST%ITV, ice_salinity=S_col, specified_thermo_salinity=spec_thermo_sal)
+    call get_SIS2_thermo_coefs(sIST%ITV, ice_salinity=S_col, spec_thermo_salin=spec_thermo_sal)
 
     restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
 

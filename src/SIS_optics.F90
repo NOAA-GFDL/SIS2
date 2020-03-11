@@ -262,7 +262,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
 
   nb = size(albedos)
 
-  call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, rho_water=rho_water, US=US)
+  call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, rho_water=rho_water)
   hi = (1.0 / Rho_ice) * m_ice
   hs = (1.0 / Rho_snow) * m_snow
 
