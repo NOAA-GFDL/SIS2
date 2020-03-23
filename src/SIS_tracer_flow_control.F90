@@ -145,18 +145,18 @@ end subroutine SIS_tracer_flow_control_init
 
 !> Call all registered ice-tracer column physics subroutines
 subroutine SIS_call_tracer_column_fns(dt, G, IG, CS, mi, mi_old)
-  real,                    intent(in) :: dt  !< The amount of time covered by this call [s].
+  real,                    intent(in) :: dt  !< The amount of time covered by this call [T ~> s].
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_flow_control_CS), &
                            pointer    :: CS  !< The control structure returned by a
                                              !! previous call to SIS_call_tracer_register.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi  !< Mass of ice in a given category [kg m-2] at the
-                                             !! end of the timestep
+                           intent(in) :: mi  !< Mass of ice in a given category [R Z ~> kg m-2] at
+                                             !! the end of the timestep
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi_old  !< Mass of ice in a given category [kg m-2] at the
-                                             !! beginning of the timestep
+                           intent(in) :: mi_old !< Mass of ice in a given category [R Z ~> kg m-2]
+                                             !! at the beginning of the timestep
 
   ! This subroutine calls all registered ice-tracer column physics subroutines.
 
@@ -176,7 +176,8 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
   type(SIS_tracer_flow_control_CS), pointer     :: CS  !< The control structure returned by a
                                                        !! previous call to SIS_call_tracer_register.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                    intent(in)  :: mi  !< Mass of ice in a given category [kg m-2], used for summing
+                                    intent(in)  :: mi  !< Mass of ice in a given category used for
+                                                       !! summing [R Z ~> kg m-2]
   real, dimension(:),               intent(out) :: stock_values !< The values of the summed tracer stocks.
   character(len=*), dimension(:), &
                          optional,  intent(out) :: stock_names !< The names of the summed tracer stocks.
@@ -199,8 +200,7 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
 
   !  Add other user-provided calls here.
   if (CS%use_ice_age) then
-    ns = ice_age_stock(mi, values, G, IG, CS%ice_age_tracer_CSp, &
-                         names, units)
+    ns = ice_age_stock(mi, values, G, IG, CS%ice_age_tracer_CSp, names, units)
     call SIS_store_stocks("ice_age_tracer", ns, names, units, values, stock_values, &
         ns_tot, stock_names, stock_units)
 

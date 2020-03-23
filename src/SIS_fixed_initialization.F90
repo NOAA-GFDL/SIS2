@@ -151,7 +151,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
                  " \t flat - flat bottom set to MAXIMUM_DEPTH. \n"//&
                  " \t bowl - an analytically specified bowl-shaped basin \n"//&
                  " \t\t ranging between MAXIMUM_DEPTH and MINIMUM_DEPTH. \n"//&
-                 " \t spoon - a similar shape to 'bowl', but with an vertical \n"//&
+                 " \t spoon - a similar shape to 'bowl', but with a vertical \n"//&
                  " \t\t wall at the southern face. \n"//&
                  " \t halfpipe - a zonally uniform channel with a half-sine \n"//&
                  " \t\t profile in the meridional direction.", &

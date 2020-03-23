@@ -144,7 +144,7 @@ subroutine copy_dyngrid_to_SIS_horgrid(dG, SG)
 end subroutine copy_dyngrid_to_SIS_horgrid
 
 
-!> Copies information from an SIS_hor_grid_type into a dynamic (shared)
+!> Copies information from a SIS_hor_grid_type into a dynamic (shared)
 !! horizontal grid type.
 subroutine copy_SIS_horgrid_to_dyngrid(SG, dG)
   type(SIS_hor_grid_type), intent(in)    :: SG  !< !< SIS2 horizontal grid type

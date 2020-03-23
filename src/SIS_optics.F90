@@ -11,6 +11,7 @@ use SIS2_ice_thm, only : ice_thermo_type, get_SIS2_thermo_coefs, T_freeze
 ! use MOM_EOS, only : EOS_type, EOS_init, EOS_end
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_unit_scaling, only : unit_scale_type
 
 implicit none ; private
 
@@ -31,12 +32,12 @@ type, public :: SIS_optics_CS ; private
   real :: alb_snow        !< albedo of snow (not melting) [nondim]
   real :: alb_ice         !< albedo of ice (not melting) [nondim]
   real :: pen_ice         !< ice surface penetrating solar fraction [nondim]
-  real :: opt_dep_ice     !< ice optical depth [m]
+  real :: opt_dep_ice     !< ice optical depth [Z ~> m]
   real :: t_range_melt    !< melt albedos scaled in below melting T [degC]
 
   logical :: do_deltaEdd = .true.  !< If true, use a delta-Eddington radiative
-                          ! transfer calculation for the shortwave radiation
-                          ! within the sea-ice and snow.
+                          !! transfer calculation for the shortwave radiation
+                          !! within the sea-ice and snow.
 
   logical :: do_pond = .false. !< activate melt pond scheme - mw/new
   real :: max_pond_frac = 0.5  !< pond water beyond this is dumped [nondim]
@@ -45,7 +46,7 @@ type, public :: SIS_optics_CS ; private
   logical :: slab_optics = .false. !< If true use the very old slab ice optics
                                    !! from the supersource model.
   real :: slab_crit_thick !< The thickness beyond which the slab ice optics no
-                          !! longer exhibits a thickness dependencs on albedo [m].
+                          !! longer exhibits a thickness dependencs on albedo [Z ~> m].
   real :: slab_alb_ocean  !< The ocean albedo as used in the slab ice optics [nondim].
   real :: slab_min_ice_alb !< The minimum thick ice albedo with the slab ice optics [nondim].
 
@@ -55,12 +56,13 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_optics_init initalizes the SIS2 optics module
-subroutine SIS_optics_init(param_file, CS, slab_optics)
+subroutine SIS_optics_init(param_file, US, CS, slab_optics)
 
-  type(param_file_type), intent(in) :: param_file !< Parameter file handle
-  type(SIS_optics_CS),   pointer :: CS          !< A pointer to the SIS_optics control structure.
-  logical,              optional :: slab_optics !< If true use the very old slab ice optics
-                                                !! from the supersource model.
+  type(param_file_type), intent(in) :: param_file  !< Parameter file handle
+  type(unit_scale_type), intent(in) :: US          !< A structure with unit conversion factors
+  type(SIS_optics_CS),   pointer    :: CS          !< A pointer to the SIS_optics control structure.
+  logical, optional,     intent(in) :: slab_optics !< If true use the very old slab ice optics
+                                                   !! from the supersource model.
 
   !
   ! Albedo tuning parameters are documented in:
@@ -134,7 +136,7 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
                  default=0.3, do_not_log=CS%do_deltaEdd)
   call get_param(param_file, mdl, "ICE_OPTICAL_DEPTH", CS%opt_dep_ice, &
                  "The optical depth of shortwave radiation in sea ice.", &
-                 units="m", default=0.67, do_not_log=CS%do_deltaEdd)
+                 units="m", default=0.67, scale=US%m_to_Z, do_not_log=CS%do_deltaEdd)
   T_range_dflt = 1.0 ; if (CS%slab_optics) T_range_dflt = 10.0
   call get_param(param_file, mdl, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
                  "The temperature range below freezing over which the \n"//&
@@ -144,7 +146,7 @@ subroutine SIS_optics_init(param_file, CS, slab_optics)
   ! These parameters pertain only to the ancient slab ice optics parameterization.
   call get_param(param_file, mdl, "SLAB_OPTICS_CRITICAL_THICK", CS%slab_crit_thick, &
                  "The thickness beyond which the slab ice optics no longer \n"//&
-                 "exhibits a thickness dependencs on albedo.", units="m", &
+                 "exhibits a thickness dependencs on albedo.", units="m", scale=US%m_to_Z, &
                  default=1.0, do_not_log=.not.CS%slab_optics)
   call get_param(param_file, mdl, "SLAB_OPTICS_OCEAN_ALBEDO", CS%slab_alb_ocean, &
                  "The ocean albedo as used in the slab ice optics.", units="nondim", &
@@ -157,24 +159,28 @@ end subroutine SIS_optics_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_optics_SIS2 sets albedo, penetrating solar, and ice/snow transmissivity
-subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
-                    abs_snow, abs_ice_lay, abs_ocn, abs_int, CS, ITV, coszen_in)
-  real, intent(in   ) :: mp  !< pond mass [kg m-2]
-  real, intent(in   ) :: hs  !< snow thickness [m]
-  real, intent(in   ) :: hi  !< ice thickness [m]
-  real, intent(in   ) :: ts  !< surface temperature [degC].
-  real, intent(in   ) :: tfw !< seawater freezing temperature [degC]
-  integer, intent(in) :: NkIce !< The number of sublayers in the ice
+subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_sfc, &
+                    abs_snow, abs_ice_lay, abs_ocn, abs_int, US, CS, ITV, coszen_in)
+  real, intent(in   ) :: m_pond   !< pond mass [R Z ~> kg m-2]
+  real, intent(in   ) :: m_snow   !< snow mass per unit area [R Z ~> kg m-2]
+  real, intent(in   ) :: m_ice    !< ice thickness [R Z ~> kg m-2]
+  real, intent(in   ) :: ts       !< surface temperature [degC]
+  real, intent(in   ) :: tfw      !< seawater freezing temperature [degC]
+  integer, intent(in) :: NkIce    !< The number of sublayers in the ice
   real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1) [nondim]
   real, intent(  out) :: abs_sfc  !< fraction of absorbed SW that is absorbed at surface [nondim]
   real, intent(  out) :: abs_snow !< fraction of absorbed SW that is absorbed in snow [nondim]
   real, intent(  out) :: abs_ice_lay(NkIce) !< fraction of absorbed SW that is absorbed by each ice layer [nondim]
   real, intent(  out) :: abs_ocn  !< fraction of absorbed SW that is absorbed in ocean [nondim]
   real, intent(  out) :: abs_int  !< fraction of absorbed SW that is absorbed in ice interior [nondim]
-  type(SIS_optics_CS), intent(in) :: CS  !< The ice optics control structure.
+  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
+  type(SIS_optics_CS),   intent(in) :: CS  !< The ice optics control structure.
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, intent(in),optional :: coszen_in !< The cosine of the solar zenith angle [nondim].
+  real, intent(in), optional :: coszen_in !< The cosine of the solar zenith angle [nondim].
 
+  ! Local variables
+  real :: hs              ! snow thickness [Z ~> m]
+  real :: hi              ! ice thickness [Z ~> m]
   real :: alb             ! The albedo for all bands, 0-1 [nondim].
   real :: as              ! A snow albedo, 0-1 [nondim].
   real :: ai              ! The ice albedo, 0-1 [nondim].
@@ -185,13 +191,14 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
                           ! is still present at the top of each ice layer [nondim].
   real :: opt_decay_lay   ! The optical extinction in each ice layer [nondim].
-  real :: rho_ice         ! The nominal density of sea ice [kg m-3].
-  real :: rho_snow        ! The nominal density of snow [kg m-3].
-  real :: rho_water       ! The nominal density of sea water [kg m-3].
+  real :: rho_ice         ! The nominal density of sea ice [R ~> kg m-3].
+  real :: rho_snow        ! The nominal density of snow [R ~> kg m-3].
+  real :: rho_water       ! The nominal density of sea water [R ~> kg m-3].
   real :: pen             ! The fraction of the shortwave flux that will pass below
                           ! the surface (frac 1-pen absorbed at the surface) [nondim]
   real :: sal_ice_top(1)  ! A specified surface salinity of ice [gSalt kg-1].
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
+  real :: max_mp          ! The maximum melt pond mass at the waterline [R Z ~> kg m-2]
   integer :: m, b, nb
   character(len=200) :: mesg
 
@@ -208,8 +215,8 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
   ! inputs
   real (kind=dbl_kind), dimension (1,1) :: &
     aice   , & ! concentration of ice
-    vice   , & ! volume of ice
-    vsno   , & ! volume of snow
+    vice   , & ! volume of ice [m]
+    vsno   , & ! volume of snow [m]
     Tsfc   , & ! surface temperature
     coszen , & ! cosine of solar zenith angle
     tarea  , & ! cell area - not used
@@ -251,9 +258,13 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
     albsno  , & ! snow albedo, for history [nondim]
     albpnd      ! pond albedo, for history [nondim]
 
-  real (kind=dbl_kind) :: max_mp, hs_mask_pond, pond_decr
+  real (kind=dbl_kind) :: hs_mask_pond, pond_decr
 
   nb = size(albedos)
+
+  call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, rho_water=rho_water)
+  hi = (1.0 / Rho_ice) * m_ice
+  hs = (1.0 / Rho_snow) * m_snow
 
   if (CS%slab_optics) then
     ! This option uses a very old slab ice albedo parameterization, which was
@@ -294,10 +305,10 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
 
     ! stuff that matters
     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
-    if(present(coszen_in))  coszen(1,1) = max(0.01,coszen_in)
+    if (present(coszen_in)) coszen(1,1) = max(0.01,coszen_in)
     Tsfc(1,1) = ts
-    vsno(1,1) = hs
-    vice(1,1) = hi
+    vsno(1,1) = US%Z_to_m*hs
+    vice(1,1) = US%Z_to_m*hi
     swvdr(1,1) = 0.25
     swvdf(1,1) = 0.25
     swidr(1,1) = 0.25
@@ -307,19 +318,17 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
              aice, vsno, Tsfc, fs, rhosnw, rsnw) ! out: fs, rhosnw, rsnw
 
     if ( CS%do_pond ) then ! mw/new
-      call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, &
-                                 rho_water=rho_water)
 
-      max_mp = (Rho_water-Rho_ice)*hi  ! max pond allowed by waterline
-      fp(1,1) = CS%max_pond_frac*sqrt(min(1.0,mp/max_mp))
+      max_mp = (rho_water - rho_ice) * hi  ! max pond allowed by waterline
+      fp(1,1) = CS%max_pond_frac*sqrt(min(1.0,m_pond/max_mp))
       ! set average pond depth (max. = 2*average)
-      hprad(1,1) = mp/(fp(1,1)*1000)  ! freshwater density = 1000 kg/m2
-      fs(1,1) = fs(1,1)*(1-fp(1,1))   ! reduce fs to frac of pond-free ice
+      hprad(1,1) = US%RZ_to_kg_m2*m_pond / (fp(1,1)*1000.0) ! freshwater density = 1000 kg/m2
+      fs(1,1) = fs(1,1)*(1.0-fp(1,1))   ! reduce fs to frac of pond-free ice
       ! decrement fp (increment fs) for snow masking of pond: pond is completely
       ! masked when snow depth contains 2*average_pond_depth in its pore space
       if (hs>0.0 .and. hprad(1,1)>0.0) then
-        hs_mask_pond = 2*hprad(1,1)*Rho_ice/(Rho_ice-Rho_snow)
-        pond_decr = fp(1,1)*min(1.0,hs/hs_mask_pond)
+        hs_mask_pond = 2*hprad(1,1)*rho_ice / (rho_ice - rho_snow)
+        pond_decr = fp(1,1)*min(1.0, US%Z_to_m*hs/hs_mask_pond)
         fp(1,1) = fp(1,1) - pond_decr
         fs(1,1) = fs(1,1) + pond_decr
       endif
@@ -354,11 +363,11 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
 
   else
     as = CS%alb_snow ; ai = CS%alb_ice
-    snow_cover = hs/(hs+0.02)                ! thin snow partially covers ice
+    snow_cover = hs / (hs + 0.02*US%m_to_Z)  ! thin snow partially covers ice
     call get_SIS2_thermo_coefs(ITV, ice_salinity=sal_ice_top)
     temp_ice_freeze = T_freeze(sal_ice_top(1), ITV)
 
-    fh = min(atan(5.0*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
+    fh = min(atan(5.0*US%Z_to_m*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
     ! reduce albedo for thin ice
     if (ts+CS%T_RANGE_MELT > temp_ice_freeze) then        ! reduce albedo for melting as in
        ! CSIM4 assuming 0.53/0.47 vis/ir
@@ -372,7 +381,7 @@ subroutine ice_optics_SIS2(mp, hs, hi, ts, tfw, NkIce, albedos, abs_sfc, &
 
     pen = (1-snow_cover)*CS%pen_ice
     opt_decay_lay = exp(-hi/(NkIce*CS%opt_dep_ice))
-    abs_ocn = pen * exp(-hi/CS%opt_dep_ice)
+    abs_ocn = pen * exp(-hi/(CS%opt_dep_ice))
     abs_sfc  = 1.0 - pen
     abs_snow = 0.0
     SW_frac_top = pen

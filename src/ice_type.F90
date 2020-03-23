@@ -539,7 +539,7 @@ subroutine ice_stock_pe(Ice, index, value)
 
   type(ice_state_type), pointer :: IST => NULL()
   real :: icebergs_value
-  real :: LI
+  real :: LI  ! Latent heat of fusion [Q ~> J kg-1]
   real :: part_wt, I_NkIce, kg_H, kg_H_Nk
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
@@ -552,11 +552,11 @@ subroutine ice_stock_pe(Ice, index, value)
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST
     G => Ice%sCS%G
-    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = Ice%sCS%IG%H_to_kg_m2
+    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
   elseif (associated(Ice%fCS)) then
     IST => Ice%fCS%IST
     G => Ice%fCS%G
-    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = Ice%fCS%IG%H_to_kg_m2
+    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
                    "without either sCS or fCS associated.")
@@ -583,7 +583,7 @@ subroutine ice_stock_pe(Ice, index, value)
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
               value = value - (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k) * &
-                              (kg_H * IST%mH_ice(i,j,k)) * LI
+                              (kg_H * IST%mH_ice(i,j,k)) * LI*G%US%Q_to_J_kg
           endif
         enddo ; enddo ; enddo
       else !### Should this be changed to raise the temperature to 0 degC?

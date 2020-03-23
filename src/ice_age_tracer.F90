@@ -90,7 +90,8 @@ type, public :: ice_age_tracer_CS
   type(SIS_diag_ctrl), pointer :: diag=>NULL() !< A structure that is used to regulate the
                                                !! timing of diagnostic output.
 
-  real :: min_mass                            !< Minimum mass of ice in thickness category for it to 'exist'
+  real :: min_mass                            !< Minimum mass of ice in thickness category for it
+                                              !! to 'exist' [R Z ~> kg m-2]
   type(vardesc) :: tr_desc(NTR_MAX)           !< Descriptions and metadata for the tracers
 end type ice_age_tracer_CS
 
@@ -166,7 +167,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
       CS%land_val(m) = 0.0
       CS%nlevels(m) = IG%NkIce
   endif
-  CS%min_mass = 1.0e-7*IG%H_to_kg_m2
+  CS%min_mass = 1.0e-7*G%US%kg_m3_to_R*G%US%m_to_Z
 
   ! Allocate the main tracer arrays
   allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,IG%NkIce,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
@@ -286,20 +287,20 @@ end subroutine initialize_ice_age_tracer
 
 !> Change the ice age tracers due to ice column physics like melting and freezing
 subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
-  real,                    intent(in) :: dt  !< The amount of time covered by this call [s].
+  real,                    intent(in) :: dt  !< The amount of time covered by this call [T ~> s].
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
   type(ice_age_tracer_CS), pointer    :: CS  !< The control structure returned by a
                                              !! previous call to register_ideal_age_tracer.
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi  !< Mass of ice in a given category [kg m-2] at the
+                           intent(in) :: mi  !< Mass of ice in a given category [R Z ~> kg m-2] at the
                                              !! end of the timestep
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(in) :: mi_old  !< Mass of ice in a given category [kg m-2] at the
+                           intent(in) :: mi_old  !< Mass of ice in a given category [R Z ~> kg m-2] at the
                                              !! beginning of the timestep
 
   ! Local variables
-  real :: Isecs_per_year  ! The number of seconds in a year.
+  real :: Isecs_per_year  ! The inverse of the time in a year [T-1 ~> s-1].
   real :: year            ! The time in years.
   real :: dt_year         ! Timestep in units of years
   real :: min_age         ! Minimum age of ice to avoid being set to 0
@@ -314,7 +315,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
 
   if (CS%ntr < 1) return
 
-  Isecs_per_year = 1.0 / (365.0*86400.0)
+  Isecs_per_year = 1.0 / (365.0*86400.0*G%US%s_to_T)
   dt_year = dt * Isecs_per_year
 
   min_age = 0.0
@@ -330,7 +331,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
             do k=1,IG%CatIce; do m=1,CS%nlevels(tr)
               if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
 
-              if(mi(i,j,k)>CS%min_mass) then
+              if(mi(i,j,k) > CS%min_mass) then
                 CS%tr(i,j,k,m,tr) = CS%tr(i,j,k,m,tr) + dt_year
               else
                 CS%tr(i,j,k,m,tr) = 0.0
@@ -374,8 +375,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     if (CS%id_tr_ady(tr)>0) &
         call post_data(CS%id_tr_ady(tr),CS%tr_ady(tr)%p(:,:,:),CS%diag)
     if (CS%id_avg(tr)>0) then
-      call post_avg(CS%id_avg(tr), tr_avg, mi, &
-          CS%diag, G=G, wtd=.true.)
+      call post_avg(CS%id_avg(tr), tr_avg, mi, CS%diag, G=G, wtd=.true.)
     endif
   enddo
 
@@ -387,7 +387,8 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
   type(sis_hor_grid_type),        intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                                  intent(in)  :: mi  !< Mass of ice in a given category [kg m-2], used for summing
+                                  intent(in)  :: mi  !< Mass of ice in a given category [R Z ~> kg m-2],
+                                                     !! used for summing
   type(ice_age_tracer_CS),        pointer     :: CS  !< The control structure returned by a
                                                      !! previous call to register_ideal_age_tracer.
   character(len=*), dimension(:), intent(out) :: names !< The names of the summed tracer stocks.
@@ -418,7 +419,7 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
       avg_tr = avg_tr/IG%NkIce
 
       stocks(tr) = stocks(tr) + avg_tr * &
-          (G%mask2dT(i,j) * G%US%m_to_L**2*G%areaT(i,j) * mi(i,j,k))
+          (G%mask2dT(i,j) * G%US%RZ_to_kg_m2*G%US%L_to_m**2*G%areaT(i,j) * mi(i,j,k))
     enddo ; enddo ; enddo
 
   enddo
@@ -457,14 +458,14 @@ end subroutine ice_age_end
 !*  that exceeds a given threshold is increased by the length of the   *
 !*  timestep. The maximum of the age tracer may be expected to be      *
 !*  similar to observational estimates of ice age.                     *
-!*  Reference: Hunke and Bitz [2009], JGR                              *
+!*  Reference: Hunke and Bitz, 2009, JGR                               *
 !*                                                                     *
 !*  Mass balance age tracer:                                           *
 !*      As before, all ice that exceeds a given proscribed area is     *
 !*  increased by the length of the timestep. However, any ice that is  *
 !*  formed from seawater and added to existing ice has an age equal    *
 !*  to the length of the timestep                                      *
-!*  Reference: Lietaer et al. [2011], Ocean Modeling                   *
+!*  Reference: Lietaer et al., 2011, Ocean Modelling                   *
 !*                                                                     *
 !*                                                                     *
 !*  This file is adapted from ideal_age_example.F90 included as        *
