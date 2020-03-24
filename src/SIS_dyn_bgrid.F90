@@ -97,22 +97,22 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
-                 "The sub-cycling time step for iterating the rheology \n"//&
-                 "and ice momentum equations. If DT_RHEOLOGY is negative, \n"//&
+                 "The sub-cycling time step for iterating the rheology "//&
+                 "and ice momentum equations. If DT_RHEOLOGY is negative, "//&
                  "the time step is set via NSTEPS_DYN.", units="seconds", scale=US%s_to_T, &
                  default=-1.0)
   CS%evp_sub_steps = -1
   if (CS%dt_Rheo <= 0.0) &
     call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &
-                 "The number of iterations of the rheology and ice \n"//&
+                 "The number of iterations of the rheology and ice "//&
                  "momentum equations for each slow ice time step.", default=432)
 
   call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
-                 "A constant in the expression for the ice strength, \n"//&
+                 "A constant in the expression for the ice strength, "//&
                  "P* in Hunke & Dukowicz 1997.", &
                  units="Pa", scale=US%kg_m3_to_R*US%m_s_to_L_T**2, default=2.75e4)
   call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
-                 "A constant in the exponent of the expression for the \n"//&
+                 "A constant in the exponent of the expression for the "//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
                  units="nondim", default=20.)
   call get_param(param_file, mdl, "ICE_CDRAG_WATER", CS%cdw, &
@@ -140,8 +140,8 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
                  "If true, debug redundant data points.", default=CS%debug, &
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
-                 "An angle by which to rotate the velocities at the air- \n"//&
-                 "water boundary in calculating stresses.", units="degrees", &
+                 "An angle by which to rotate the velocities at the air-water "//&
+                 "boundary in calculating stresses.", units="degrees", &
                  default=0.0)
 
 

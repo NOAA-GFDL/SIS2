@@ -1142,28 +1142,28 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
-                 "If true, readjust the distribution into ice thickness \n"//&
+                 "If true, readjust the distribution into ice thickness "//&
                  "categories after advection.", default=.true.)
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
-                 "A factor by which the propensity of small amounts of \n"//&
-                 "thick sea-ice to become thinner by rolling is increased \n"//&
-                 "or 0 to disable rolling.  This can be thought of as the \n"//&
-                 "minimum number of ice floes in a grid cell divided by \n"//&
-                 "the horizontal floe aspect ratio.  Sensible values are \n"//&
+                 "A factor by which the propensity of small amounts of "//&
+                 "thick sea-ice to become thinner by rolling is increased "//&
+                 "or 0 to disable rolling.  This can be thought of as the "//&
+                 "minimum number of ice floes in a grid cell divided by "//&
+                 "the horizontal floe aspect ratio.  Sensible values are "//&
                  "0 (no rolling) or larger than 1.", units="Nondim", default=1.0)
 
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
-                 "If true, use add multiple diagnostics of ice and snow \n"//&
-                 "mass conservation in the sea-ice transport code.  This \n"//&
+                 "If true, use add multiple diagnostics of ice and snow "//&
+                 "mass conservation in the sea-ice transport code.  This "//&
                  "is expensive and should be used sparingly.", &
                  default=.false., debuggingParam=.true.)
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
-                 "If true, apply a ridging scheme to the convergent ice. \n"//&
-                 "Otherwise, ice is compressed proportionately if the \n"//&
-                 "concentration exceeds 1.  The original SIS2 implementation \n"//&
+                 "If true, apply a ridging scheme to the convergent ice. "//&
+                 "Otherwise, ice is compressed proportionately if the "//&
+                 "concentration exceeds 1.  The original SIS2 implementation "//&
                  "is based on work by Torge Martin.", default=.false.)
   call get_param(param_file, mdl, "SIS_THICKNESS_ADVECTION_SCHEME", scheme, &
           desc="The horizontal transport scheme for thickness:\n"//&
@@ -1173,18 +1173,18 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
           "  PPM:H3 - Piecewise Parabolic Method (Huyhn 3rd order)", &
           default='UPWIND_2D')
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
-                 "If true, periodically check the values of ice and snow \n"//&
-                 "temperatures and thicknesses to ensure that they are \n"//&
-                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "If true, periodically check the values of ice and snow "//&
+                 "temperatures and thicknesses to ensure that they are "//&
+                 "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
   call get_param(param_file, mdl, "MERGED_CONTINUITY", merged_cont, &
-               "If true, update the continuity equations for the ice, snow, \n"//&
-               "and melt pond water together summed across categories, with \n"//&
-               "proportionate fluxes for each part. Otherwise the media are \n"//&
+               "If true, update the continuity equations for the ice, snow, "//&
+               "and melt pond water together summed across categories, with "//&
+               "proportionate fluxes for each part. Otherwise the media are "//&
                "updated separately.", default=.false., do_not_log=.true.)
   call get_param(param_file, mdl, "INCONSISTENT_COVER_BUG", CS%inconsistent_cover_bug, &
-                 "If true, omit a recalculation of the fractional ice-free \n"//&
+                 "If true, omit a recalculation of the fractional ice-free "//&
                  "areal coverage after the adjustment of the ice categories.", &
                  default=.true., do_not_log=merged_cont)
   if (merged_cont) CS%inconsistent_cover_bug = .false.

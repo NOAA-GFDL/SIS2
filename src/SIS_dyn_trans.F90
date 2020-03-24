@@ -2201,45 +2201,45 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   call log_version(param_file, mdl, version, &
      "This module updates the ice momentum and does ice transport.")
   call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
-                 "If true, use a C-grid discretization of the sea-ice \n"//&
+                 "If true, use a C-grid discretization of the sea-ice "//&
                  "dynamics; if false use a B-grid discretization.", &
                  default=.false.)
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
-                 "The time step used for the slow ice dynamics, including \n"//&
-                 "stepping the continuity equation and interactions \n"//&
-                 "between the ice mass field and velocities.  If 0 or \n"//&
+                 "The time step used for the slow ice dynamics, including "//&
+                 "stepping the continuity equation and interactions "//&
+                 "between the ice mass field and velocities.  If 0 or "//&
                  "negative the coupling time step will be used.", &
                  units="seconds", scale=US%s_to_T, default=-1.0)
   call get_param(param_file, mdl, "MERGED_CONTINUITY", CS%merged_cont, &
-                 "If true, update the continuity equations for the ice, snow, \n"//&
-                 "and melt pond water together summed across categories, with \n"//&
-                 "proportionate fluxes for each part. Otherwise the media are \n"//&
+                 "If true, update the continuity equations for the ice, snow, "//&
+                 "and melt pond water together summed across categories, with "//&
+                 "proportionate fluxes for each part. Otherwise the media are "//&
                  "updated separately.", default=.false.)
   call get_param(param_file, mdl, "DT_ICE_ADVECT", CS%dt_advect, &
-                 "The time step used for the advecting tracers and masses as \n"//&
-                 "partitioned by thickness categories when merged_cont it true. \n"//&
+                 "The time step used for the advecting tracers and masses as "//&
+                 "partitioned by thickness categories when merged_cont it true. "//&
                  "If 0 or negative, the coupling time step will be used.", &
                  units="seconds", scale=US%s_to_T, default=-1.0, do_not_log=.not.CS%merged_cont)
   if (.not.CS%merged_cont) CS%dt_advect = CS%dt_ice_dyn
   call get_param(param_file, mdl, "DO_RIDGING", CS%do_ridging, &
-                 "If true, apply a ridging scheme to the convergent ice. \n"//&
-                 "Otherwise, ice is compressed proportionately if the \n"//&
-                 "concentration exceeds 1.  The original SIS2 implementation \n"//&
+                 "If true, apply a ridging scheme to the convergent ice. "//&
+                 "Otherwise, ice is compressed proportionately if the "//&
+                 "concentration exceeds 1.  The original SIS2 implementation "//&
                  "is based on work by Torge Martin.", default=.false.)
   call get_param(param_file, mdl, "NSTEPS_ADV", CS%adv_substeps, &
-                 "The number of advective iterations for each slow dynamics \n"//&
+                 "The number of advective iterations for each slow dynamics "//&
                  "time step.", default=1)
   if (CS%adv_substeps < 1) CS%adv_substeps = 1
 
   call get_param(param_file, mdl, "ICEBERG_WINDSTRESS_BUG", CS%berg_windstress_bug, &
-                 "If true, use older code that applied an old ice-ocean \n"//&
-                 "stress to the icebergs in place of the current air-ocean \n"//&
-                 "stress.  This option is here for backward compatibility, \n"//&
+                 "If true, use older code that applied an old ice-ocean "//&
+                 "stress to the icebergs in place of the current air-ocean "//&
+                 "stress.  This option is here for backward compatibility, "//&
                  "but should be avoided.", default=.false.)
   call get_param(param_file, mdl, "WARSAW_SUM_ORDER", CS%Warsaw_sum_order, &
-                 "If true, use the order of sums in the Warsaw version of SIS2. \n"//&
-                 "The default is the opposite of MERGED_CONTINUITY. \n"//&
-                 "This option exists for backward compatibilty but may \n"//&
+                 "If true, use the order of sums in the Warsaw version of SIS2. "//&
+                 "The default is the opposite of MERGED_CONTINUITY. "//&
+                 "This option exists for backward compatibilty but may "//&
                  "eventually be obsoleted.", &
                  default=.not.CS%merged_cont, do_not_log=CS%merged_cont)
   if (CS%merged_cont .and. CS%Warsaw_sum_order) &
@@ -2249,7 +2249,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                  "The time unit for ICE_STATS_INTERVAL.", &
                  units="s", default=86400.0)
   call get_param(param_file, mdl, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
-                 "The interval in units of TIMEUNIT between writes of the \n"//&
+                 "The interval in units of TIMEUNIT between writes of the "//&
                  "globally summed ice statistics and conservation checks.", &
                  default=real_to_time(86400.0), timeunit=Time_unit)
 
@@ -2260,17 +2260,17 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
-                 "If true, add code to allow debugging of conservation \n"//&
-                 "column-by-column.  This does not change answers, but \n"//&
+                 "If true, add code to allow debugging of conservation "//&
+                 "column-by-column.  This does not change answers, but "//&
                  "can increase model run time.", default=.false., &
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9, debuggingParam=.true.)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
-                 "If true, periodically check the values of ice and snow \n"//&
-                 "temperatures and thicknesses to ensure that they are \n"//&
-                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "If true, periodically check the values of ice and snow "//&
+                 "temperatures and thicknesses to ensure that they are "//&
+                 "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
   call get_param(param_file, mdl, "VERBOSE", CS%verbose, &

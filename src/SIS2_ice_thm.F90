@@ -116,33 +116,33 @@ subroutine SIS2_ice_thm_init(US, param_file, CS)
                  "The conductivity of heat in ice.", &
                  units="W m-1 K-1", default=2.03, scale=US%W_m2_to_QRZ_T*US%m_to_Z)
   call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", CS%H_lo_lim, &
-                 "The minimum ice thickness at which to do temperature \n"//&
+                 "The minimum ice thickness at which to do temperature "//&
                  "calculations.", units="m", default=0.0, scale=US%m_to_Z)
 
   call get_param(param_file, mdl, "DO_POND", CS%do_pond, &
-                 "If true, calculate melt ponds and use them for\n"//&
+                 "If true, calculate melt ponds and use them for "//&
                  "shortwave radiation calculation.", default=.false.)
   call get_param(param_file, mdl, "TDRAIN", CS%tdrain, &
-                 "Melt ponds drain to sea level when ice average temp.\n"//&
+                 "Melt ponds drain to sea level when ice average temp. "//&
                  "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8) !### , units="degC")
   call get_param(param_file, mdl, "R_MIN_POND", CS%r_min_pond, &
-                 "Minimum retention rate of surface water sources in melt pond\n"//&
+                 "Minimum retention rate of surface water sources in melt pond "//&
                  "(retention scales linearly with ice cover)", default=0.15) !### , units="nondim")
   call get_param(param_file, mdl, "R_MAX_POND", CS%r_max_pond, &
-                 "Maximum retention rate of surface water sources in melt pond\n"//&
+                 "Maximum retention rate of surface water sources in melt pond "//&
                  "(retention scales linearly with ice cover)", default=0.9) !### , units="nondim")
   call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
-                 "Minimum melt pond cover (by ponds at sea level)\n"//&
+                 "Minimum melt pond cover (by ponds at sea level) "//&
                  "pond drains to this when ice is porous.", default=0.2) !### , units="nondim")
   call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
-                 "Maximum melt pond cover - associated with pond volume\n"//&
+                 "Maximum melt pond cover - associated with pond volume "//&
                  "that suppresses ice top to waterline", default=0.5) !### , units="nondim")
   call get_param(param_file, mdl, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
-                 "An estimate of the range of snow and ice temperatures \n"//&
-                 "that is used to evaluate whether an explicit diffusive \n"//&
-                 "form of the heat fluxes or an inversion based on the \n"//&
-                 "layer heat budget is more likely to be more accurate. \n"//&
-                 "Setting this to 0 causes the explicit diffusive form. \n"//&
+                 "An estimate of the range of snow and ice temperatures "//&
+                 "that is used to evaluate whether an explicit diffusive "//&
+                 "form of the heat fluxes or an inversion based on the "//&
+                 "layer heat budget is more likely to be more accurate. "//&
+                 "Setting this to 0 causes the explicit diffusive form. "//&
                  "to always be used.", units="degC", default=40.0)
   CS%temp_range_est = abs(CS%temp_range_est)
 
@@ -1699,15 +1699,15 @@ subroutine ice_thermo_init(param_file, ITV, US, init_EOS )
                  "The nominal density of snow as used by SIS.", &
                  units="kg m-3", default=330.0, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "CP_ICE", ITV%Cp_ice, &
-                 "The heat capacity of fresh ice, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=2100.0, scale=US%J_kg_to_Q)
+                 "The heat capacity of fresh ice, approximated as a constant.", &
+                 units="J kg-1 K-1", default=2100.0, scale=US%J_kg_to_Q)
   call get_param(param_file, mdl, "CP_SEAWATER", ITV%Cp_Water, &
-                 "The heat capacity of sea water, approximated as a \n"//&
-                 "constant.", units="J kg-1 K-1", default=4200.0, scale=US%J_kg_to_Q)
+                 "The heat capacity of sea water, approximated as a constant.", &
+                 units="J kg-1 K-1", default=4200.0, scale=US%J_kg_to_Q)
   call get_param(param_file, mdl, "CP_BRINE", ITV%Cp_brine, &
-                 "The heat capacity of water in brine pockets within the \n"//&
-                 "sea-ice, approximated as a constant.  CP_BRINE and \n"//&
-                 "CP_SEAWATER should be equal, but for computational \n"//&
+                 "The heat capacity of water in brine pockets within the "//&
+                 "sea-ice, approximated as a constant.  CP_BRINE and "//&
+                 "CP_SEAWATER should be equal, but for computational "//&
                  "convenience CP_BRINE can be set equal to CP_ICE.", &
                  units="J kg-1 K-1", default=US%Q_to_J_kg*ITV%Cp_Water, scale=US%J_kg_to_Q)
   call get_param(param_file, mdl, "DTFREEZE_DS", ITV%dTf_dS, &
@@ -1715,15 +1715,15 @@ subroutine ice_thermo_init(param_file, ITV, US, init_EOS )
                  units="deg C PSU-1", default=-0.054)
 
   call get_param(param_file, mdl, "ENTHALPY_LIQUID_0", ITV%enth_liq_0, &
-                 "The enthalpy of liquid fresh water at 0 C.  The solutions \n"//&
-                 "should be physically consistent when this is adjusted, \n"//&
-                 "because only the relative value is of physical meaning, \n"//&
+                 "The enthalpy of liquid fresh water at 0 C.  The solutions "//&
+                 "should be physically consistent when this is adjusted, "//&
+                 "because only the relative value is of physical meaning, "//&
                  "but roundoff errors can change the solution.", &
                  units="J kg-1", default=0.0, scale=US%J_kg_to_Q)
   call obsolete_real(param_file, "ENTHALPY_UNITS", warning_val=1.0)
   call get_param(param_file, mdl, "SUBLIMATION_BUG", ITV%sublimation_bug, &
-                 "If true use an older calculation that omits the latent \n"//&
-                 "heat of fusion from the latent heat of sublimation. \n"//&
+                 "If true use an older calculation that omits the latent "//&
+                 "heat of fusion from the latent heat of sublimation. "//&
                  "This variable should be obsoleted as soon as possible.", &
                  default=.false.)
 
@@ -1733,7 +1733,7 @@ subroutine ice_thermo_init(param_file, ITV, US, init_EOS )
   if (specified_ice) then
     ITV%slab_ice = .true.
     call log_param(param_file, mdl, "USE_SLAB_ICE", ITV%slab_ice, &
-                 "Use the very old slab-style ice.  With SPECIFIED_ICE, \n"//&
+                 "Use the very old slab-style ice.  With SPECIFIED_ICE, "//&
                  "USE_SLAB_ICE is always true.")
   else
     call get_param(param_file, mdl, "USE_SLAB_ICE", ITV%slab_ice, &

@@ -1395,7 +1395,7 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS, CS_cvr)
        hint="Use SIS_CONTINUITY_SCHEME instead.")
 
   call get_param(param_file, mdl, "CONT_PPM_VOLUME_BASED_CFL", CS%vol_CFL, &
-                 "If true, use the ratio of the open face lengths to the \n"//&
+                 "If true, use the ratio of the open face lengths to the "//&
                  "tracer cell areas when estimating CFL numbers.", &
                  default=.false.)
 
@@ -1423,7 +1423,7 @@ subroutine SIS_continuity_init(Time, G, param_file, diag, CS, CS_cvr)
     end select
 
     call get_param(param_file, mdl, "COVER_PPM_VOLUME_BASED_CFL", CS_cvr%vol_CFL, &
-                   "If true, use the ratio of the open face lengths to the cell\n"//&
+                   "If true, use the ratio of the open face lengths to the cell "//&
                    "areas when estimating CFL numbers in ice cover transport.", &
                    default=.false.)
   endif

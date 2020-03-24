@@ -132,18 +132,18 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "DO_ICE_AGE_AREAL", CS%do_ice_age_areal, &
-      "If true, use an ice age tracer that ages at \n"//&
+      "If true, use an ice age tracer that ages at "//&
       "a unit rate if the ice exists.", &
       default=.false.)
   call get_param(param_file, mdl, "DO_ICE_AGE_MASS", CS%do_ice_age_mass, &
-      "If true, use an ice age tracer that is set to 0 age \n"//&
-      "when ice is first formed, ages at unit rate in the ice pack \n"// &
+      "If true, use an ice age tracer that is set to 0 age "//&
+      "when ice is first formed, ages at unit rate in the ice pack "//&
       "and any new ice added to the ice pack represents a decrease in age", &
       default=.false.)
   call get_param(param_file, mdl, "TRACERS_MAY_REINIT", CS%tracers_may_reinit, &
-      "If true, tracers may go through the initialization code \n"//&
-      "if they are not found in the restart files.  Otherwise \n"//&
-      "it is a fatal error if the tracers are not found in the \n"//&
+      "If true, tracers may go through the initialization code "//&
+      "if they are not found in the restart files.  Otherwise "//&
+      "it is a fatal error if the tracers are not found in the "//&
       "restart files of a restarted run.", default=.false.)
 
   CS%ntr = 0

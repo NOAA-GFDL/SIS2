@@ -141,10 +141,10 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "WRITE_STOCKS", CS%write_stocks, &
-                 "If true, write the integrated tracer amounts to stdout \n"//&
+                 "If true, write the integrated tracer amounts to stdout "//&
                  "when the statistics files are written.", default=.true.)
   call get_param(param_file, mdl, "STDOUT_HEARTBEAT", CS%write_stdout, &
-                 "If true, periodically write sea ice statistics to \n"//&
+                 "If true, periodically write sea ice statistics to "//&
                  "stdout to allow the progress to be seen.", default=.true.)
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
@@ -152,14 +152,14 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
                  "the ice mass field and velocities.", units="s", scale=US%s_to_T, &
                  default=-1.0, do_not_log=.true.)
   call get_param(param_file, mdl, "MAXTRUNC", CS%maxtrunc, &
-                 "The run will be stopped, and the day set to a very \n"//&
-                 "large value if the velocity is truncated more than \n"//&
-                 "MAXTRUNC times between  writing ice statistics. \n"//&
-                 "Set MAXTRUNC to 0 to stop if there is any truncation \n"//&
+                 "The run will be stopped, and the day set to a very "//&
+                 "large value if the velocity is truncated more than "//&
+                 "MAXTRUNC times between  writing ice statistics. "//&
+                 "Set MAXTRUNC to 0 to stop if there is any truncation "//&
                  "of sea ice velocities.", units="truncations save_interval-1", default=0)
 
   call get_param(param_file, mdl, "STATISTICS_FILE", statsfile, &
-                 "The file to use to write the globally integrated \n"//&
+                 "The file to use to write the globally integrated "//&
                  "statistics.", default="seaice.stats")
 
   CS%statsfile = trim(slasher(directory))//trim(statsfile)
@@ -173,8 +173,8 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
                  units="s", default=86400.0)
   if (CS%Timeunit < 0.0) CS%Timeunit = 86400.0
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
-                 "If true, add code to allow debugging of conservation \n"//&
-                 "column-by-column.  This does not change answers, but \n"//&
+                 "If true, add code to allow debugging of conservation "//&
+                 "column-by-column.  This does not change answers, but "//&
                  "can increase model run time.", default=.false., &
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
