@@ -262,7 +262,7 @@ subroutine specified_ice_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "The time unit for ICE_STATS_INTERVAL.", &
                  units="s", default=86400.0)
   call get_param(param_file, mdl, "ICE_STATS_INTERVAL", CS%ice_stats_interval, &
-                 "The interval in units of TIMEUNIT between writes of the \n"//&
+                 "The interval in units of TIMEUNIT between writes of the "//&
                  "globally summed ice statistics and conservation checks.", &
                  default=real_to_time(86400.0), timeunit=Time_unit)
 
@@ -273,9 +273,9 @@ subroutine specified_ice_init(Time, G, IG, param_file, diag, CS, output_dir, Tim
                  "If true, write out verbose debugging data on the slow ice PEs.", &
                  default=debug, debuggingParam=.true.)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
-                 "If true, periodically check the values of ice and snow \n"//&
-                 "temperatures and thicknesses to ensure that they are \n"//&
-                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "If true, periodically check the values of ice and snow "//&
+                 "temperatures and thicknesses to ensure that they are "//&
+                 "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
 

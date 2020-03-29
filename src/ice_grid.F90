@@ -104,10 +104,10 @@ subroutine set_ice_grid(IG, US, param_file, NCat_dflt, ocean_part_min_dflt)
   IG%H_subroundoff = 1.0e-30*US%kg_m3_to_R*US%m_to_Z
 
   call get_param(param_file, mod_nm, "MIN_OCEAN_PARTSIZE", IG%ocean_part_min, &
-                 "The minimum value for the fractional open-ocean area. \n"//&
-                 "This can be 0, but for some purposes it may be useful \n"//&
-                 "to set this to a miniscule value (like 1e-40) that will \n"//&
-                 "be lost to roundoff during any sums so that the open \n"//&
+                 "The minimum value for the fractional open-ocean area. "//&
+                 "This can be 0, but for some purposes it may be useful "//&
+                 "to set this to a miniscule value (like 1e-40) that will "//&
+                 "be lost to roundoff during any sums so that the open "//&
                  "ocean fluxes can be used in with new categories.", &
                  units="nondim", default=opm_dflt)
   if ((IG%ocean_part_min < 0.0) .or. (IG%ocean_part_min > 1.0e-20)) &

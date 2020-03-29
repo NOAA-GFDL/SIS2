@@ -84,8 +84,8 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
 
 ! Modulate geometric scales according to geography.
   call get_param(PF, mdl, "CHANNEL_CONFIG", config, &
-                 "A parameter that determines which set of channels are \n"//&
-                 "restricted to specific  widths.  Options are:\n"//&
+                 "A parameter that determines which set of channels are "//&
+                 "restricted to specific widths.  Options are:\n"//&
                  " \t none - All channels have the grid width.\n"//&
                  " \t global_1deg - Sets 16 specific channels appropriate \n"//&
                  " \t\t for a 1-degree model, as used in CM2G.\n"//&

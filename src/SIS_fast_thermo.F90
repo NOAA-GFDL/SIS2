@@ -1287,27 +1287,27 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
      "implicit surface temperature calculation.")
 
   call get_param(param_file, mdl, "REORDER_0C_HEATFLUX", CS%Reorder_0C_heatflux, &
-                 "If true, rearrange the calculation of the heat fluxes \n"//&
-                 "projected back to 0C to work on each contribution \n"//&
-                 "separately, so that they can be indentically replicated \n"//&
-                 "if there is a single fast timestep per coupled timestep \n"//&
+                 "If true, rearrange the calculation of the heat fluxes "//&
+                 "projected back to 0C to work on each contribution "//&
+                 "separately, so that they can be indentically replicated "//&
+                 "if there is a single fast timestep per coupled timestep "//&
                  "and REDO_FAST_ICE_UPDATE=True.", default=.false.)
   call get_param(param_file, mdl, "MAX_TSKIN_ITT", CS%max_tskin_itt, &
-                 "The maximum number of iterations of the skin temperature \n"//&
+                 "The maximum number of iterations of the skin temperature "//&
                  "and optical properties during redo_update_ice_model_fast.", &
                  default=10)
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
-                 "If true, add code to allow debugging of conservation \n"//&
-                 "column-by-column.  This does not change answers, but \n"//&
+                 "If true, add code to allow debugging of conservation "//&
+                 "column-by-column.  This does not change answers, but "//&
                  "can increase model run time.", default=.false., &
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
                  "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
                  units="nondim", default=1.0e-9, debuggingParam=.true.)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", CS%bounds_check, &
-                 "If true, periodically check the values of ice and snow \n"//&
-                 "temperatures and thicknesses to ensure that they are \n"//&
-                 "sensible, and issue warnings if they are not.  This \n"//&
+                 "If true, periodically check the values of ice and snow "//&
+                 "temperatures and thicknesses to ensure that they are "//&
+                 "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
   call get_param(param_file, mdl, "DEBUG", debug, &
