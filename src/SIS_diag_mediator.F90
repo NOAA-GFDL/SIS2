@@ -144,7 +144,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "GRID_CONFIG", grid_config, &
-                 "The method for defining the horizontal grid.  Valid \n"//&
+                 "The method for defining the horizontal grid.  Valid "//&
                  "entries include:\n"//&
                  "\t file - read the grid from GRID_FILE \n"//&
                  "\t mosaic - read the grid from a mosaic grid file \n"//&
@@ -158,10 +158,10 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
     ! This is a cartesian grid, and may have different axis units.
     Cartesian_grid = .true.
     call get_param(param_file, mdl, "AXIS_UNITS", units_temp, &
-                 "The units for the x- and y- axis labels.  AXIS_UNITS \n"//&
-                 "should be defined as 'k' for km, 'm' for m, or 'd' \n"//&
-                 "for degrees of latitude and longitude (the default). \n"//&
-                 "Except on a Cartesian grid, only degrees are currently \n"//&
+                 "The units for the x- and y- axis labels.  AXIS_UNITS "//&
+                 "should be defined as 'k' for km, 'm' for m, or 'd' "//&
+                 "for degrees of latitude and longitude (the default). "//&
+                 "Except on a Cartesian grid, only degrees are currently "//&
                  "implemented.", default='degrees')
     if (units_temp(1:1) == 'k') then
       G%x_axis_units = "kilometers" ; G%y_axis_units = "kilometers"
@@ -265,7 +265,7 @@ subroutine defineAxes(diag_cs, handles, axes)
   axes%id = i2s(handles, n) ! Identifying string
   axes%rank = n
   axes%handles(:) = handles(:)
-  axes%diag_cs => diag_cs ! A [circular] link back to the SIS_diag_ctrl structure
+  axes%diag_cs => diag_cs ! A (circular) link back to the SIS_diag_ctrl structure
 end subroutine defineAxes
 
 !> Set up the current grid for the diag mediator
@@ -820,7 +820,7 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
       doc_file_param = "AVAILABLE_DIAGS_FILE"
     endif
     call get_param(param_file, mdl, trim(doc_file_param), doc_file, &
-                 "A file into which to write a list of all available \n"//&
+                 "A file into which to write a list of all available "//&
                  "sea ice diagnostics that can be included in a diag_table.", &
                  default=doc_file_dflt)
     if (len_trim(doc_file) > 0) then

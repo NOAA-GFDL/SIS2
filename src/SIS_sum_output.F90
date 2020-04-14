@@ -7,8 +7,8 @@ module SIS_sum_output
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
 !   This file contains the subroutines that calculate globally integrated      !
-! sea-ice quantities for SIS2, and writes them to a netcdf file and and an     !
-! ASCII output file.  This code was originally adapted from MOM_sum_output.F90 !
+! sea-ice quantities for SIS2, and writes them to a netcdf file and an ASCII   !
+! output file.  This code was originally adapted from MOM_sum_output.F90       !
 ! by Robert Hallberg in May 2014.                                              !
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -63,11 +63,11 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called [J].
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [kg m-2].
+                                !! the last time that write_ice_statistics was called [R Z ~> kg m-2].
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [J m-2].
+                                !! the last time that write_ice_statistics was called [Q R Z ~> J m-2].
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [kg m-2].
+                                !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2].
     water_col_prev, &           !< The column integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
     heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
@@ -141,10 +141,10 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "WRITE_STOCKS", CS%write_stocks, &
-                 "If true, write the integrated tracer amounts to stdout \n"//&
+                 "If true, write the integrated tracer amounts to stdout "//&
                  "when the statistics files are written.", default=.true.)
   call get_param(param_file, mdl, "STDOUT_HEARTBEAT", CS%write_stdout, &
-                 "If true, periodically write sea ice statistics to \n"//&
+                 "If true, periodically write sea ice statistics to "//&
                  "stdout to allow the progress to be seen.", default=.true.)
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
@@ -152,14 +152,14 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
                  "the ice mass field and velocities.", units="s", scale=US%s_to_T, &
                  default=-1.0, do_not_log=.true.)
   call get_param(param_file, mdl, "MAXTRUNC", CS%maxtrunc, &
-                 "The run will be stopped, and the day set to a very \n"//&
-                 "large value if the velocity is truncated more than \n"//&
-                 "MAXTRUNC times between  writing ice statistics. \n"//&
-                 "Set MAXTRUNC to 0 to stop if there is any truncation \n"//&
+                 "The run will be stopped, and the day set to a very "//&
+                 "large value if the velocity is truncated more than "//&
+                 "MAXTRUNC times between  writing ice statistics. "//&
+                 "Set MAXTRUNC to 0 to stop if there is any truncation "//&
                  "of sea ice velocities.", units="truncations save_interval-1", default=0)
 
   call get_param(param_file, mdl, "STATISTICS_FILE", statsfile, &
-                 "The file to use to write the globally integrated \n"//&
+                 "The file to use to write the globally integrated "//&
                  "statistics.", default="seaice.stats")
 
   CS%statsfile = trim(slasher(directory))//trim(statsfile)
@@ -173,8 +173,8 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
                  units="s", default=86400.0)
   if (CS%Timeunit < 0.0) CS%Timeunit = 86400.0
   call get_param(param_file, mdl, "COLUMN_CHECK", CS%column_check, &
-                 "If true, add code to allow debugging of conservation \n"//&
-                 "column-by-column.  This does not change answers, but \n"//&
+                 "If true, add code to allow debugging of conservation "//&
+                 "column-by-column.  This does not change answers, but "//&
                  "can increase model run time.", default=.false., &
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", CS%imb_tol, &
@@ -270,16 +270,16 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
                        ! to this subroutine [J].
   real :: Heat_anom    ! The change in heat that cannot be accounted for by
                        ! the surface fluxes [J].
-  real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero).
+  real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero) [nondim].
   real :: temp         ! The mean potential temperature of the ocean [degC].
   real :: temp_anom    ! The change in total heat that cannot be accounted for
                        ! by the surface fluxes, divided by the total heat
                        ! capacity of the ocean [degC].
   real :: Area         ! The total area of the sea ice [m2].
   real :: Extent       ! The total extent of the sea ice [m2].
-  real :: heat_imb     ! The column integrated heat imbalance [Enth kg m-2 ~> J m-2].
+  real :: heat_imb     ! The column integrated heat imbalance [Q kg m-2 ~> J m-2].
   real :: mass_imb     ! The column integrated mass imbalance [kg].
-  real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Enth ~> J kg-1].
+  real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Q ~> J kg-1].
   real :: I_nlay, kg_H_nlay, area_pt
   real :: area_h       ! The masked area of a column.
   type(EFP_type) :: &
@@ -345,7 +345,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
   I_nlay = 1.0 / (1.0*nlay)
-  kg_H_nlay = IG%H_to_kg_m2 * I_nlay
+  kg_H_nlay = US%RZ_to_kg_m2 * I_nlay
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
@@ -434,15 +434,15 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
 
       ice_area(i,j,hem) = ice_area(i,j,hem) + area_pt
-      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * US%RZ_to_kg_m2 * &
                           (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + &
                            IST%mH_pond(i,j,k))) ! mw/new - assumed pond heat/salt = 0
 
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * IG%H_to_kg_m2 * &
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%RZ_to_kg_m2 * US%Q_to_J_kg * &
                           (IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1) + &
                            IST%mH_pond(i,j,k) * enth_liq_0)
       do L=1,nlay
-        col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * &
+        col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * US%Q_to_J_kg * &
                             ((IST%mH_ice(i,j,k)*kg_H_nlay) * IST%enth_ice(i,j,k,L))
         col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * &
                   ((0.001*IST%mH_ice(i,j,k)*kg_H_nlay) * IST%sal_ice(i,j,k,L))
@@ -450,8 +450,9 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     endif ; enddo
     if (allocated(IST%snow_to_ocn)) then ; if (IST%snow_to_ocn(i,j) > 0.0) then
       area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
-      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * IST%snow_to_ocn(i,j)
-      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
+      col_mass(i,j,hem) = col_mass(i,j,hem) + area_pt * US%RZ_to_kg_m2*IST%snow_to_ocn(i,j)
+      col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt*US%Q_to_J_kg*US%RZ_to_kg_m2 * &
+                              (IST%snow_to_ocn(i,j) * IST%enth_snow_to_ocn(i,j))
     endif ; endif
     if (ice_area(i,j,hem) > 0.1*US%L_to_m**2*G%areaT(i,j)) ice_extent(i,j,hem) = US%L_to_m**2*G%areaT(i,j)
 
@@ -511,9 +512,9 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   else
     do j=js,je ; do i=is,ie
       area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
-      CS%water_in_col(i,j) = area_h * CS%water_in_col(i,j)
-      CS%heat_in_col(i,j) = area_h * CS%heat_in_col(i,j)
-      CS%salt_in_col(i,j) = area_h * CS%salt_in_col(i,j)
+      CS%water_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%water_in_col(i,j)
+      CS%heat_in_col(i,j) = US%Q_to_J_kg*US%RZ_to_kg_m2*area_h * CS%heat_in_col(i,j)
+      CS%salt_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%salt_in_col(i,j)
     enddo ; enddo
 
     CS%fresh_water_input = reproducing_sum(CS%water_in_col, EFP_sum=CS%fresh_water_in_EFP)
@@ -727,22 +728,23 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
                                                 !! (mostly fluxes) over the fast updates
   type(ice_ocean_flux_type),  intent(in) :: IOF !< A structure containing fluxes from the ice to
                                                 !! the ocean that are calculated by the ice model.
-  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  real,                       intent(in) :: dt  !< The amount of time over which to average [T ~> s].
   type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
 
   ! Local variables
-  real :: Flux_SW, enth_units, LI
+  real :: Flux_SW ! Total shortwave flux [Q R Z T-1 ~> W m-2]
+  real :: LI      ! Latent heat of fusion [Q ~> J kg-1]
 
   integer :: i, j, k, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(IOF%flux_sw_ocn, 3)
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
 
-  if (CS%dt < 0.0) CS%dt = US%s_to_T*dt
+  if (CS%dt < 0.0) CS%dt = dt
 
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
@@ -752,12 +754,10 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (dt * enth_units) * &
-          ( Flux_SW + &
-           ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
-            (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - enth_units * &
-           (OSS%frazil(i,j)-FIA%frazil_left(i,j))
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - dt * &
+          (Flux_SW + ((IOF%flux_lw_ocn_top(i,j) - IOF%flux_lh_ocn_top(i,j)) - IOF%flux_sh_ocn_top(i,j)) + &
+           (-LI)*(IOF%fprec_ocn_top(i,j) + FIA%calving(i,j)) )
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (OSS%frazil(i,j) - FIA%frazil_left(i,j))
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
             (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
@@ -768,14 +768,15 @@ end subroutine accumulate_bottom_input
 
 !> Accumulate the net input of fresh water and heat through the top of the
 !! sea-ice for conservation checks with the first phase of the updates
-subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
+subroutine accumulate_input_1(IST, FIA, OSS, dt, G, US, IG, CS)
   type(ice_state_type),       intent(in) :: IST !< A type describing the state of the sea ice
   type(fast_ice_avg_type),    intent(in) :: FIA !< A type containing averages of fields
                                                 !! (mostly fluxes) over the fast updates
   type(ocean_sfc_state_type), intent(in) :: OSS !< A structure containing the arrays that describe
                                                 !! the ocean's surface state for the ice model.
-  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  real,                       intent(in) :: dt  !< The amount of time over which to average [T ~> s].
   type(SIS_hor_grid_type),    intent(in) :: G   !< The horizontal grid type
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in) :: IG  !< The sea-ice specific grid type
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
@@ -793,8 +794,8 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
                   ! over a time step and summed over space [kg].
   real :: heat_input ! The total heat added by surface fluxes, integrated
                   ! over a time step and summed over space [J].
-  real :: area_h, area_pt, Flux_SW
-  real :: enth_units
+  real :: area_h, area_pt
+  real :: Flux_SW  ! Total shortwave flux [Q R Z T-1 ~> W m-2]
   type(EFP_type) :: &
     FW_in_EFP, &   ! Extended fixed point version of FW_input [kg]
     salt_in_EFP, & ! Extended fixed point version of salt_input [gSalt]
@@ -803,8 +804,6 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   nb = size(FIA%flux_sw_top, 4)
-
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units)
 
   FW_in(:,:) = 0.0 ; salt_in(:,:) = 0.0 ; heat_in(:,:) = 0.0
 
@@ -815,19 +814,18 @@ subroutine accumulate_input_1(IST, FIA, OSS, dt, G, IG, CS)
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (FIA%flux_sw_top(i,j,k,b-1) + FIA%flux_sw_top(i,j,k,b))
     enddo
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
         ( Flux_SW * (1.0 - FIA%sw_abs_ocn(i,j,k)) + &
-          ((FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k)) )  + &
+           (FIA%flux_lw_top(i,j,k) - FIA%flux_sh_top(i,j,k))  + &
            (-FIA%flux_lh_top(i,j,k)) + OSS%bheat(i,j))
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - (enth_units * area_pt) * &
-                   (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) - area_pt * (FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k))
   enddo ; enddo ; enddo
 
 end subroutine accumulate_input_1
 
 !> Accumulate the net input of fresh water and heat through the top of the
 !! sea-ice for conservation checks, with a second phase of the updates
-subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
+subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, US, IG, CS)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
@@ -840,13 +838,14 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
   real, dimension(SZI_(G),SZJ_(G),SZCAT0_(IG)), &
                               intent(in) :: part_size !< The fractional ice concentration within a
                                                 !! cell in each thickness category [nondim], 0-1.
-  real,                       intent(in) :: dt  !< The amount of time over which to average.
+  real,                       intent(in) :: dt  !< The amount of time over which to average [T ~> s].
+  type(unit_scale_type),      intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_sum_out_CS),       pointer    :: CS  !< The control structure returned by a previous call
                                                 !! to SIS_sum_output_init.
 
   ! Local variables
   real :: area_pt, Flux_SW, pen_frac
-  real :: enth_units, LI
+  real :: LI      ! Latent heat of fusion [Q ~> J kg-1]
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, b, nb
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -858,21 +857,18 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
   ! not include the enthalpy changes due to net mass changes in the ice,
   ! as these are not yet known.
 
-  call get_SIS2_thermo_coefs(IST%ITV, enthalpy_units=enth_units, Latent_fusion=LI)
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,dt,IST,FIA,IOF,&
-!$OMP                                  enth_units, LI) &
-!$OMP                          private(area_pt)
+  call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI)
+  !$OMP parallel do default(shared) private(area_pt)
   do j=jsc,jec ; do i=isc,iec
     ! Runoff and calving are passed directly on to the ocean.
-    CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * &
-          (FIA%runoff(i,j) + FIA%calving(i,j))
+    CS%water_in_col(i,j) = CS%water_in_col(i,j) + dt * (FIA%runoff(i,j) + FIA%calving(i,j))
 
     area_pt = IST%part_size(i,j,0)
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * &
           ((FIA%flux_lw_top(i,j,0) - FIA%flux_lh_top(i,j,0)) - FIA%flux_sh_top(i,j,0))
 
     ! These are mass fluxes that are simply passed through to the ocean.
-    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * enth_units) * (-LI) * &
+    CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + dt * (-LI) * &
                       (area_pt * FIA%fprec_top(i,j,0) + FIA%calving(i,j))
 
   enddo ; enddo
@@ -890,11 +886,10 @@ subroutine accumulate_input_2(IST, FIA, IOF, OSS, part_size, dt, G, IG, CS)
 
       CS%water_in_col(i,j) = CS%water_in_col(i,j) + (dt * area_pt) * &
           ( (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k)) - FIA%evap_top(i,j,k) )
-      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + ((dt * area_pt) * enth_units) * &
-           ( pen_frac*Flux_SW )
+      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (dt * area_pt) * ( pen_frac*Flux_SW )
 
       if (k>0) &
-        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + (area_pt * enth_units) * &
+        CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + area_pt * &
            ((FIA%bmelt(i,j,k) + FIA%tmelt(i,j,k)) - dt*OSS%bheat(i,j))
     enddo ; enddo ; enddo
 

@@ -36,6 +36,7 @@ implicit none ; private
 public :: ice_state_type, alloc_IST_arrays, ice_state_register_restarts
 public :: IST_chksum, IST_bounds_check, copy_IST_to_IST, dealloc_IST_arrays
 public :: ice_state_read_alt_restarts, register_fast_to_slow_restarts
+public :: rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
@@ -73,26 +74,26 @@ type ice_state_type
                 !! along the grid directions on a C-grid [L T-1 ~> m s-1].
 
   real, allocatable, dimension(:,:,:) :: &
-    mH_pond, &  !< The mass per unit area of the pond in each category [H ~> kg m-2].
-    mH_snow, &  !< The mass per unit area of the snow in each category [H ~> kg m-2].
-    mH_ice, &   !< The mass per unit area of the ice in each category [H ~> kg m-2].
+    mH_pond, &  !< The mass per unit area of the pond in each category [R Z ~> kg m-2].
+    mH_snow, &  !< The mass per unit area of the snow in each category [R Z ~> kg m-2].
+    mH_ice, &   !< The mass per unit area of the ice in each category [R Z ~> kg m-2].
     t_surf      !< The surface temperature [Kelvin].
 
   real, allocatable, dimension(:,:) :: &
     snow_to_ocn, & !< The mass per unit ocean area of snow that will be dumped into the
-                   !! ocean due to recent mechanical activities like ridging or drifting [kg m-2].
+                   !! ocean due to recent mechanical activities like ridging or drifting [R Z ~> kg m-2].
     enth_snow_to_ocn !< The average enthalpy of the snow that will be dumped into the
-                   !! ocean due to recent mechanical activities like ridging or drifting [Enth ~> J kg-1].
+                   !! ocean due to recent mechanical activities like ridging or drifting [Q ~> J kg-1].
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
                 !! in each category and fractional thickness layer [gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
-                !! in each category and fractional thickness layer [Enth ~> J kg-1].
+                !! in each category and fractional thickness layer [Q ~> J kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_snow !< The enthalpy of the snow
-                !! in each category and snow thickness layer [Enth ~> J kg-1].
+                !! in each category and snow thickness layer [Q ~> J kg-1].
 
   real, allocatable, dimension(:,:,:) :: &
-    rdg_mice    !< A diagnostic of the ice load that was formed by ridging [H ~> kg m-2].
+    rdg_mice    !< A diagnostic of the ice load that was formed by ridging [R Z ~> kg m-2].
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
   logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
@@ -101,7 +102,7 @@ type ice_state_type
 
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the SIS tracer registry
 
-  type(ice_thermo_type), pointer  :: ITV => NULL() !< A pointer to the ice thermodyanmics type
+  type(ice_thermo_type), pointer  :: ITV => NULL() !< A pointer to the ice thermodynamics type
 end type ice_state_type
 
 !> ocean_sfc_state_type contains variables that describe the ocean's surface
@@ -117,12 +118,12 @@ type ocean_sfc_state_type
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [L T-1 ~> m s-1].
     v_ocn_C     !< The ocean's meridional velocity on C-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux from the ocean
-                !! to the ice at the base of the ice [W m-2].
+                !! to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: frazil !< A downward heat flux from the ice into the ocean
                 !! associated with the formation of frazil ice in the ocean integrated over a
-                !! timestep [J m-2]. This is the input value and is not changed by the ice.
+                !! timestep [Q R Z ~> J m-2]. This is the input value and is not changed by the ice.
   real, allocatable, dimension(:,:) :: sea_lev !< The equivalent sea-level, after any non-levitating
-                !! ice has been converted to sea-water, as determined by the ocean [m].
+                !! ice has been converted to sea-water, as determined by the ocean [Z ~> m].
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
                 !! (partially) converted back to its equivalent by the ocean.
 
@@ -132,9 +133,9 @@ type ocean_sfc_state_type
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt !< A constant that is used in the calculation of the ocean/ice basal heat flux,
-                !! [W m-2 degC-1].  This could be replaced with an array reflecting the turbulence
-                !! in the under-ice ocean boundary layer and the effective depth of the reported
-                !! value of t_ocn.
+                !! [Q R Z T-1 degC-1 ~> W m-2 degC-1].  This could be replaced with an array
+                !! reflecting the turbulence in the under-ice ocean boundary layer and the effective
+                !! depth of the reported value of t_ocn.
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
 
@@ -157,7 +158,7 @@ type simple_OSS_type
     u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [L T-1 ~> m s-1].
     v_ice_A     !< The sea ice's meridional velocity on A-grid points [L T-1 ~> m s-1].
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
-                !! from the ocean to the ice at the base of the ice [W m-2].
+                !! from the ocean to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
 
   type (coupler_2d_bc_type) :: &
     tr_fields   !< A structure of fields related to properties for additional tracers.
@@ -179,16 +180,16 @@ type fast_ice_avg_type
   ! both.
   real, allocatable, dimension(:,:,:) :: &
     ! The 3rd dimension in each of the following is ice thickness category.
-    flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [Pa].
-    flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh_top , & !< The upward sensible heat flux at the ice top [W m-2].
-    evap_top    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice [W m-2].
-    flux_lh_top , & !< The upward flux of latent heat at the top of the ice [W m-2].
-    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [kg m-2 s-1].
-    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
-    tmelt       , & !< Ice-top melt energy into the ice/snow [J m-2].
-    bmelt       , & !< Ice-bottom melting energy into the ice [J m-2].
+    flux_u_top  , & !< The downward flux of zonal momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_v_top  , & !< The downward flux of meridional momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_sh_top , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
+    evap_top    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
+    flux_lw_top , & !< The net downward flux of longwave radiation at the top of the ice [Q R Z T-1 ~> W m-2].
+    flux_lh_top , & !< The upward flux of latent heat at the top of the ice [Q R Z T-1 ~> W m-2].
+    lprec_top   , & !< The downward flux of liquid precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    tmelt       , & !< Ice-top melt energy into the ice/snow [Q R Z ~> J m-2].
+    bmelt       , & !< Ice-bottom melting energy into the ice [Q R Z ~> J m-2].
     Tskin_cat       !< The ice skin temperature by category [degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
                     !! shortwave radiation that is absorbed in the ocean, <=1, [nondim].
@@ -196,29 +197,29 @@ type fast_ice_avg_type
                     !! ice_rad_type because it is used as a part of the slow thermodynamic updates.
   ! The last dimension in each of the following is angular and frequency radiation band.
   real, allocatable, dimension(:,:,:,:) :: flux_sw_top
-                    !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
+                    !< The downward flux of shortwave radiation at the top of the sea-ice [Q R Z T-1 ~> W m-2].
                     !! The fourth dimension combines angular orientation (direct or diffuse) and
                     !! frequency (visible or near-IR) bands, with the integer parameters
                     !! from this module helping to distinguish them.
   real, allocatable, dimension(:,:,:) :: flux_sw_dn !< The total downward shortwave flux
-                    !! by wavelength band, averaged across all thickness categories [W m-2].
+                    !! by wavelength band, averaged across all thickness categories [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: &
-    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [Pa].
-    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [Pa].
-    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [Pa].
-    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [Pa].
-    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [Pa].
-    runoff, &       !< Liquid runoff into the ocean [kg m-2].
-    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [kg m-2].
+    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
+    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
+    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R L Z T-2 ~> Pa].
+    runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2].
+    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
-                    !! on the temperature difference relative to a reference temperature, in ???.
+                    !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_hflx !< The heat flux associated with calving, based
-                    !! on the temperature difference relative to a reference temperature, in ???.
+                    !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_preberg !< Calving of ice or runoff of frozen fresh
-                    !! water into the ocean, exclusive of any iceberg contributions [kg m-2].
+                    !! water into the ocean, exclusive of any iceberg contributions [R Z T-1 ~> kg m-2].
   real, allocatable, dimension(:,:) :: calving_hflx_preberg !< The heat flux associated with calving
                     !! exclusive of any iceberg contributions, based on the temperature difference
-                    !! relative to a reference temperature, in ???.
+                    !! relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: Tskin_avg !< The area-weighted average skin temperature
                     !! across all ice thickness categories [degC], or 0 if there is no ice.
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
@@ -235,19 +236,19 @@ type fast_ice_avg_type
   ! then interpolated into unoccupied categories for the purpose of redoing
   ! the application of the fast thermodynamics
   real, allocatable, dimension(:,:,:) ::  flux_sh0 !< The upward sensible heat flux at the ice top
-                !! extrapolated to a skin temperature of 0 degC [W m-2].
+                !! extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) ::  evap0 !< The upward evaporative moisture flux
-                !! at the top of the ice extrapolated to a skin temperature of 0 degC [kg m-2 s-1].
+                !! at the top of the ice extrapolated to a skin temperature of 0 degC [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
-                !! at the top of the  ice extrapolated to a skin temperature of 0 degC [W m-2].
+                !! at the top of the  ice extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) :: &
-    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [W m-2 degC-1].
-    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [kg m-2 s-1 degC-1].
-    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [W m-2 degC-1].
+    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1].
+    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: frazil_left !< The frazil heat flux that has not yet been
-                    !! consumed in making ice [J m-2]. This array is decremented by the ice
+                    !! consumed in making ice [Q R Z ~> J m-2]. This array is decremented by the ice
                     !! model as the heat flux is used up.
 !SLOW ONLY
   !!@{ Diagnostic IDs
@@ -273,16 +274,16 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u  , & !< The downward flux of zonal momentum on an A-grid [Pa].
-    flux_v  , & !< The downward flux of meridional momentum on an A-grid [Pa].
-    flux_sh , & !< The upward sensible heat flux at the ice top [W m-2].
-    evap    , & !< The upward evaporative moisture flux at top of the ice [kg m-2 s-1].
-    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [W m-2].
-    flux_lh , & !< The upward flux of latent heat at the top of the ice [W m-2].
-    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [kg m-2 s-1].
-    fprec       !< The downward flux of frozen precipitation at the top of the ice [kg m-2 s-1].
+    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_sh , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
+    evap    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
+    flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [Q R Z T-1 ~> W m-2].
+    flux_lh , & !< The upward flux of latent heat at the top of the ice [Q R Z T-1 ~> W m-2].
+    lprec   , & !< The downward flux of liquid precipitation  at the top of the ice [R Z T-1 ~> kg m-2 s-1].
+    fprec       !< The downward flux of frozen precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:,:) :: flux_sw
-                !< The downward flux of shortwave radiation at the top of the sea-ice [W m-2].
+                !< The downward flux of shortwave radiation at the top of the sea-ice [Q R Z T-1 ~> W m-2].
                 !! The third dimension combines angular orientation (direct or diffuse) and
                 !! frequency (visible or near-IR) bands, with the integer parameters
                 !! from this module helping to distinguish them.
@@ -351,37 +352,37 @@ end type ice_rad_type
 type ice_ocean_flux_type
   ! These variables describe the fluxes between ice or atmosphere and the ocean.
   real, allocatable, dimension(:,:)   :: &
-    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere [W m-2].
-    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [kg m-2 s-1].
-    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface [W m-2].
-    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [W m-2].
-    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [kg m-2 s-1].
-    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [kg m-2 s-1].
+    flux_sh_ocn_top, & !< The upward sensible heat flux from the ocean to the ice or atmosphere [Q R Z T-1 ~> W m-2].
+    evap_ocn_top, &    !< The upward evaporative moisture flux at the ocean surface [R Z T-1 ~> kg m-2 s-1].
+    flux_lw_ocn_top, & !< The downward flux of longwave radiation at the ocean surface [Q R Z T-1 ~> W m-2].
+    flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [Q R Z T-1 ~> W m-2].
+    lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
+    fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by
-                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
+                       !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
     flux_v_ocn, &      !< The flux of y-momentum into the ocean at locations given by
-                       !! flux_uv_stagger [kg m-2 L T-2 ~> Pa].
+                       !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_v_ocn is allocated as though on an A-grid.
-    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [kg m-2 L T-2 ~> Pa].
+    stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [R Z L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
-                       !! surface salinity to facilitate the retention of sea ice [kg m-2 s-1].
-    flux_salt, &       !< The flux of salt out of the ocean [kg m-2].
-    mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [kg m-2].
+                       !! surface salinity to facilitate the retention of sea ice [R Z T-1 ~> kg m-2 s-1].
+    flux_salt, &       !< The flux of salt out of the ocean [kgSalt kg-1 R Z T-1 ~> kgSalt m-2].
+    mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [R Z ~> kg m-2].
     pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
-                       !! snow and ponds, exclusive of atmospheric pressure [Pa].
+                       !! snow and ponds, exclusive of atmospheric pressure [R Z L T-2 ~> Pa].
                        !### What about pressure from bergs?
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
-                       !! at the ocean surface [W m-2].  The third dimension combines
+                       !! at the ocean surface [Q R Z T-1 ~> W m-2].  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency
                        !! (visible or near-IR) bands, with the integer parameters
                        !! from this module helping to distinguish them.
 
-  !Iceberg fields
+  ! Iceberg fields - these are passed unchanged from the icebergs module, so are not rescaled.
   real, pointer, dimension(:,:)   :: &
-    ustar_berg =>NULL(), &  !< ustar contribution below icebergs [m s-1]
-    area_berg =>NULL(),  &  !< fraction of grid cell covered by icebergs [m2 m-2]
-    mass_berg =>NULL()      !< mass of icebergs [kg m-2]
+    ustar_berg => NULL(), & !< ustar contribution below icebergs [m s-1]
+    area_berg => NULL(),  & !< fraction of grid cell covered by icebergs [m2 m-2]
+    mass_berg => NULL()     !< mass of icebergs [kg m-2]
 
   ! These arrays are used for enthalpy change diagnostics in the slow thermodynamics.
   real, allocatable, dimension(:,:)   :: &
@@ -389,10 +390,12 @@ type ice_ocean_flux_type
     ! removal of water mass (liquid or frozen) from the ice model are required
     ! to close the enthalpy budget. Ice enthalpy is generally negative, so terms
     ! that add mass to the ice are generally negative.
-    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere [J m-2].
-    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to the atmosphere [J m-2].
-    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [J m-2].
-    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to the ocean [J m-2].
+    Enth_Mass_in_atm , & !< The enthalpy introduced to the ice by water fluxes from the atmosphere [Q R Z ~> J m-2].
+    Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to
+                         !! the atmosphere [Q R Z ~> J m-2].
+    Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [Q R Z ~> J m-2].
+    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to
+                         !! the ocean [Q R Z ~> J m-2].
 
   integer :: stress_count !< The number of times that the stresses from the ice to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two wind
@@ -565,19 +568,19 @@ subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file)
   idr = register_restart_field(Ice_restart, restart_file, "kg_m3_to_R", US%kg_m3_to_R_restart, &
                                  longname="The conversion factor from kg m-3 to SIS2 density units.", &
                                  units="R m3 kg-1", no_domain=.true., mandatory=.false.)
+  idr = register_restart_field(Ice_restart, restart_file, "J_kg_to_Q", US%J_kg_to_Q_restart, &
+                                 longname="The conversion factor from J kg-1 to SIS2 enthalpy units.", &
+                                 units="Q kg J-1", no_domain=.true., mandatory=.false.)
 
 end subroutine register_unit_conversion_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_read_alt_restarts reads in alternative variables that might have been in the restart
-!! file, specifically dealing with changing between symmetric and non-symmetric memory restart
-!! files. It also handles any changes in dimensional rescaling of these variables between what is
-!! stored in the restart file and what is done for the current run segment.
-subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
+!! file, specifically dealing with changing between symmetric and non-symmetric memory restart files.
+subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
                                        restart_file, restart_dir)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
-  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
@@ -585,7 +588,6 @@ subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
 
   ! These are temporary variables that will be used only here for reading and then discarded.
   real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp
-  real :: vel_rescale
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
   logical :: u_set, v_set
   integer :: i, j, id_u, id_v
@@ -717,10 +719,39 @@ subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
   deallocate(u_tmp, v_tmp)
   deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp)
 
-  ! Now redo the dimensional rescaling of the velocities if necessary.
-  if (IST%Cgrid_dyn .and. (US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
-      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) then
+end subroutine ice_state_read_alt_restarts
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> rescale_ice_state_restart_fields handles any changes in dimensional rescaling of ice state
+!! variables between what is stored in the restart file and what is done for the current run segment.
+subroutine rescale_ice_state_restart_fields(IST, G, US, IG)
+  type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+
+  ! Local variables
+  real :: vel_rescale, Q_rescale, RZ_rescale
+  integer :: i, j, k, m
+
+  ! Redo the dimensional rescaling of the ice state type variables as necessary.
+  ! The rescaling of the ice and snow thickness are dealt with in ice_model-init so that
+  ! older (SIS1) sea ice restart files can be used.
+  vel_rescale = 1.0
+  if ((US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
+      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) &
     vel_rescale = (US%m_to_L*US%s_to_T_restart) / (US%m_to_L_restart*US%s_to_T)
+  Q_rescale = 1.0
+  if ((US%J_kg_to_Q_restart /= 0.0) .and. &
+      (US%J_kg_to_Q /= US%J_kg_to_Q_restart)) &
+    Q_rescale = US%J_kg_to_Q / US%J_kg_to_Q_restart
+  RZ_rescale = 1.0
+  if ((US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) .and. &
+      (US%kg_m3_to_R*US%m_to_Z) /= (US%kg_m3_to_R_restart*US%m_to_Z_restart)) &
+    RZ_rescale = (US%kg_m3_to_R*US%m_to_Z) / (US%kg_m3_to_R_restart*US%m_to_Z_restart)
+
+
+  if (IST%Cgrid_dyn .and. (vel_rescale /= 1.0)) then
     do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
       IST%u_ice_C(I,j) = vel_rescale * IST%u_ice_C(I,j)
     enddo ; enddo
@@ -728,16 +759,120 @@ subroutine ice_state_read_alt_restarts(IST, G, US, IG, Ice_restart, &
       IST%v_ice_C(i,J) = vel_rescale * IST%v_ice_C(i,J)
     enddo ; enddo
   endif
-  if (.not.IST%Cgrid_dyn .and. (US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
-      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) then
-    vel_rescale = (US%m_to_L*US%s_to_T_restart) / (US%m_to_L_restart*US%s_to_T)
+  if (.not.IST%Cgrid_dyn .and. (vel_rescale /= 1.0)) then
     do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
       IST%u_ice_B(I,J) = vel_rescale * IST%u_ice_B(I,J)
       IST%v_ice_B(I,J) = vel_rescale * IST%v_ice_B(I,J)
     enddo ; enddo
   endif
 
-end subroutine ice_state_read_alt_restarts
+  if (Q_rescale /= 1.0) then
+    do m=1,IG%NkIce ; do k=1,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      IST%enth_ice(i,j,k,m) = Q_rescale * IST%enth_ice(i,j,k,m)
+      IST%enth_snow(i,j,k,m) = Q_rescale * IST%enth_snow(i,j,k,m)
+    enddo ; enddo ; enddo ; enddo
+  endif
+  if (allocated(IST%snow_to_ocn) .and. (Q_rescale /= 1.0) .or. (RZ_rescale /= 1.0)) then
+    do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      IST%snow_to_ocn(i,j) = RZ_rescale * IST%snow_to_ocn(i,j)
+      IST%enth_snow_to_ocn(i,j) = Q_rescale * IST%enth_snow_to_ocn(i,j)
+    enddo ; enddo
+  endif
+
+end subroutine rescale_ice_state_restart_fields
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> rescale_fast_to_slow_restart_fields redoes the dimensional rescaling of the restart fields
+!!   that are required to be sent from the fast state to the slow state when
+!!   the model is restart.  These are the fields that would be copied via the
+!!   subroutines copy_FIA_to_FIA, copy_TSF_to_TSF and copy_Rad_to_Rad, and it
+!!   should be called from the fast ice processors when redo_fast_update is true.
+subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
+  type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
+  type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
+  type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
+  type(SIS_hor_grid_type),   intent(in)  :: G       !< The horizontal grid type
+  type(unit_scale_type),     intent(in)  :: US      !< A structure with unit conversion factors
+  type(ice_grid_type),       intent(in)  :: IG  !< The sea-ice specific grid type
+
+  real :: QRZ_T_rescale, RZ_T_rescale, RZL_T2_rescale ! Rescaling correction factors [all ~> 1.0]
+  integer :: i, j, k, b
+
+  QRZ_T_rescale = 1.0 ; RZ_T_rescale = 1.0 ; RZL_T2_rescale = 1.0
+  if ((US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) .and. &
+      ((US%J_kg_to_Q*US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) /= &
+       (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)) ) &
+    QRZ_T_rescale = (US%J_kg_to_Q*US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) / &
+                    (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)
+
+  if ((US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) .and. &
+      ((US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) /= &
+       (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)) ) &
+    RZ_T_rescale = (US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) / &
+                   (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)
+
+  if ((US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_L_restart*US%m_to_Z_restart /= 0.0) .and. &
+      ((US%kg_m3_to_R*US%m_to_Z*US%m_to_L*US%s_to_T_restart**2) /= &
+       (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%m_to_L_restart*US%s_to_T**2)) ) &
+    RZL_T2_rescale = (US%kg_m3_to_R*US%m_to_Z*US%m_to_L*US%s_to_T_restart**2) / &
+                     (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%m_to_L_restart*US%s_to_T**2)
+
+  if ((QRZ_T_rescale == 1.0) .and. (RZ_T_rescale == 1.0) .and. (RZL_T2_rescale == 1.0)) return
+
+  do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sh_top(i,j,k) = QRZ_T_rescale * FIA%flux_sh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%evap_top(i,j,k)    = RZ_T_rescale * FIA%evap_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%flux_lw_top(i,j,k) = QRZ_T_rescale * FIA%flux_lw_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%flux_lh_top(i,j,k) = QRZ_T_rescale * FIA%flux_lh_top(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%lprec_top(i,j,k)   = RZ_T_rescale * FIA%lprec_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%fprec_top(i,j,k)   = RZ_T_rescale * FIA%fprec_top(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+  enddo ; enddo ; enddo
+  do b=1,size(FIA%flux_sw_top,4) ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sw_top(i,j,k,b) = QRZ_T_rescale * FIA%flux_sw_top(i,j,k,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo ; enddo
+
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%WindStr_x(i,j) = RZL_T2_rescale * FIA%WindStr_x(i,j) ! [Pa]
+    FIA%WindStr_y(i,j) = RZL_T2_rescale * FIA%WindStr_y(i,j) ! [Pa]
+    FIA%WindStr_ocn_x(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_x(i,j) ! [Pa]
+    FIA%WindStr_ocn_y(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_y(i,j) ! [Pa]
+    FIA%p_atm_surf(i,j) = RZL_T2_rescale * FIA%p_atm_surf(i,j) ! [Pa]
+    FIA%runoff(i,j) = RZ_T_rescale * FIA%runoff(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%calving(i,j) = RZ_T_rescale * FIA%calving(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%runoff_hflx(i,j) = QRZ_T_rescale * FIA%runoff_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
+    FIA%calving_hflx(i,j) = QRZ_T_rescale * FIA%calving_hflx(i,j) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo
+  do b=1,size(FIA%flux_sw_dn,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sw_dn(i,j,b) = QRZ_T_rescale * FIA%flux_sw_dn(i,j,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo
+
+
+  if (allocated(FIA%flux_sh0)) then ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    FIA%flux_sh0(i,j,k) = QRZ_T_rescale * FIA%flux_sh0(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%flux_lw0(i,j,k) = QRZ_T_rescale * FIA%flux_lw0(i,j,k) ! [Q R Z T-1 ~> W m-2]
+    FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
+    FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
+    FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
+    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [Q R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
+!    ! Do not rescale FIA%Tskin_cat(i,j,k) =  FIA%Tskin_cat(i,j,k)  ! [degC]
+  enddo ; enddo ; enddo ; endif
+
+ ! Do not rescale Rad%tskin_rad(i,j) = Rad%tskin_rad(i,j) ! [degC]
+ ! Do not rescale Rad%coszen_lastrad(i,j) = Rad%coszen_lastrad(i,j) ! [nondim]
+
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    TSF%flux_sh(i,j) = QRZ_T_rescale * TSF%flux_sh(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%flux_lw(i,j) = QRZ_T_rescale * TSF%flux_lw(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%flux_lh(i,j) = QRZ_T_rescale * TSF%flux_lh(i,j) ! [Q R Z T-1 ~> W m-2]
+    TSF%evap(i,j) = RZ_T_rescale * TSF%evap(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    TSF%lprec(i,j) = RZ_T_rescale * TSF%lprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+    TSF%fprec(i,j) = RZ_T_rescale * TSF%fprec(i,j) ! [R Z T-1 ~> kg m-2 s-1]
+  enddo ; enddo
+  do b=1,size(TSF%flux_sw,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    TSF%flux_sw(i,j,b) = QRZ_T_rescale * TSF%flux_sw(i,j,b) ! [Q R Z T-1 ~> W m-2]
+  enddo ; enddo ; enddo
+
+end subroutine rescale_fast_to_slow_restart_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
@@ -2213,81 +2348,82 @@ subroutine IOF_chksum(mesg, IOF, G, US)
   type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
 
-  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI)
+  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
 
-  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI)
-  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI)
-  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI)
-  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI)
-  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI)
-  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI)
-  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI)
-  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
-  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
-  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI)
-  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI)
+  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
   if (allocated(IOF%stress_mag)) &
-    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%L_T_to_m_s*US%s_to_T)
+    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 
-  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI)
-  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI)
-  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI)
-  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI)
+  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
 end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in a fast_ice_avg_type.
-subroutine FIA_chksum(mesg, FIA, G, check_ocean)
+subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(unit_scale_type),   intent(in)    :: US !< A structure with unit conversion factors
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
   character(len=8) :: nstr
   integer :: b
 
-  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI)
-  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI)
+  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI, scale=US%RZ_T_to_kg_m2s)
   do b=1,size(FIA%flux_sw_top,4)
     write(nstr, '(I4)') b ; nstr = adjustl(nstr)
     call hchksum(FIA%flux_sw_top(:,:,1:,b), &
-                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI)
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
   enddo
-  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI)
-  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI)
-  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI)
-  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI)
+  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
 
   if (present(check_ocean)) then ; if (check_ocean) then
-    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI)
-    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI)
+    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
     do b=1,size(FIA%flux_sw_top,4)
       write(nstr, '(I4)') b ; nstr = adjustl(nstr)
       call hchksum(FIA%flux_sw_top(:,:,0,b), &
-                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI)
+                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
     enddo
-    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI)
-    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI)
-    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI)
-    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI)
+    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
   endif ; endif
 
-  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI)
-  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI)
+  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI)
-  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI)
-  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI)
-  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI)
-  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI)
-  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI)
-  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI)
-  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI)
-  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI)
+  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%ice_free, trim(mesg)//" FIA%ice_free", G%HI)
   call hchksum(FIA%ice_cover, trim(mesg)//" FIA%ice_cover", G%HI)
-  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI)
+  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
 
 end subroutine FIA_chksum
 
@@ -2312,15 +2448,16 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
 
   call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
-  call hchksum(IST%mH_ice*IG%H_to_kg_m2, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs)
+  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
-    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, haloshift=hs)
+    call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, &
+                 haloshift=hs, scale=US%Q_to_J_kg)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
   enddo
-  call hchksum(IST%mH_snow*IG%H_to_kg_m2, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs)
-  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs)
-  call hchksum(IST%mH_pond*IG%H_to_kg_m2, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs)
+  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
+  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs, scale=US%Q_to_J_kg)
+  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
     call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, scale=US%L_T_to_m_s)
@@ -2336,9 +2473,10 @@ end subroutine IST_chksum
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Check the ice state for bad values of temperature, thickness, areal coverage,
 !! enthalpy or ice mass, and write diagnostics about any offending columns
-subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
+subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   character(len=*),        intent(in)    :: msg !< An identifying message
   type(ocean_sfc_state_type), optional, intent(in) :: OSS !< A structure containing the arrays that describe
@@ -2351,7 +2489,8 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
   real, dimension(IG%NkIce) :: S_col
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
-  real    :: enth_min, enth_max, m_max
+  real    :: enth_min, enth_max
+  real    :: m_max ! Maximum mass per unit area [R Z ~> kg m-2]
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
@@ -2361,7 +2500,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
 
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0 ; err = ":"
 
-  m_max = 1.0e6*IG%kg_m2_to_H
+  m_max = 1.0e6*US%kg_m3_to_R*US%m_to_Z
 
   sum_part_sz(:,:) = 0.0
   do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
@@ -2370,35 +2509,35 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
 
   tOcn_min = -100. ; tOcn_max = 60.
   if (present(OSS)) then
-    do j=jsc,jec ; do i=isc,iec
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0) .or. &
           (OSS%SST_C(i,j) < tOcn_min) .or. (OSS%SST_C(i,j) > tOcn_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
       endif
-    enddo ; enddo
+    endif ; enddo ; enddo
   endif
-  do j=jsc,jec ; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if (abs(sum_part_sz(i,j) - 1.0) > 2.0*(ncat+1)*epsilon(sum_part_sz(i,j))) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "sum_part_sz" ; endif
     endif
-  enddo ; enddo
+  endif ; enddo ; enddo
 
   tsurf_min = tOcn_min ; tsurf_max = tOcn_max
   tice_min = -100. ; tice_max = 1.0
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
   enth_max = enth_from_TS(tice_max, 0., IST%ITV)
   if (present(Rad)) then
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
       if ((Rad%t_skin(i,j,k) < tsurf_min) .or. (Rad%t_skin(i,j,k) > tsurf_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
       endif
-    enddo ; enddo ; enddo
+    endif ; enddo ; enddo ; enddo
   endif
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "large mass" ; endif
@@ -2407,9 +2546,9 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_snow" ; endif
     endif
-  enddo ; enddo ; enddo
+  endif ; enddo ; enddo ; enddo
 
-  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif
@@ -2418,7 +2557,7 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "sal_ice" ; endif
     endif
-  enddo ; enddo ; enddo ; enddo
+  endif ; enddo ; enddo ; enddo ; enddo
 
   if (n_bad > 0) then
     i = i_bad ; j=j_bad ; k = k_bad
@@ -2448,13 +2587,12 @@ subroutine IST_bounds_check(IST, G, IG, msg, OSS, Rad)
     call SIS_error(WARNING, "Bad ice state "//trim(err)//" "//trim(msg)//" ; "//trim(mesg1)//&
                             " ; "//trim(mesg2), all_print=.true.)
     if (k_bad > 0) then
-      call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, &
-                                 specified_thermo_salinity=spec_thermo_sal)
+      call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, spec_thermo_salin=spec_thermo_sal)
       if (.not.spec_thermo_sal) then
         do m=1,NkIce ; S_col(m) = IST%sal_ice(i,j,k,m) ; enddo
       endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
-             IST%mH_ice(i,j,k)*IG%H_to_kg_m2, IST%mH_snow(i,j,k)*IG%H_to_kg_m2, &
+             IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, &
              temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
              temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
       do m=2,NkIce

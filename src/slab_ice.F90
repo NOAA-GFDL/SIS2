@@ -33,8 +33,8 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, US, part_sz, nstep
   real, dimension(SZIB_(G),SZJ_(G)), intent(in   ) :: uc  !< x-face advecting velocity [L T-1 ~> m s-1]
   real, dimension(SZI_(G),SZJB_(G)), intent(in   ) :: vc  !< y-face advecting velocity [L T-1 ~> m s-1]
   real, dimension(SZI_(G),SZJ_(G)),  intent(inout) :: trc !< Depth integrated amount of the tracer to advect,
-                                                          !! in [Conc H ~> Conc kg m-2] or other units, or
-                                                          !! the total ice mass [H ~> kg m-2].
+                                                          !! in [Conc R Z ~> Conc kg m-2] or other units, or
+                                                          !! the total ice mass [R Z ~> kg m-2].
   real,                              intent(in   ) :: stop_lim !< A tracer amount below which to
                                                           !! stop advection, in the same units as tr [Conc]
   real,                              intent(in   ) :: dt_slow !< The time covered by this call [T ~> s].
@@ -44,9 +44,9 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, US, part_sz, nstep
   integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
 
   ! Local variables
-  real, dimension(SZIB_(G),SZJ_(G)) :: uflx ! Zonal tracer fluxes [Conc H L2 T-1 ~> Conc kg s-1]
-  real, dimension(SZI_(G),SZJB_(G)) :: vflx ! Meridional tracer fluxes [Conc H L2 T-1 ~> Conc kg s-1]
-  real :: avg, dif ! Average and forward difference of integrated tracer concentrations [Conc H ~> Conc kg m-2]
+  real, dimension(SZIB_(G),SZJ_(G)) :: uflx ! Zonal tracer fluxes [Conc R Z L2 T-1 ~> Conc kg s-1]
+  real, dimension(SZI_(G),SZJB_(G)) :: vflx ! Meridional tracer fluxes [Conc R Z L2 T-1 ~> Conc kg s-1]
+  real :: avg, dif ! Average and forward difference of integrated tracer concentrations [Conc R Z ~> Conc kg m-2]
   real :: dt_adv  ! The advective timestep [T ~> s]
   integer :: i, j, n, isc, iec, jsc, jec, n_substeps
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec

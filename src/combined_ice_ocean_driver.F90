@@ -108,14 +108,14 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   call log_version(param_file, mdl, version, "")
 
   call get_param(param_file, mdl, "SINGLE_MOM_CALL", CS%single_MOM_call, &
-                 "If true, advance the state of MOM with a single step \n"//&
-                 "including both dynamics and thermodynamics.  If false, \n"//&
+                 "If true, advance the state of MOM with a single step "//&
+                 "including both dynamics and thermodynamics.  If false, "//&
                  "the two phases are advanced with separate calls.", default=.true.)
   call get_param(param_file, mdl, "INTERSPERSE_ICE_OCEAN", CS%intersperse_ice_ocn, &
-                 "If true, intersperse the ice and ocean thermodynamic and \n"//&
+                 "If true, intersperse the ice and ocean thermodynamic and "//&
                  "and dynamic updates.", default=.false.)
   call get_param(param_file, mdl, "DT_COUPLED_ICE_OCEAN_DYN", CS%dt_coupled_dyn, &
-                 "The time step for coupling the ice and ocean dynamics when \n"//&
+                 "The time step for coupling the ice and ocean dynamics when "//&
                  "INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.", &
                  units="seconds", default=-1.0, do_not_log=.not.CS%intersperse_ice_ocn)
 
