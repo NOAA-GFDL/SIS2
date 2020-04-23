@@ -124,19 +124,19 @@ subroutine SIS2_ice_thm_init(US, param_file, CS)
                  "shortwave radiation calculation.", default=.false.)
   call get_param(param_file, mdl, "TDRAIN", CS%tdrain, &
                  "Melt ponds drain to sea level when ice average temp. "//&
-                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8) !### , units="degC")
+                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8, units="degC")
   call get_param(param_file, mdl, "R_MIN_POND", CS%r_min_pond, &
                  "Minimum retention rate of surface water sources in melt pond "//&
-                 "(retention scales linearly with ice cover)", default=0.15) !### , units="nondim")
+                 "(retention scales linearly with ice cover)", default=0.15, units="nondim")
   call get_param(param_file, mdl, "R_MAX_POND", CS%r_max_pond, &
                  "Maximum retention rate of surface water sources in melt pond "//&
-                 "(retention scales linearly with ice cover)", default=0.9) !### , units="nondim")
+                 "(retention scales linearly with ice cover)", default=0.9, units="nondim")
   call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
                  "Minimum melt pond cover (by ponds at sea level) "//&
-                 "pond drains to this when ice is porous.", default=0.2) !### , units="nondim")
+                 "pond drains to this when ice is porous.", default=0.2, units="nondim")
   call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
                  "Maximum melt pond cover - associated with pond volume "//&
-                 "that suppresses ice top to waterline", default=0.5) !### , units="nondim")
+                 "that suppresses ice top to waterline", default=0.5, units="nondim")
   call get_param(param_file, mdl, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
                  "An estimate of the range of snow and ice temperatures "//&
                  "that is used to evaluate whether an explicit diffusive "//&

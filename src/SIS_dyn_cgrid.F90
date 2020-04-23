@@ -373,13 +373,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
 
-  !### In the following 4 diagnostics, 'Pa' should be 'Pa m'
   CS%id_str_d   = register_diag_field('ice_model', 'str_d', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_t   = register_diag_field('ice_model', 'str_t', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time,   &
             'ice divergence strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time,   &
@@ -397,13 +396,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   CS%id_vi_hifreq = register_diag_field('ice_model', 'vi_hf', diag%axesCv1, Time, &
             'ice velocity - y component', 'm/s', missing_value=missing,        &
             interp_method='none, conversion=US%L_T_to_m_s')
-  !### In the following 4 diagnostics, 'Pa' should be 'Pa m'
   CS%id_str_d_hifreq = register_diag_field('ice_model', 'str_d_hf', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_t_hifreq = register_diag_field('ice_model', 'str_t_hf', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_str_s_hifreq = register_diag_field('ice_model', 'str_s_hf', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
   CS%id_sh_d_hifreq = register_diag_field('ice_model', 'sh_d_hf', diag%axesT1, Time, &
             'ice divergence rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t_hifreq = register_diag_field('ice_model', 'sh_t_hf', diag%axesT1, Time, &
@@ -1335,9 +1333,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, &
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
     if (CS%id_miu>0) call post_SIS_data(CS%id_miu, mi_u, CS%diag)
     if (CS%id_miv>0) call post_SIS_data(CS%id_miv, mi_v, CS%diag)
-    !### This should be
-    ! if (CS%id_mis>0) call post_SIS_data(CS%id_mis, mis, CS%diag)
-    if (CS%id_mis>0) call post_SIS_data(CS%id_mis, mice, CS%diag)
+    if (CS%id_mis>0) call post_SIS_data(CS%id_mis, mis, CS%diag)
     if (CS%id_ci0>0) call post_SIS_data(CS%id_ci0, ci, CS%diag)
     if (CS%id_ci>0)  call post_SIS_data(CS%id_ci, ci_proj, CS%diag)
 
