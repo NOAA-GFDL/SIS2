@@ -832,11 +832,11 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
   enddo ; enddo ; enddo ; enddo
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
-    FIA%WindStr_x(i,j) = RZL_T2_rescale * FIA%WindStr_x(i,j) ! [Pa]
-    FIA%WindStr_y(i,j) = RZL_T2_rescale * FIA%WindStr_y(i,j) ! [Pa]
-    FIA%WindStr_ocn_x(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_x(i,j) ! [Pa]
-    FIA%WindStr_ocn_y(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_y(i,j) ! [Pa]
-    FIA%p_atm_surf(i,j) = RZL_T2_rescale * FIA%p_atm_surf(i,j) ! [Pa]
+    FIA%WindStr_x(i,j) = RZL_T2_rescale * FIA%WindStr_x(i,j) ! [R Z L T-2 ~> Pa]
+    FIA%WindStr_y(i,j) = RZL_T2_rescale * FIA%WindStr_y(i,j) ! [R Z L T-2 ~> Pa]
+    FIA%WindStr_ocn_x(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_x(i,j) ! [R Z L T-2 ~> Pa]
+    FIA%WindStr_ocn_y(i,j) = RZL_T2_rescale * FIA%WindStr_ocn_y(i,j) ! [R Z L T-2 ~> Pa]
+    FIA%p_atm_surf(i,j) = RZL_T2_rescale * FIA%p_atm_surf(i,j) ! [R Z L T-2 ~> Pa]
     FIA%runoff(i,j) = RZ_T_rescale * FIA%runoff(i,j) ! [R Z T-1 ~> kg m-2 s-1]
     FIA%calving(i,j) = RZ_T_rescale * FIA%calving(i,j) ! [R Z T-1 ~> kg m-2 s-1]
     FIA%runoff_hflx(i,j) = QRZ_T_rescale * FIA%runoff_hflx(i,j) ! [Q R Z T-1 ~> W m-2]

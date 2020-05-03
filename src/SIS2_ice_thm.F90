@@ -181,16 +181,9 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   logical, optional, intent(in) :: check_conserve !< If true, check for local heat conservation.
-!
-! variables for temperature calculation [see Winton (1999) section II.A.]
-! note:  here equations are multiplied by hi to improve thin ice accuracy
-!
-!  real :: A ! Net downward surface heat flux from the atmosphere at 0C [W m-2]
-!  real, dimension(0:NkIce) :: &
-!    temp_est, &    ! An estimated snow and ice temperature [degC].
-!    temp_IC, &     ! The temperatures of the snow and ice based on the initial
-!                   ! enthalpy [degC].
-!    temp_new       ! The updated temperatures [degC].
+
+  ! Local variables for temperature calculation [see Winton (1999) section II.A.]
+  ! note:  here equations are multiplied by hi to improve thin ice accuracy
   real, dimension(0:NkIce) :: temp_est   ! An estimated snow and ice temperature [degC].
   real, dimension(0:NkIce) :: temp_IC    ! The temperatures of the snow and ice based on the initial
                                          ! enthalpy [degC].
@@ -231,8 +224,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: e_extra_sum ! [Q R Z ~> J m-2]
   real :: tflux_bot   ! Heat flux in the ice at the ice-ocean interface [Q R Z ~> J m-2]
   real :: tflux_sfc   ! [Q R Z ~> J m-2]
+  ! These are used in diagnostic calculations that could be uncommented for debugging.
   ! real :: sum_sol     ! The time integrated shortwave heating [Q R Z ~> J m-2]
-  ! real :: tfb_diff_err, tfb_resid_err
+  ! real :: tfb_diff_err  ! A diagostic estimate of errors from roundoff [Q R Z ~> J m-2]
+  ! real :: tfb_resid_err ! A diagnostic estimate of the residual due to roundoff [Q R Z ~> J m-2]
   ! real :: d_tflux_bot, tflux_bot_diff, tflux_bot_resid ! Diagnostic terms [Q R Z ~> J m-2]
   real :: hsnow_eff    ! The effective thickness of the snow layer [Z ~> m]
   real :: snow_temp_new, snow_temp_max ! Snow temperatures [degC]
@@ -706,7 +701,7 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
   real, intent(in) :: bf   !< response of outward heat flux to local temperature [Q R Z T-1 ~> W m-2 degC]
   real, intent(in) :: tp   !< prior step temperature [degC]
   real, intent(in) :: enth !< prior step enthalpy
-  real, intent(in) :: salin !< ice salinity [gSalg kg-1].
+  real, intent(in) :: salin !< ice salinity [gSalt kg-1].
   real, intent(in) :: dtt  !< timestep [T ~> s]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
