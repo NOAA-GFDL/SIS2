@@ -124,19 +124,19 @@ subroutine SIS2_ice_thm_init(US, param_file, CS)
                  "shortwave radiation calculation.", default=.false.)
   call get_param(param_file, mdl, "TDRAIN", CS%tdrain, &
                  "Melt ponds drain to sea level when ice average temp. "//&
-                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8) !### , units="degC")
+                 "exceeds TDRAIN (stand-in for mushy layer thermo)", default=-0.8, units="degC")
   call get_param(param_file, mdl, "R_MIN_POND", CS%r_min_pond, &
                  "Minimum retention rate of surface water sources in melt pond "//&
-                 "(retention scales linearly with ice cover)", default=0.15) !### , units="nondim")
+                 "(retention scales linearly with ice cover)", default=0.15, units="nondim")
   call get_param(param_file, mdl, "R_MAX_POND", CS%r_max_pond, &
                  "Maximum retention rate of surface water sources in melt pond "//&
-                 "(retention scales linearly with ice cover)", default=0.9) !### , units="nondim")
+                 "(retention scales linearly with ice cover)", default=0.9, units="nondim")
   call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
                  "Minimum melt pond cover (by ponds at sea level) "//&
-                 "pond drains to this when ice is porous.", default=0.2) !### , units="nondim")
+                 "pond drains to this when ice is porous.", default=0.2, units="nondim")
   call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
                  "Maximum melt pond cover - associated with pond volume "//&
-                 "that suppresses ice top to waterline", default=0.5) !### , units="nondim")
+                 "that suppresses ice top to waterline", default=0.5, units="nondim")
   call get_param(param_file, mdl, "ICE_TEMP_RANGE_ESTIMATE", CS%temp_range_est,&
                  "An estimate of the range of snow and ice temperatures "//&
                  "that is used to evaluate whether an explicit diffusive "//&
@@ -181,16 +181,9 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   logical, optional, intent(in) :: check_conserve !< If true, check for local heat conservation.
-!
-! variables for temperature calculation [see Winton (1999) section II.A.]
-! note:  here equations are multiplied by hi to improve thin ice accuracy
-!
-!  real :: A ! Net downward surface heat flux from the atmosphere at 0C [W m-2]
-!  real, dimension(0:NkIce) :: &
-!    temp_est, &    ! An estimated snow and ice temperature [degC].
-!    temp_IC, &     ! The temperatures of the snow and ice based on the initial
-!                   ! enthalpy [degC].
-!    temp_new       ! The updated temperatures [degC].
+
+  ! Local variables for temperature calculation [see Winton (1999) section II.A.]
+  ! note:  here equations are multiplied by hi to improve thin ice accuracy
   real, dimension(0:NkIce) :: temp_est   ! An estimated snow and ice temperature [degC].
   real, dimension(0:NkIce) :: temp_IC    ! The temperatures of the snow and ice based on the initial
                                          ! enthalpy [degC].
@@ -231,8 +224,10 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: e_extra_sum ! [Q R Z ~> J m-2]
   real :: tflux_bot   ! Heat flux in the ice at the ice-ocean interface [Q R Z ~> J m-2]
   real :: tflux_sfc   ! [Q R Z ~> J m-2]
+  ! These are used in diagnostic calculations that could be uncommented for debugging.
   ! real :: sum_sol     ! The time integrated shortwave heating [Q R Z ~> J m-2]
-  ! real :: tfb_diff_err, tfb_resid_err
+  ! real :: tfb_diff_err  ! A diagostic estimate of errors from roundoff [Q R Z ~> J m-2]
+  ! real :: tfb_resid_err ! A diagnostic estimate of the residual due to roundoff [Q R Z ~> J m-2]
   ! real :: d_tflux_bot, tflux_bot_diff, tflux_bot_resid ! Diagnostic terms [Q R Z ~> J m-2]
   real :: hsnow_eff    ! The effective thickness of the snow layer [Z ~> m]
   real :: snow_temp_new, snow_temp_max ! Snow temperatures [degC]
@@ -706,7 +701,7 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
   real, intent(in) :: bf   !< response of outward heat flux to local temperature [Q R Z T-1 ~> W m-2 degC]
   real, intent(in) :: tp   !< prior step temperature [degC]
   real, intent(in) :: enth !< prior step enthalpy
-  real, intent(in) :: salin !< ice salinity [gSalg kg-1].
+  real, intent(in) :: salin !< ice salinity [gSalt kg-1].
   real, intent(in) :: dtt  !< timestep [T ~> s]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors

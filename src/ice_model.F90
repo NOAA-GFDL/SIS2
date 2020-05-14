@@ -41,7 +41,7 @@ use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only : get_param, log_param, log_version, read_param, param_file_type
 use MOM_file_parser, only : open_param_file, close_param_file
 use MOM_hor_index, only : hor_index_type, hor_index_init
-use MOM_obsolete_params, only : obsolete_logical
+use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use MOM_string_functions, only : uppercase
 use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager, only : operator(+), operator(-)
@@ -1649,8 +1649,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
   ! Parameters that properly belong exclusively to ice_thm.
-  real :: k_snow         ! snow conductivity [W m degC-1]
-  real :: h_lo_lim       ! The min ice thickness for temp. calc [m].
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
                          ! of the thickness to mass-per-unit-area conversion
                          ! factor.
@@ -1741,10 +1739,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
-
-  ! ### These are just here to keep the order of SIS_parameter_doc.
-  logical :: column_check
-  real :: imb_tol
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -1854,18 +1848,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "the product of the heat capacity per unit volume of sea "//&
                  "water times a molecular diffusive piston velocity.", &
                  units="W m-2 K-1", scale=US%W_m2_to_QRZ_T, default=6e-5*4e6)
-  !### This parameter appears to be unused and should be obsoleted.
-  call get_param(param_file, mdl, "SNOW_CONDUCT", k_snow, &
-                 "The conductivity of heat in snow.", units="W m-1 K-1", &
-                 default=0.31)
-  call get_param(param_file, mdl, "COLUMN_CHECK", column_check, &
-                 "If true, add code to allow debugging of conservation "//&
-                 "column-by-column.  This does not change answers, but "//&
-                 "can increase model run time.", default=.false., &
-                 debuggingParam=.true.)
-  call get_param(param_file, mdl, "IMBALANCE_TOLERANCE", imb_tol, &
-                 "The tolerance for imbalances to be flagged by COLUMN_CHECK.", &
-                 units="nondim", default=1.0e-9, debuggingParam=.true.)
+  call obsolete_real(param_file, "SNOW_CONDUCT", warning_val=0.31)
   call get_param(param_file, mdl, "ICE_BOUNDS_CHECK", bounds_check, &
                  "If true, periodically check the values of ice and snow "//&
                  "temperatures and thicknesses to ensure that they are "//&
@@ -1915,10 +1898,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "PASS_STRESS_MAG_TO_OCEAN", pass_stress_mag, &
                  "If true, provide the time and area weighted mean magnitude "//&
                  "of the stresses on the ocean to the ocean.", default=.false.)
-  !### This parameter is not used here, although a similar parameter is used elsewhere.
-  call get_param(param_file, mdl, "MIN_H_FOR_TEMP_CALC", h_lo_lim, &
-                 "The minimum ice thickness at which to do temperature calculations.", &
-                 units="m", default=0.0)
   call get_param(param_file, mdl, "DO_ICEBERGS", do_icebergs, &
                  "If true, call the iceberg module.", default=.false.)
   if (do_icebergs) then

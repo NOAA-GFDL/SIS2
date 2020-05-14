@@ -34,8 +34,8 @@ contains
 !> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
 !!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
 subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
-  type(dyn_horgrid_type),  intent(inout) :: G    !< The ocean's grid structure.
-  type(unit_scale_type),   intent(in)    :: US   !< A dimensional unit scaling type
+  type(dyn_horgrid_type),  intent(inout) :: G   !< The ocean's grid structure.
+  type(unit_scale_type),   intent(in)    :: US  !< A dimensional unit scaling type
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
   logical,                 intent(in)    :: write_geom !< If true, write grid geometry files.
@@ -105,10 +105,9 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
   end select
 
 
-!    Calculate the value of the Coriolis parameter at the latitude   !
-!  of the q grid points [s-1].
+  !  Calculate the value of the Coriolis parameter at the q grid points [T-1 ~> s-1].
   call MOM_initialize_rotation(G%CoriolisBu, G, PF, US)
-!   Calculate the components of grad f (beta)
+  !  Calculate the components of grad f (beta) [T-1 L-1 ~> s-1 m-1]
   call MOM_calculate_grad_Coriolis(G%dF_dx, G%dF_dy, G, US)
   if (debug) then
     call Bchksum(G%CoriolisBu, "SIS_initialize_fixed: f ", G%HI, scale=US%s_to_T)
@@ -118,7 +117,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
 
   call initialize_grid_rotation_angle(G, PF)
 
-! Write out all of the grid data used by this run.
+  ! Write out all of the grid data used by this run.
   if (write_geom) call write_ocean_geometry_file(G, PF, output_dir, &
                                                  geom_file="sea_ice_geometry", US=US)
 
@@ -131,10 +130,10 @@ end subroutine SIS_initialize_fixed
 subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
   type(dyn_horgrid_type),           intent(in)  :: G  !< The dynamic horizontal grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
-                                    intent(out) :: D  !< Ocean bottom depth in m
+                                    intent(out) :: D  !< Ocean bottom depth [Z ~> m]
   type(param_file_type),            intent(in)  :: PF !< Parameter file structure
-  real,                             intent(out) :: max_depth !< Maximum depth of model [m or Z ~> m]
-  type(unit_scale_type),  optional, intent(in)  :: US   !< A dimensional unit scaling type
+  real,                             intent(out) :: max_depth !< Maximum depth of model [Z ~> m]
+  type(unit_scale_type),            intent(in)  :: US !< A dimensional unit scaling type
 
 !  This subroutine makes the appropriate call to set up the bottom depth.
 !  This is a separate subroutine so that it can be made public and shared with
@@ -142,7 +141,6 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
 ! Set up the bottom depth, G%bathyT either analytically or from file
   character(len=40)  :: mdl = "SIS_initialize_topography" ! This subroutine's name.
   character(len=200) :: config
-  real :: Z_to_m
 
   call get_param(PF, mdl, "TOPO_CONFIG", config, &
                  "This specifies how bathymetry is specified: \n"//&
@@ -177,13 +175,12 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
       "Unrecognized topography setup '"//trim(config)//"'")
   end select
 
-  Z_to_m = 1.0 ; if (present(US)) Z_to_m = US%Z_to_m
   if (max_depth>0.) then
-    call log_param(PF, mdl, "MAXIMUM_DEPTH", max_depth*Z_to_m, &
+    call log_param(PF, mdl, "MAXIMUM_DEPTH", max_depth*US%Z_to_m, &
                    "The maximum depth of the ocean.", units="m")
   else
-    max_depth = diagnoseMaximumDepth(D,G)
-    call log_param(PF, mdl, "!MAXIMUM_DEPTH", max_depth*Z_to_m, &
+    max_depth = diagnoseMaximumDepth(D, G)
+    call log_param(PF, mdl, "!MAXIMUM_DEPTH", max_depth*US%Z_to_m, &
                    "The (diagnosed) maximum depth of the ocean.", units="m")
   endif
   if (trim(config) .ne. "DOME") then
