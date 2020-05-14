@@ -244,7 +244,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     alidr   , & ! near-ir, direct, albedo [nondim]
     alidf   , & ! near-ir, diffuse, albedo [nondim]
     fswsfc  , & ! SW absorbed at snow/bare ice/pondedi ice surface [W m-2]
-    fswint  , & ! SW interior absorption (below surface, above ocean,W m-2)
+    fswint  , & ! SW interior absorption (below surface, above ocean) [W m-2]
     fswthru     ! SW through snow/bare ice/ponded ice into ocean [W m-2]
 
   real (kind=dbl_kind), dimension (1,1,1) :: &

@@ -206,27 +206,27 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   type(dyn_trans_CS),         pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    hi_avg            ! The area-weighted average ice thickness [m].
+    hi_avg            ! The area-weighted average ice thickness in the units used for icebergs [m].
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
-    calving, &        ! A local copy of the calving rate [kg m-2 s-1]
-    calving_hflx, &   ! A local copy of the calving heat flux [W m-2]
-    windstr_x, &      ! The area-weighted average ice thickness [Pa].
-    windstr_y         ! The area-weighted average ice thickness [Pa].
+    calving, &        ! A local copy of the calving rate in the units used for icebergs [kg m-2 s-1]
+    calving_hflx, &   ! A local copy of the calving heat flux in the units used for icebergs [W m-2]
+    windstr_x, &      ! The area-weighted average ice thickness in the units used for icebergs [Pa].
+    windstr_y         ! The area-weighted average ice thickness in the units used for icebergs [Pa].
   real, dimension(G%isc-2:G%iec+1, G%jsc-1:G%jec+1)   :: &
-    u_ice_C, &        ! The C-grid zonal ice velocity [m s-1].
-    u_ocn_C           ! The C-grid zonal ocean velocity [m s-1].
+    u_ice_C, &        ! The C-grid zonal ice velocity in the units used for icebergs [m s-1].
+    u_ocn_C           ! The C-grid zonal ocean velocity in the units used for icebergs [m s-1].
   real, dimension(G%isc-1:G%iec+1, G%jsc-2:G%jec+1)   :: &
-    v_ice_C, &        ! The C-grid meridional ice velocity [m s-1].
-    v_ocn_C           ! The C-grid meridional ocean velocity [m s-1].
+    v_ice_C, &        ! The C-grid meridional ice velocity in the units used for icebergs [m s-1].
+    v_ocn_C           ! The C-grid meridional ocean velocity in the units used for icebergs [m s-1].
   real, dimension(G%isc-1:G%iec+1, G%jsc-1:G%jec+1)   :: &
-    sea_lev, &        ! Sea level anomalies [m].
-    u_ice_B, &        ! The B-grid zonal ice velocity [m s-1].
-    u_ocn_B, &        ! The B-grid zonal ocean velocity [m s-1].
-    v_ice_B, &        ! The B-grid meridional ice velocity [m s-1].
-    v_ocn_B           ! The B-grid meridional ocean velocity [m s-1].
+    sea_lev, &        ! Sea level anomalies in the units used for icebergs [m].
+    u_ice_B, &        ! The B-grid zonal ice velocity in the units used for icebergs [m s-1].
+    u_ocn_B, &        ! The B-grid zonal ocean velocity in the units used for icebergs [m s-1].
+    v_ice_B, &        ! The B-grid meridional ice velocity in the units used for icebergs [m s-1].
+    v_ocn_B           ! The B-grid meridional ocean velocity in the units used for icebergs [m s-1].
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
-  real :: H_to_m_ice  ! The specific volume of ice times the conversion factor
-                      ! from thickness units [m R-1 Z-1 ~> m3 kg-1].
+  real :: H_to_m_ice  ! The specific volume of ice times the conversion factor from the SIS2
+                      ! thickness units to those used by the icebergs [m R-1 Z-1 ~> m3 kg-1].
   integer :: stress_stagger
   integer :: i, j, isc, iec, jsc, jec
 
