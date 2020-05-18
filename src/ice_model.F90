@@ -54,7 +54,7 @@ use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
 use fms_mod, only : clock_flag_default
 use fms2_io_mod, only : register_restart_field, check_if_open, is_registered_to_restart, &
-                        read_restart, file_exists, fms2_close_file =>close_file, &
+                        read_restart, file_exists, fms2_close_file=>close_file, &
                         variable_exists, FmsNetcdfDomainFile_t, read_data
 use mpp_mod, only : mpp_clock_id, mpp_clock_begin, mpp_clock_end
 use mpp_mod, only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT
@@ -2952,7 +2952,7 @@ end subroutine update_ice_atm_deposition_flux
 !> ice_model_end writes the restart file and deallocates memory
 subroutine ice_model_end(Ice, restart_time)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
-  type (time_type), intent(in) :: restart_time !< time to write to restart file
+  type (time_type), optional, intent(in) :: restart_time !< time to write to restart file
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
 
