@@ -1577,14 +1577,14 @@ end subroutine find_sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_register_restarts allocates and registers any variables for the
 !!   SIS C-grid dynamics module that need to be included in the restart files.
-subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, restart_fileobj, &
+subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, &
                                        restart_file, nc_mode)
   type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+                                                     !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 !   This subroutine registers the restart variables associated with the
@@ -1607,16 +1607,16 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, restart_f
     allocate(CS%str_s(HI%IsdB:HI%IedB, HI%JsdB:HI%JedB)) ; CS%str_s(:,:) = 0.0
   endif
 
-  if (check_if_open(restart_fileobj)) then
-    call register_restart_field(restart_fileobj, 'str_d', CS%str_d(isd:ied, jsd:jed), &
+  if (check_if_open(Ice_restart)) then
+    call register_restart_field(Ice_restart, 'str_d', CS%str_d(isd:ied, jsd:jed), &
                                 dimensions=(/'xaxis_1','yaxis_1','Time   '/))
-    call register_restart_field(restart_fileobj, 'str_t', CS%str_t, &
+    call register_restart_field(Ice_restart, 'str_t', CS%str_t, &
                                 dimensions=(/'xaxis_1','yaxis_1','Time   '/))
     if (HI%symmetric) then
-      call register_restart_field(restart_fileobj, 'sym_str_s', CS%str_s, &
+      call register_restart_field(Ice_restart, 'sym_str_s', CS%str_s, &
                                   dimensions=(/'xaxis_2','yaxis_2','Time   '/))
     else
-      call register_restart_field(restart_fileobj, 'str_s', CS%str_s, &
+      call register_restart_field(Ice_restart, 'str_s', CS%str_s, &
                                   dimensions=(/'xaxis_2','yaxis_2','Time   '/))
     endif
   else
@@ -1631,12 +1631,12 @@ end subroutine SIS_C_dyn_register_restarts
 !!   and non-symmetric memory restart files.  It also handles any changes in dimensional rescaling
 !!   of these variables between what is stored in the restart file and what is done for the current
 !!   run segment.
-subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, restart_fileobj, restart_file, restart_dir)
+subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, restart_dir)
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+                                                     !! read/write/append mode
   !type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
@@ -1648,8 +1648,8 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, restart_fileobj, restart_file,
   real :: stress_rescale
   integer :: i, j, id
 
-  if (G%symmetric .and. (.not.variable_exists(restart_fileobj, 'sym_str_s'))) then
-    if (variable_exists(restart_fileobj, 'str_s')) then
+  if (G%symmetric .and. (.not.variable_exists(Ice_restart, 'sym_str_s'))) then
+    if (variable_exists(Ice_restart, 'str_s')) then
       call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
                           domain_name="ice temporary domain")
       allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed)) ; str_tmp(:,:) = 0.0
@@ -1657,7 +1657,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, restart_fileobj, restart_file,
       !call register_restart_field(retart_fileobj, 'str_s', str_tmp) ! &
                  !domain=domain_tmp%mpp_domain, position=CORNER, &
                 ! mandatory=.false., read_only=.true.)
-      call read_data(restart_fileobj, 'str_s', str_tmp(G%isd:G%ied, G%jsd:G%jed))
+      call read_data(Ice_restart, 'str_s', str_tmp(G%isd:G%ied, G%jsd:G%jed))
       ! The non-symmetric variant of this variable has been successfully read.
       call pass_var(str_tmp, domain_tmp, position=CORNER)
       do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
@@ -1665,16 +1665,16 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, restart_fileobj, restart_file,
       enddo ; enddo
     endif
 
-  elseif ((.not.G%symmetric) .and. (.not.variable_exists(restart_fileobj, 'str_s'))) then
-    if (variable_exists(restart_fileobj, 'sym_str_s')) then
+  elseif ((.not.G%symmetric) .and. (.not.variable_exists(Ice_restart, 'str_s'))) then
+    if (variable_exists(Ice_restart, 'sym_str_s')) then
       call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
                           domain_name="ice temporary domain")
       allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; str_tmp(:,:) = 0.0
 
-      !call register_restart_field(restart_fileobj, 'sym_str_s', str_tmp)! &
+      !call register_restart_field(Ice_restart, 'sym_str_s', str_tmp)! &
                  !domain=domain_tmp%mpp_domain, position=CORNER, &
                 ! mandatory=.false., read_only=.true.)
-      call read_data(restart_fileobj,'sym_str_s', str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed))
+      call read_data(Ice_restart,'sym_str_s', str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed))
       ! The symmetric variant of this variable has been successfully read.
       do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
         CS%str_s(I,J) = str_tmp(I,J)

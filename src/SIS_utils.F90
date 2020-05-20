@@ -377,8 +377,8 @@ subroutine generate_sequence_real(first, last, array)
 end subroutine generate_sequence_real
 
 !> register the axes to a file object from a file opened in "read" mode
-subroutine register_axes_to_read_file_object(fileobj, filename, domain, is_restart)
-  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< domain-decomposed netcdf file object
+subroutine register_axes_to_read_file_object(Ice_restart, filename, domain, is_restart)
+  type(FmsNetcdfDomainFile_t), intent(in), pointer :: Ice_restart !< pointer to netcdf file object
   character(len=*), intent(in) :: filename !< name of the file to open
   type(domain2d),  intent(in)  :: domain   !< The ice model's FMS domain type
   logical, intent(in) :: is_restart !< if .true., file is a restart file
@@ -390,22 +390,22 @@ subroutine register_axes_to_read_file_object(fileobj, filename, domain, is_resta
   logical :: file_open_success ! result returned by call to fms2_open_file
   integer :: i
 
-  if (.not.(check_if_open(fileobj))) then
-    file_open_success=fms2_open_file(fileobj, trim(filename), "read", domain, &
+  if (.not.(check_if_open(Ice_restart))) then
+    file_open_success=fms2_open_file(Ice_restart, trim(filename), "read", domain, &
                                      is_restart=is_restart)
     if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_utils::register_axes_to_read_file_object: '// &
                                     'Unable to open file '//trim(filename))
   endif
   ! register the dimensions
-  num_restart_dims = get_num_dimensions(fileobj)
+  num_restart_dims = get_num_dimensions(Ice_restart)
   allocate(dim_names(num_restart_dims))
   allocate(dim_lengths(num_restart_dims))
   dim_names(:) = ""
   dim_lengths(:) = 0
-  call get_dimension_names(fileobj, dim_names)
+  call get_dimension_names(Ice_restart, dim_names)
   do i=1,num_restart_dims
-    call get_dimension_size(fileobj, trim(dim_names(i)), dim_lengths(i))
-    call register_restart_axis(fileobj, trim(dim_names(i)), dim_lengths(i))
+    call get_dimension_size(Ice_restart, trim(dim_names(i)), dim_lengths(i))
+    call register_restart_axis(Ice_restart, trim(dim_names(i)), dim_lengths(i))
   enddo
 
   if (allocated(dim_names)) deallocate(dim_names)
@@ -414,7 +414,7 @@ end subroutine register_axes_to_read_file_object
 
 !> register restart axes to a netcdf file
 subroutine register_restart_axis(fileobj, axis_name, axis_length, domain_position)
-  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< netcdf file object
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: fileobj !< netcdf file object
   character(len=*), intent(in) :: axis_name !< name of the axis
   integer, intent(in) :: axis_length !< length of the axis
   integer, intent(in), optional :: domain_position !< domain position
@@ -448,27 +448,27 @@ subroutine register_restart_axis(fileobj, axis_name, axis_length, domain_positio
 end subroutine register_restart_axis
 
 !> register and write dummy axis data to a restart file
-subroutine write_restart_axis(fileobj, axis_name, axis_length)
-  type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< netcdf file object
+subroutine write_restart_axis(Ice_restart, axis_name, axis_length)
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< netcdf file object
   character(len=*), intent(in) :: axis_name !< name of the axis
   integer, intent(in), optional :: axis_length !< length of the axis
   ! local
   integer :: substring_index, is, ie, js, je, start
   real, allocatable :: array(:)
 
-  if (.not.(check_if_open(fileobj))) &
+  if (.not.(check_if_open(Ice_restart))) &
     call SIS_error(FATAL, 'SIS_utils::write_restart_axis: '// &
-      'netCDF file object is not open. Call fms2_open_file(fileobj,...)')
+      'netCDF file object is not open. Call fms2_open_file(Ice_restart,...)')
   substring_index = 0
   substring_index = index(trim(axis_name), "xaxis")
   if (substring_index > 0) then
-    call get_global_io_domain_indices(fileobj,trim(axis_name), is ,ie)
+    call get_global_io_domain_indices(Ice_restart,  trim(axis_name), is ,ie)
     allocate(array((ie-is)+1))
     start = is
   else
     substring_index = index(trim(axis_name), "yaxis")
     if (substring_index > 0) then
-      call get_global_io_domain_indices(fileobj,trim(axis_name), js ,je)
+      call get_global_io_domain_indices(Ice_restart, trim(axis_name), js ,je)
       allocate(array((je-js)+1))
       start = js
     else
@@ -481,9 +481,9 @@ subroutine write_restart_axis(fileobj, axis_name, axis_length)
   ! populate the array with dummy data
   call generate_sequence_real(start, size(array), array)
   ! register the axis data
-  call register_field(fileobj, trim(axis_name), "double", dimensions=(/trim(axis_name)/))
+  call register_field(Ice_restart, trim(axis_name), "double", dimensions=(/trim(axis_name)/))
   ! write the axis data
-  call write_data(fileobj, trim(axis_name), array)
+  call write_data(Ice_restart, trim(axis_name), array)
 
   if (allocated(array)) deallocate(array)
 end subroutine write_restart_axis

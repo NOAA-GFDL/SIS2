@@ -701,15 +701,15 @@ end function sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dyn_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
-subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, restart_fileobj, restart_file, &
+subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file, &
                                        nc_mode)
   type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+                                                     !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 !   This subroutine registers the restart variables associated with the
@@ -731,12 +731,12 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, restart_f
     allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
   endif
 
-  if (check_if_open(restart_fileobj)) then
-    call register_restart_field(restart_fileobj, 'sig11', CS%sig11(isd:ied, jsd:jed), &
+  if (check_if_open(Ice_restart)) then
+    call register_restart_field(Ice_restart, 'sig11', CS%sig11(isd:ied, jsd:jed), &
       (/"xaxis_1", "yaxis_1", "Time   "/))
-    call register_restart_field(restart_fileobj, 'sig22', CS%sig22(isd:ied, jsd:jed), &
+    call register_restart_field(Ice_restart, 'sig22', CS%sig22(isd:ied, jsd:jed), &
       (/"xaxis_1", "yaxis_1", "Time   "/))
-    call register_restart_field(restart_fileobj, 'sig12', CS%sig12(isd:ied, jsd:jed), &
+    call register_restart_field(Ice_restart, 'sig12', CS%sig12(isd:ied, jsd:jed), &
       (/"xaxis_1", "yaxis_1", "Time   "/))
   else
     call SIS_error(FATAL, &

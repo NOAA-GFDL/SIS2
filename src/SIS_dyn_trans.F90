@@ -2102,15 +2102,15 @@ end subroutine set_wind_stresses_B
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, restart_fileobj, &
+subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, Ice_restart, &
                                      restart_file, nc_mode)                                
   type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
   type(hor_index_type),    intent(in) :: HI     !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+                                                     !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 
@@ -2128,10 +2128,10 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, r
 
   if (CS%Cgrid_dyn) then
     call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_C_dyn_CSp, restart_fileobj, restart_file, nc_mode)
+                 CS%SIS_C_dyn_CSp, Ice_restart, restart_file, nc_mode)
   else
     call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_B_dyn_CSp, restart_fileobj, restart_file, nc_mode)
+                 CS%SIS_B_dyn_CSp, Ice_restart, restart_file, nc_mode)
   endif
 !  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
 !                                       Ice_restart, restart_file)
@@ -2141,18 +2141,17 @@ end subroutine SIS_dyn_trans_register_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, restart_fileobj, &
+subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
                                            restart_file, restart_dir)
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read mode
+  type(FmsNetcdfDomainFile_t), intent(inout) :: Ice_restart !< restart file object opened in read mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, restart_fileobj, &
+    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, Ice_restart, &
                                      restart_file, restart_dir)
   endif
 

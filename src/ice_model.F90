@@ -145,15 +145,19 @@ integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
 integer, parameter :: REDIST=2 !< Redistribute for exchange
 integer, parameter :: DIRECT=3 !< Use direct exchange
 
-type(FmsNetcdfDomainFile_t) :: restart_fileobj_read_fast !< domain-decomposed restart file object returned by call to
-                                                    !! fms2_open_file for file in "read" mode on fast pe
-type(FmsNetcdfDomainFile_t) :: restart_fileobj_read_slow !< domain-decomposed restart file object returned by call to
-                                                    !! fms2_open_file for file in "read" mode on fast pe
+type(FmsNetcdfDomainFile_t), target :: restart_fileobj_read_fast !< domain-decomposed restart file object
+                                                    !! returned by call to fms2_open_file for file in
+                                                    !! "read" mode on fast pe
+type(FmsNetcdfDomainFile_t), target :: restart_fileobj_read_slow !< domain-decomposed restart file object
+                                                    !! returned by call to fms2_open_file for file in
+                                                    !! "read" mode on fast pe
 
-type(FmsNetcdfDomainFile_t) :: restart_fileobj_write_fast !< domain-decomposed restart file object returned by call to
-                                                     !! fms2_open_file for file in "write/overwrite/append" mode
-type(FmsNetcdfDomainFile_t) :: restart_fileobj_write_slow !< file object returned by call to
-                                                         !! fms2_open_file for file in "write/overwrite/append"
+type(FmsNetcdfDomainFile_t), target :: restart_fileobj_write_fast !< domain-decomposed restart file object
+                                                     !! returned by call to fms2_open_file for file in
+                                                     !! "write/overwrite/append" mode
+type(FmsNetcdfDomainFile_t), target :: restart_fileobj_write_slow !< domain-decomposed restart file object
+                                                     !! returned by call to fms2_open_file for file in
+                                                     !! "write/overwrite/append"
 contains
 
 
@@ -2068,7 +2072,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     !call set_domain(sGD%mpp_domain)
     if (.not.associated(Ice%Ice_restart_write)) allocate(Ice%Ice_restart_write)
-
+    Ice%Ice_restart_write => restart_fileobj_write_slow
     !call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
     !                  param_file, Ice, Ice%Ice_restart, restart_file)
     nc_mode = "overwrite"
@@ -2080,10 +2084,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
     !call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart, restart_file)
-    call ice_state_register_restarts(sIST, sG, sIG, restart_fileobj_write_slow, &
+    call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart_write, &
                                      "RESTART/"//trim(restart_file), nc_mode=trim(nc_mode))
     !call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart, restart_file)
-    call register_unit_conversion_restarts(Ice%sCS%US, restart_fileobj_write_slow, &
+    call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart_write, &
                                            "RESTART/"//trim(restart_file), trim(nc_mode))
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
@@ -2107,7 +2111,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       !call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file, &
       !                                     Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
       call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file, &
-                                           Ice%sCS%dyn_trans_CSp, restart_fileobj_write_slow, &
+                                           Ice%sCS%dyn_trans_CSp, Ice%Ice_restart_write, &
                                            "RESTART/"//trim(restart_file), trim(nc_mode))
 
 
@@ -2135,7 +2139,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     !call SIS_call_tracer_register(sG, sIG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
     !                              Ice%sCS%diag, sIST%TrReg, Ice%Ice_restart, restart_file)
     call SIS_call_tracer_register(sG, sIG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
-                                  Ice%sCS%diag, sIST%TrReg, restart_fileobj_write_slow, restart_file)
+                                  Ice%sCS%diag, sIST%TrReg, Ice%ice_restart_write, restart_file)
 
     ! Set a few final things to complete the setup of the grid.
     sG%g_Earth = g_Earth
@@ -2228,28 +2232,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     !if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
     if (split_restart_files) then
       if (.not.associated(Ice%Ice_fast_restart_write)) allocate(Ice%Ice_fast_restart_write)
+      Ice%Ice_fast_restart_write => restart_fileobj_write_fast
+      nc_mode="overwrite"
     else
       Ice%Ice_fast_restart_write => Ice%Ice_restart_write
+      nc_mode="write"
     endif
 
   ! These allocation routines are called on all PEs; whether or not the variables
   ! they allocate are registered for inclusion in restart files is determined by
   ! whether the Ice%Ice...restart types are associated.
-    !call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-    !                  param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
-    nc_mode = "write"
-    if (file_exists(fast_rest_file)) nc_mode = "overwrite"
-                     
-    if (split_restart_files) then
-    !  call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart, fast_rest_file)
-      call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-        param_file, Ice, restart_fileobj_write_fast, fast_rest_file, nc_mode=nc_mode)
-  
-      call register_unit_conversion_restarts(Ice%fCS%US, restart_fileobj_write_fast, fast_rest_file, nc_mode)
-    else
-      call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-        param_file, Ice, restart_fileobj_write_slow, fast_rest_file, nc_mode=nc_mode)
-    endif
+
+    ! call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart, fast_rest_file)
+    call register_unit_conversion_restarts(Ice%fCS%US, Ice%ice_fast_restart_write, fast_rest_file, nc_mode)
+    call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
+                      param_file, Ice, Ice%Ice_fast_restart_write, fast_rest_file, nc_mode=nc_mode)
  
     if (redo_fast_update .or. .not.single_IST) then
       call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
@@ -2265,13 +2262,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     !call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
     !                               Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
-    if (split_restart_files) then
-      call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                     Ice%fCS%Rad, restart_fileobj_write_fast, fast_rest_file)
-    else
-      call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                     Ice%fCS%Rad, restart_fileobj_write_slow, fast_rest_file)
-    endif
+    call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
+                                   Ice%fCS%Rad, Ice%Ice_fast_restart_write, fast_rest_file)
+
     Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
     Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
     Ice%fCS%Rad%frequent_albedo_update = .true.
@@ -2282,15 +2275,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (Concurrent) then
       !call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
       !                 fGD%mpp_domain, Ice%Ice_fast_restart, fast_rest_file)
-      if (split_restart_files) then
-        call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
-                                            fGD%mpp_domain, restart_fileobj_write_fast, fast_rest_file, &
-                                            nc_mode=nc_mode)
-      else
-        call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
-                                            fGD%mpp_domain, restart_fileobj_write_slow, fast_rest_file, &
-                                            nc_mode=nc_mode)
-      endif
+      
+       call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
+                        fGD%mpp_domain, Ice%ice_fast_restart_write, fast_rest_file, &
+                        nc_mode=nc_mode)
     endif
 
     allocate(Ice%fCS%diag)
@@ -2331,6 +2319,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.(substring_index .gt. 0)) &
       dirs%restart_input_dir = "INPUT/" 
     restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
+    if (.not.associated(Ice%Ice_restart_read)) allocate(Ice%Ice_restart_read)
+    Ice%Ice_restart_read => restart_fileobj_read_slow
+
     if (file_exists(restart_path)) then
       call callTree_enter("ice_model_init():restore_from_restart_files "//trim(restart_path))
       ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
@@ -2341,35 +2332,35 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       is_restart = .true.
 
       ! register the axes to the restart file object
-      call register_axes_to_read_file_object(restart_fileobj_read_slow, trim(restart_path), sGD%mpp_domain, &
+      call register_axes_to_read_file_object(Ice%Ice_restart_read, trim(restart_path), sGD%mpp_domain, &
                                              is_restart=.true.)
       ! register the 'slow reg' restart variables to the restart file object
       !> @NOTE Variables associated with a file object need to be registered each time the file is opened.
       !! Here, it is opened in 'read' mode instead of 'write/overwrite/append mode'
       call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, param_file, &
                                       Ice, Ice%Ice_restart_read, trim(restart_path), nc_mode="read")
-      call ice_state_register_restarts(sIST, sG, sIG, restart_fileobj_read_slow, &
+      call ice_state_register_restarts(sIST, sG, sIG, Ice%ice_restart_read, &
                                        trim(restart_path), nc_mode="read")
 
       if (.not.split_restart_files) then
         call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                     Ice%fCS%Rad, restart_fileobj_read_slow, trim(restart_path))
+                                     Ice%fCS%Rad, Ice%ice_restart_read, trim(restart_path))
         call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-                      param_file, Ice, restart_fileobj_read_slow, trim(restart_path), nc_mode="read")
+                      param_file, Ice, Ice%ice_restart_read, trim(restart_path), nc_mode="read")
       endif
 
-      call read_restart(restart_fileobj_read_slow)
+      call read_restart(Ice%ice_restart_read)
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
       !call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
       !                                 restart_file, dirs%restart_input_dir)
-      call ice_state_read_alt_restarts(sIST, sG, sIG, restart_fileobj_read_slow, &
+      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%ice_restart_read, &
                                        trim(restart_path), dirs%restart_input_dir)
       if (.not.specified_ice) &
         !call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
         !                               restart_file, dirs%restart_input_dir)
-        call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, restart_fileobj_read_slow, &
+        call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart_read, &
                                              trim(restart_path), dirs%restart_input_dir)
 
 
@@ -2378,14 +2369,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
 
       ! Initialize the ice salinity.
-      if (.not.(is_registered_to_restart(restart_fileobj_read_slow, 'sal_ice'))) then
+      if (.not.(is_registered_to_restart(Ice%ice_restart_read, 'sal_ice'))) then
         allocate(sal_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
         do n=1,NkIce
           write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          call read_data(restart_fileobj_read_slow, 'sal_ice', sal_ice_tmp(:,:,:,n))
+          call read_data(ICe%ice_restart_read, 'sal_ice', sal_ice_tmp(:,:,:,n))
         enddo
 
-        if (is_registered_to_restart(restart_fileobj_read_slow, 'sal_ice1')) then
+        if (is_registered_to_restart(Ice%ice_restart_read, 'sal_ice1')) then
           do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
             sIST%sal_ice(i,j,k,1) = sal_ice_tmp(i,j,k,1)
           enddo ; enddo ; enddo
@@ -2394,7 +2385,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         endif
         do n=2,NkIce
           write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          if (is_registered_to_restart(restart_fileobj_read_slow, 'sal_ice'//trim(nstr))) then
+          if (is_registered_to_restart(Ice%ice_restart_read, 'sal_ice'//trim(nstr))) then
             do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
               sIST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k,n)
             enddo ; enddo ; enddo
@@ -2406,27 +2397,27 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         deallocate(sal_ice_tmp)
       endif
 
-      read_aux_restart = (.not.is_registered_to_restart(restart_fileobj_read_slow, 'enth_ice')) .or. &
-                         (.not.is_registered_to_restart(restart_fileobj_read_slow, 'enth_snow'))
+      read_aux_restart = (.not.is_registered_to_restart(Ice%ice_restart_read, 'enth_ice')) .or. &
+                         (.not.is_registered_to_restart(Ice%ice_restart_read, 'enth_snow'))
       if (read_aux_restart) then
         allocate(t_snow_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce)) ; t_snow_tmp(:,:,:) = 0.0
         allocate(t_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
 
-        call register_restart_field(restart_fileobj_read_slow, 't_snow', t_snow_tmp(:,:,:), &
+        call register_restart_field(Ice%ice_restart_read, 't_snow', t_snow_tmp(:,:,:), &
           dimensions=(/"xaxis_1","yaxis_1","zaxis_2","Time   "/))
-        call read_data(restart_fileobj_read_slow,'t_snow',t_snow_tmp)
+        call read_data(Ice%ice_restart_read,'t_snow',t_snow_tmp)
 
         do n=1,NkIce
           write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          call register_restart_field(restart_fileobj_read_slow, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n), &
+          call register_restart_field(Ice%ice_restart_read, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n), &
                               dimensions=(/"xaxis_1","yaxis_1","zaxis_2","Time   "/))
-          call read_data(restart_fileobj_read_slow, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n))
+          call read_data(Ice%ice_restart_read, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n))
         enddo
       endif
 
       ! Initialize the ice enthalpy.
-      if (.not.variable_exists(restart_fileobj_read_slow, 'enth_ice')) then
-        if (.not.variable_exists(restart_fileobj_read_slow, 't_ice1')) then
+      if (.not.variable_exists(Ice%ice_restart_read, 'enth_ice')) then
+        if (.not.variable_exists(Ice%ice_restart_read, 't_ice1')) then
           call SIS_error(FATAL, "Either t_ice1 or enth_ice must be present in the SIS2 restart file "//restart_path)
         endif
 
@@ -2443,7 +2434,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
         do n=2,NkIce
           write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          if (.not.is_registered_to_restart(restart_fileobj_read_slow, 't_ice'//trim(nstr))) &
+          if (.not.is_registered_to_restart(Ice%ice_restart_read, 't_ice'//trim(nstr))) &
             t_ice_tmp(:,:,:,n) = t_ice_tmp(:,:,:,n-1)
 
           if (spec_thermo_sal) then
@@ -2461,9 +2452,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
 
       ! Initialize the snow enthalpy.
-      if (.not.is_registered_to_restart(restart_fileobj_read_slow, 'enth_snow')) then
-        if (.not.is_registered_to_restart(restart_fileobj_read_slow, 't_snow')) then
-          if (.not.is_registered_to_restart(restart_fileobj_read_slow, 't_ice1')) then
+      if (.not.is_registered_to_restart(Ice%ice_restart_read, 'enth_snow')) then
+        if (.not.is_registered_to_restart(Ice%ice_restart_read, 't_snow')) then
+          if (.not.is_registered_to_restart(Ice%ice_restart_read, 't_ice1')) then
             t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
           else
             do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -2480,7 +2471,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
       if (allocated(sIST%t_surf)) then
-        if (.not.is_registered_to_restart(restart_fileobj_read_slow, 't_surf_ice')) then
+        if (.not.is_registered_to_restart(Ice%ice_restart_read, 't_surf_ice')) then
           sIST%t_surf(:,:,:) = T_0degC
         elseif (do_mask_restart) then
           do j=jsc,jec ; do i=isc,iec
@@ -2548,7 +2539,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
       endif
 
-      if (Ice%sCS%pass_stress_mag .and. .not.is_registered_to_restart(restart_fileobj_read_slow, 'stress_mag')) then
+      if (Ice%sCS%pass_stress_mag .and. .not.is_registered_to_restart(Ice%ice_restart_read, 'stress_mag')) then
         ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
         ! in the Ice type, which will have been read from the restart files.
         allocate(str_x(sG%isd:sG%ied,sG%jsd:sG%jed)) ; str_x(:,:) = 0.0
@@ -2573,11 +2564,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
 
       if (fast_ice_PE .and. .not.split_restart_files) then
-        init_coszen = .not.is_registered_to_restart(restart_fileobj_read_slow, 'coszen')
-        init_Tskin  = .not.is_registered_to_restart(restart_fileobj_read_slow, 'T_skin')
-        init_rough  = .not.(is_registered_to_restart(restart_fileobj_read_slow, 'rough_mom') .and. &
-                            is_registered_to_restart(restart_fileobj_read_slow, 'rough_heat') .and. &
-                            is_registered_to_restart(restart_fileobj_read_slow, 'rough_moist'))
+        init_coszen = .not.is_registered_to_restart(Ice%ice_restart_read, 'coszen')
+        init_Tskin  = .not.is_registered_to_restart(Ice%ice_restart_read, 'T_skin')
+        init_rough  = .not.(is_registered_to_restart(Ice%ice_restart_read, 'rough_mom') .and. &
+                            is_registered_to_restart(Ice%ice_restart_read, 'rough_heat') .and. &
+                            is_registered_to_restart(Ice%ice_restart_read, 'rough_moist'))
       endif
 
       !When SPECIFIED_ICE=True variable Ice%sCS%OSS%SST_C is used for the skin temperature
@@ -2735,37 +2726,34 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     ! Set some pointers for convenience.
     fG => Ice%fCS%G ; fGD => Ice%fCS%G%Domain
 
+    if (split_restart_files) then
+      if (.not.associated(Ice%Ice_fast_restart_read)) allocate(Ice%Ice_fast_restart_read)
+      Ice%Ice_fast_restart_read => restart_fileobj_read_fast
+      ! register the axes to the restart file object
+      call register_axes_to_read_file_object(Ice%ice_fast_restart_read, trim(fast_rest_path), &
+                                             sGD%mpp_domain, is_restart=.true.)
+    else
+      Ice%Ice_fast_restart_read => Ice%Ice_restart_read
+      
+    endif
+
     if ((.not.slow_ice_PE) .or. split_restart_files) then
       ! Read the fast restart file, if it exists.
-      fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
-      if (file_exists(fast_rest_path)) then
+      fast_rest_path = ""
+      fast_rest_path = "INPUT/"//trim(fast_rest_file)
+      if (file_exists(trim(fast_rest_path))) then
         !call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
-        if (split_restart_files) then
-          if (.not.associated(Ice%Ice_fast_restart_read)) allocate(Ice%Ice_fast_restart_read)
-          ! register the axes to the restart file object
-          call register_axes_to_read_file_object(restart_fileobj_read_fast, trim(fast_rest_path), &
-                                                 sGD%mpp_domain, is_restart=.true.)
-          ! register the restart variables to the file object
-          call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-                      param_file, Ice, restart_fileobj_read_fast, fast_rest_path, nc_mode="read")
-          call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                     Ice%fCS%Rad, restart_fileobj_read_fast, trim(fast_rest_path))
+        ! register the restart variables to the file object
+        call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
+                      param_file, Ice, Ice%ice_fast_restart_read, fast_rest_path, nc_mode="read")
+        call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
+                                     Ice%fCS%Rad, Ice%ice_fast_restart_read, trim(fast_rest_path))
 
-          call read_restart(restart_fileobj_read_fast)
+        call read_restart(Ice%ice_fast_restart_read)
 
-          !init_coszen = .not.is_registered_to_restart(restart_fileobj_read_fast, 'coszen')
-          !init_Tskin = .not.is_registered_to_restart(restart_fileobj_read_fast, 'T_skin')
-          !init_rough  = .not.(is_registered_to_restart(restart_fileobj_read_fast, 'rough_mom') .and. &
-          !                    is_registered_to_restart(restart_fileobj_read_fast, 'rough_heat') .and. &
-          !                    is_registered_to_restart(restart_fileobj_read_fast, 'rough_moist'))
-        else
-          !>@NOTE root pe broadcasts data read in to all pes, so is is unnecessary to read from the file again
-          Ice%Ice_fast_restart_read => Ice%Ice_restart_read
-        endif
-          !call read_restart(restart_fileobj_read_slow)
-          init_coszen = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'coszen')
-          init_Tskin = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'T_skin')
-          init_rough  = .not.(is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_mom') .and. &
+        init_coszen = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'coszen')
+        init_Tskin = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'T_skin')
+        init_rough  = .not.(is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_mom') .and. &
                               is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_heat') .and. &
                               is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_moist'))
       else
@@ -2956,13 +2944,13 @@ subroutine ice_model_end(Ice, restart_time)
   logical :: fast_ice_PE       ! If true, fast ice processes are handled on this PE.
   logical :: slow_ice_PE       ! If true, slow ice processes are handled on this PE.
 
-  call ice_model_restart(Ice=Ice, restart_fileobj=restart_fileobj_write_slow, restart_time=restart_time)
+  call ice_model_restart(Ice=Ice, Ice_restart=Ice%Ice_restart_write, restart_time=restart_time)
   ! close the restart file objects
-  if (check_if_open(restart_fileobj_read_slow)) call fms2_close_file(restart_fileobj_read_slow)
-  if (check_if_open(restart_fileobj_read_fast)) call fms2_close_file(restart_fileobj_read_fast)
   if (check_if_open(restart_fileobj_write_slow)) call fms2_close_file(restart_fileobj_write_slow)
+  if (check_if_open(restart_fileobj_read_fast)) call fms2_close_file(restart_fileobj_read_fast)
+  if (check_if_open(restart_fileobj_read_slow)) call fms2_close_file(restart_fileobj_read_slow)
   if (check_if_open(restart_fileobj_write_fast)) then
-    call ice_model_restart(Ice=Ice, restart_fileobj=restart_fileobj_write_fast, restart_time=restart_time)
+    call ice_model_restart(Ice=Ice, Ice_restart=Ice%Ice_fast_restart_write, restart_time=restart_time)
     call fms2_close_file(restart_fileobj_write_fast)
   endif
   !--- release memory ------------------------------------------------

@@ -480,11 +480,11 @@ end subroutine alloc_IST_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be includedin the restart files.
-subroutine ice_state_register_restarts(IST, G, IG, restart_fileobj, restart_file, nc_mode)
+subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file, nc_mode)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in read/write/append mode
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
   character(len=*),        intent(in)    :: nc_mode !< netcdf file mode: read, write, overwrite, append
 
@@ -498,153 +498,135 @@ subroutine ice_state_register_restarts(IST, G, IG, restart_fileobj, restart_file
   mpp_domain => G%Domain%mpp_domain
 
   ! create, register and write restart axes
-  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), mpp_domain, &
-                                       is_restart=.true.)
-      if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_types::ice_sis_register_restarts: '// &
+  if (.not.(check_if_open(Ice_restart))) then
+    file_open_success=fms2_open_file(Ice_restart, trim(restart_file), trim(nc_mode), mpp_domain, &
+                                     is_restart=.true.)
+    if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_types::ice_sis_register_restarts: '// &
                                       'Unable to open file '//trim(restart_file))
-    endif
-    num_restart_dims=9
-    allocate(dim_names(num_restart_dims))
-    allocate(dim_lengths(num_restart_dims))
-    dim_names(:) = ""
-    dim_names(1)(1:len_trim("xaxis_1")) = "xaxis_1"
-    dim_names(2)(1:len_trim("xaxis_2")) = "xaxis_2"
-    dim_names(3)(1:len_trim("yaxis_1")) = "yaxis_1"
-    dim_names(4)(1:len_trim("yaxis_2")) = "yaxis_2"
-    dim_names(5)(1:len_trim("zaxis_1")) = "zaxis_1"
-    dim_names(6)(1:len_trim("zaxis_2")) = "zaxis_2"
-    dim_names(7)(1:len_trim("aaxis_1")) = "aaxis_1"
-    dim_names(8)(1:len_trim("aaxis_2")) = "aaxis_2"
-    dim_names(9)(1:len_trim("Time")) = "Time"
+  endif
+  num_restart_dims=9
+  allocate(dim_names(num_restart_dims))
+  allocate(dim_lengths(num_restart_dims))
+  dim_names(:) = ""
+  dim_names(1)(1:len_trim("xaxis_1")) = "xaxis_1"
+  dim_names(2)(1:len_trim("xaxis_2")) = "xaxis_2"
+  dim_names(3)(1:len_trim("yaxis_1")) = "yaxis_1"
+  dim_names(4)(1:len_trim("yaxis_2")) = "yaxis_2"
+  dim_names(5)(1:len_trim("zaxis_1")) = "zaxis_1"
+  dim_names(6)(1:len_trim("zaxis_2")) = "zaxis_2"
+  dim_names(7)(1:len_trim("aaxis_1")) = "aaxis_1"
+  dim_names(8)(1:len_trim("aaxis_2")) = "aaxis_2"
+  dim_names(9)(1:len_trim("Time")) = "Time"
 
+  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
     dim_lengths = (/1, 1, 1, 1, IG%CatIce+1, IG%CatIce, 1, &
                    IG%NkIce, unlimited/) ! x and y axis lengths determined by domain decomposition in fms
     do i=1,num_restart_dims
-      if (.not. dimension_exists(restart_fileobj, trim(dim_names(i)))) &
-        call register_restart_axis(restart_fileobj, trim(dim_names(i)), dim_lengths(i))
-      if (.not. variable_exists(restart_fileobj, trim(dim_names(i)))) then
+      if (.not. dimension_exists(Ice_restart, trim(dim_names(i)))) &
+        call register_restart_axis(Ice_restart, trim(dim_names(i)), dim_lengths(i))
+      if (.not. variable_exists(Ice_restart, trim(dim_names(i)))) then
         if (dim_lengths(i) .ne. unlimited) &
-          call write_restart_axis(restart_fileobj, trim(dim_names(i)), axis_length=dim_lengths(i))
+          call write_restart_axis(Ice_restart, trim(dim_names(i)), axis_length=dim_lengths(i))
       endif
     enddo
-    ! dimension subsets associated with the restart variables
-    set1 =(/1,3,5,9/) ! x1, y1, z1, T
-    set2 =(/1,3,6,9/) ! x1, y1, z2, T
-    set3 =(/1,3,6,7,9/) ! x1, y1, z2, a1, T 
-    set4 =(/1,3,6,8,9/) ! x1, y1, z2, a2, T 
-    set5 = (/1,3,9/) ! x1, y1, T
-    set6 = (/1,4,9/) ! x1, y2, T
-    set7 = (/2,3,9/) ! x2, y1, T
-    set8 = (/2,4,9/) ! x2, y2, T
-    ! Now register some of these arrays to be read from the restart files.
-    call register_restart_field(restart_fileobj, 'part_size', IST%part_size, dimensions=dim_names(set1))
+  endif
+  ! dimension subsets associated with the restart variables
+  set1 =(/1,3,5,9/) ! x1, y1, z1, T
+  set2 =(/1,3,6,9/) ! x1, y1, z2, T
+  set3 =(/1,3,6,7,9/) ! x1, y1, z2, a1, T 
+  set4 =(/1,3,6,8,9/) ! x1, y1, z2, a2, T 
+  set5 = (/1,3,9/) ! x1, y1, T
+  set6 = (/1,4,9/) ! x1, y2, T
+  set7 = (/2,3,9/) ! x2, y1, T
+  set8 = (/2,4,9/) ! x2, y2, T
+  ! Now register some of these arrays to be read from the restart files.
+  if (.not. is_registered_to_restart(Ice_restart, 'part_size')) &
+    call register_restart_field(Ice_restart, 'part_size', IST%part_size, dimensions=dim_names(set1))
 
-    if (allocated(IST%t_surf)) then
-      call register_restart_field(restart_fileobj, 't_surf_ice', IST%t_surf, dimensions=dim_names(set2))
-    endif
-    call register_restart_field(restart_fileobj,'h_pond', IST%mH_pond, & ! mw/new
+  if (allocated(IST%t_surf)) then
+    if (.not. is_registered_to_restart(Ice_restart, 't_surf_ice')) &
+      call register_restart_field(Ice_restart, 't_surf_ice', IST%t_surf, dimensions=dim_names(set2))
+  endif
+  if (.not. is_registered_to_restart(Ice_restart, 'h_pond')) &
+    call register_restart_field(Ice_restart,'h_pond', IST%mH_pond, & ! mw/new
                                 dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'h_snow', IST%mH_snow, &
+
+  if (.not. is_registered_to_restart(Ice_restart, 'h_snow')) &
+    call register_restart_field(Ice_restart, 'h_snow', IST%mH_snow, &
                                  dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'enth_snow', IST%enth_snow, &
+
+  if (.not. is_registered_to_restart(Ice_restart, 'enth_snow')) &
+    call register_restart_field(Ice_restart, 'enth_snow', IST%enth_snow, &
                                 dimensions=dim_names(set3))
-    call register_restart_field(restart_fileobj, 'h_ice',  IST%mH_ice, &
+
+  if (.not. is_registered_to_restart(Ice_restart, 'h_ice')) &
+    call register_restart_field(Ice_restart, 'h_ice',  IST%mH_ice, &
                                 dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'H_to_kg_m2', IG%H_to_kg_m2, dimensions=(/"Time"/))
 
-    call register_restart_field(restart_fileobj, 'enth_ice', IST%enth_ice, dimensions=dim_names(set4))
-    call register_restart_field(restart_fileobj, 'sal_ice', IST%sal_ice, dimensions=dim_names(set4))
-    ! register variable attributes
-    call register_variable_attribute(restart_fileobj, "t_surf_ice", "units", "deg K")
-    call register_variable_attribute(restart_fileobj, "h_pond", "units", "H_to_kg_m2 kg m-2")
-    call register_variable_attribute(restart_fileobj, "h_snow", "units", "H_to_kg_m2 kg m-2")
-    call register_variable_attribute(restart_fileobj, "h_ice", "units", "H_to_kg_m2 kg m-2")
-    call register_variable_attribute(restart_fileobj, "H_to_kg_m2", "longname", & 
+  if (.not. is_registered_to_restart(Ice_restart, 'H_to_kg_m2')) &
+    call register_restart_field(Ice_restart, 'H_to_kg_m2', IG%H_to_kg_m2, dimensions=(/"Time"/))
+
+  if (.not. is_registered_to_restart(Ice_restart, 'enth_ice')) &
+    call register_restart_field(Ice_restart, 'enth_ice', IST%enth_ice, dimensions=dim_names(set4))
+
+  if (.not. is_registered_to_restart(Ice_restart, 'sal_ice')) &
+    call register_restart_field(Ice_restart, 'sal_ice', IST%sal_ice, dimensions=dim_names(set4))
+  ! register variable attributes
+  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
+    call register_variable_attribute(Ice_restart, "t_surf_ice", "units", "deg K")
+    call register_variable_attribute(Ice_restart, "h_pond", "units", "H_to_kg_m2 kg m-2")
+    call register_variable_attribute(Ice_restart, "h_snow", "units", "H_to_kg_m2 kg m-2")
+    call register_variable_attribute(Ice_restart, "h_ice", "units", "H_to_kg_m2 kg m-2")
+    call register_variable_attribute(Ice_restart, "H_to_kg_m2", "longname", & 
                                      "The conversion factor from SIS2 mass-thickness units to kg m-2.")
-    call register_variable_attribute(restart_fileobj, "enth_ice", "units", "J kg-1")
-    call register_variable_attribute(restart_fileobj, "sal_ice", "units", "kg/kg")
+    call register_variable_attribute(Ice_restart, "enth_ice", "units", "J kg-1")
+    call register_variable_attribute(Ice_restart, "sal_ice", "units", "kg/kg")
     if (allocated(IST%snow_to_ocn)) then
-      call register_restart_field(restart_fileobj, 'snow_to_ocn', IST%snow_to_ocn, &
+      call register_restart_field(Ice_restart, 'snow_to_ocn', IST%snow_to_ocn, &
                                   dimensions=dim_names(set5))
-      call register_restart_field(restart_fileobj, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
+      call register_restart_field(Ice_restart, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
                                   dimensions=dim_names(set5))
-      call register_variable_attribute(restart_fileobj, "snow_to_ocn", "units", "kg m-2")
-      call register_variable_attribute(restart_fileobj, "enth_snow_to_ocn", "units", "J kg-1")
+      call register_variable_attribute(Ice_restart, "snow_to_ocn", "units", "kg m-2")
+      call register_variable_attribute(Ice_restart, "enth_snow_to_ocn", "units", "J kg-1")
     endif
+  endif
 
-    if (IST%Cgrid_dyn) then
-      if (G%symmetric) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_C', IST%u_ice_C, &
-                                    dimensions=dim_names(set7))
-        call register_restart_field(restart_fileobj, 'sym_v_ice_C', IST%v_ice_C, &
-                                     dimensions=dim_names(set6))
-      else
-        call register_restart_field(restart_fileobj, 'u_ice_C', IST%u_ice_C, &
-                                    dimensions=dim_names(set7))
-        call register_restart_field(restart_fileobj, 'v_ice_C', IST%v_ice_C, &
-                                    dimensions=dim_names(set6))
-      endif
+  if (IST%Cgrid_dyn) then
+    if (G%symmetric) then
+      if (.not. is_registered_to_restart(Ice_restart, 'sym_u_ice_C')) &
+        call register_restart_field(Ice_restart, 'sym_u_ice_C', IST%u_ice_C, &
+                                      dimensions=dim_names(set7))
+
+      if (.not. is_registered_to_restart(Ice_restart, 'sym_v_ice_C')) &
+        call register_restart_field(Ice_restart, 'sym_v_ice_C', IST%v_ice_C, &
+                                      dimensions=dim_names(set6))
     else
-      if (G%symmetric) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_B',   IST%u_ice_B, &
-                                    dimensions=dim_names(set8))
-        call register_restart_field(restart_fileobj, 'sym_v_ice_B',   IST%v_ice_B, &
-                                    dimensions=dim_names(set8))
-      else
-        call register_restart_field(restart_fileobj, 'u_ice',   IST%u_ice_B, &
-                                    dimensions=dim_names(set8))
-        call register_restart_field(restart_fileobj, 'v_ice',   IST%v_ice_B, &
-                                    dimensions=dim_names(set8))
-      endif
-    endif
-  elseif (trim(nc_mode) .eq. "read") then
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), mpp_domain, &
-                                       is_restart=.true.)
-      if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_types::ice_state_register_restarts: '// &
-                                      'Unable to open file '//trim(restart_file))
-    endif
-    call register_restart_field(restart_fileobj, 'part_size', IST%part_size)
+      if (.not. is_registered_to_restart(Ice_restart, 'u_ice_C')) &
+        call register_restart_field(Ice_restart, 'u_ice_C', IST%u_ice_C, &
+                                      dimensions=dim_names(set7))
 
-    if (allocated(IST%t_surf)) then
-      call register_restart_field(restart_fileobj, 't_surf_ice', IST%t_surf)
-    endif
-    call register_restart_field(restart_fileobj,'h_pond', IST%mH_pond)
-    call register_restart_field(restart_fileobj, 'h_snow', IST%mH_snow)
-    call register_restart_field(restart_fileobj, 'enth_snow', IST%enth_snow)
-    call register_restart_field(restart_fileobj, 'h_ice',  IST%mH_ice)
-    call register_restart_field(restart_fileobj, 'H_to_kg_m2', IG%H_to_kg_m2)
-
-    call register_restart_field(restart_fileobj, 'enth_ice', IST%enth_ice)
-    call register_restart_field(restart_fileobj, 'sal_ice', IST%sal_ice)
-
-    if (allocated(IST%snow_to_ocn)) then
-      call register_restart_field(restart_fileobj, 'snow_to_ocn', IST%snow_to_ocn)
-      call register_restart_field(restart_fileobj, 'enth_snow_to_ocn', IST%enth_snow_to_ocn)
-    endif
-
-    if (IST%Cgrid_dyn) then
-      if (G%symmetric) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_C', IST%u_ice_C)
-        call register_restart_field(restart_fileobj, 'sym_v_ice_C', IST%v_ice_C)
-      else
-        call register_restart_field(restart_fileobj, 'u_ice_C', IST%u_ice_C)
-        call register_restart_field(restart_fileobj, 'v_ice_C', IST%v_ice_C)
-      endif
-    else
-      if (G%symmetric) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_B',   IST%u_ice_B)
-        call register_restart_field(restart_fileobj, 'sym_v_ice_B',   IST%v_ice_B)
-      else
-        call register_restart_field(restart_fileobj, 'u_ice',   IST%u_ice_B)
-        call register_restart_field(restart_fileobj, 'v_ice',   IST%v_ice_B)
-      endif
+      if (.not. is_registered_to_restart(Ice_restart, 'v_ice_C')) &
+        call register_restart_field(Ice_restart, 'v_ice_C', IST%v_ice_C, &
+                                      dimensions=dim_names(set6))
     endif
   else
-    call SIS_error(FATAL,'SIS_types::ice_state_register_restarts: nc_mode is invalid.'// &
-                   'Must be read, write, overwrite, or append')
+    if (G%symmetric) then
+      if (.not. is_registered_to_restart(Ice_restart, 'sym_u_ice_B')) &
+        call register_restart_field(Ice_restart, 'sym_u_ice_B',   IST%u_ice_B, &
+                                      dimensions=dim_names(set8))
+
+      if (.not. is_registered_to_restart(Ice_restart, 'sym_v_ice_B')) &
+        call register_restart_field(Ice_restart, 'sym_v_ice_B',   IST%v_ice_B, &
+                                      dimensions=dim_names(set8))
+    else
+      if (.not. is_registered_to_restart(Ice_restart, 'u_ice')) &
+        call register_restart_field(Ice_restart, 'u_ice',   IST%u_ice_B, &
+                                      dimensions=dim_names(set8))
+
+      if (.not. is_registered_to_restart(Ice_restart, 'v_ice')) &
+        call register_restart_field(Ice_restart, 'v_ice',   IST%v_ice_B, &
+                                      dimensions=dim_names(set8))
+    endif
   endif
 
   if (allocated(dim_names)) deallocate(dim_names)
@@ -652,36 +634,46 @@ subroutine ice_state_register_restarts(IST, G, IG, restart_fileobj, restart_file
 
 end subroutine ice_state_register_restarts
 
-subroutine register_unit_conversion_restarts(US, restart_fileobj, restart_file, nc_mode)
+subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file, nc_mode)
   type(unit_scale_type),   intent(inout) :: US    !< A structure with unit conversion factors
-   type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in read/write/append mode
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< pointer to restart file
+                                                       !! object opened in read/write/append mode
   character(len=*), intent(in) :: restart_file !< The name of the ice restart file
   character(len=*), intent(in) :: nc_mode !< netcdf file mode: read, write, overwrite, append
    
-  if (.not.check_if_open(restart_fileobj)) call SIS_error(FATAL, &
+  if (.not.check_if_open(Ice_restart)) call SIS_error(FATAL, &
                          "register_unit_conversion_restarts: Restart file object is not open.")
   ! Register scalar unit conversion factors.
-  call register_restart_field(restart_fileobj, "m_to_Z", US%m_to_Z_restart, dimensions=(/"Time"/))
-  call register_restart_field(restart_fileobj, "m_to_L", US%m_to_L_restart, dimensions=(/"Time"/))
-  call register_restart_field(restart_fileobj, "s_to_T", US%s_to_T_restart, dimensions=(/"Time"/))
-  call register_restart_field(restart_fileobj, "kg_m3_to_R", US%kg_m3_to_R_restart, dimensions=(/"Time"/))
-  call register_restart_field(restart_fileobj, "J_kg_to_Q", US%J_kg_to_Q_restart, dimensions=(/"Time"/))
+  if (.not. is_registered_to_restart(Ice_restart, "m_to_Z")) &
+    call register_restart_field(Ice_restart, "m_to_Z", US%m_to_Z_restart, dimensions=(/"Time"/))
+
+  if (.not. is_registered_to_restart(Ice_restart, "m_to_L")) &
+    call register_restart_field(Ice_restart, "m_to_L", US%m_to_L_restart, dimensions=(/"Time"/))
+
+  if (.not. is_registered_to_restart(Ice_restart, "s_to_T")) &
+    call register_restart_field(Ice_restart, "s_to_T", US%s_to_T_restart, dimensions=(/"Time"/))
+
+  if (.not. is_registered_to_restart(Ice_restart, "kg_m3_to_R")) &
+    call register_restart_field(Ice_restart, "kg_m3_to_R", US%kg_m3_to_R_restart, dimensions=(/"Time"/))
+
+  if (.not. is_registered_to_restart(Ice_restart, "J_kg_to_Q")) &
+    call register_restart_field(Ice_restart, "J_kg_to_Q", US%J_kg_to_Q_restart, dimensions=(/"Time"/))
   ! register the variable attributes
   if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-    call register_variable_attribute(restart_fileobj, "m_to_Z", "units", "Z meter-1")
-    call register_variable_attribute(restart_fileobj, "m_to_Z", "longname", &
+    call register_variable_attribute(Ice_restart, "m_to_Z", "units", "Z meter-1")
+    call register_variable_attribute(Ice_restart, "m_to_Z", "longname", &
                                    "The conversion factor from m to SIS2 height units.")
-    call register_variable_attribute(restart_fileobj, "m_to_L", "units", "L meter-1")
-    call register_variable_attribute(restart_fileobj, "m_to_L", "longname", &
+    call register_variable_attribute(Ice_restart, "m_to_L", "units", "L meter-1")
+    call register_variable_attribute(Ice_restart, "m_to_L", "longname", &
                                    "The conversion factor from m to SIS2 length units.")
-    call register_variable_attribute(restart_fileobj, "s_to_T", "units", "T second-1")
-    call register_variable_attribute(restart_fileobj, "s_to_T", "longname", &
+    call register_variable_attribute(Ice_restart, "s_to_T", "units", "T second-1")
+    call register_variable_attribute(Ice_restart, "s_to_T", "longname", &
                                    "The conversion factor from s to SIS2 tim units.")
-    call register_variable_attribute(restart_fileobj, "kg_m3_to_R", "units", "R m3 kg-1")
-    call register_variable_attribute(restart_fileobj, "kg_m3_to_R", "longname", &
+    call register_variable_attribute(Ice_restart, "kg_m3_to_R", "units", "R m3 kg-1")
+    call register_variable_attribute(Ice_restart, "kg_m3_to_R", "longname", &
                                    "The conversion factor from kg m-3 to SIS2 density units.")
-    call register_variable_attribute(restart_fileobj, "J_kg_to_Q", "units", "Q kg J-1")
-    call register_variable_attribute(restart_fileobj, "J_kg_to_Q", "longname", &
+    call register_variable_attribute(Ice_restart, "J_kg_to_Q", "units", "Q kg J-1")
+    call register_variable_attribute(Ice_restart, "J_kg_to_Q", "longname", &
                                    "The conversion factor from J kg-1 to SIS2 enthalpy units.")
   endif
 
@@ -690,12 +682,13 @@ end subroutine register_unit_conversion_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_read_alt_restarts reads in alternative variables that might have been in the restart
 !! file, specifically dealing with changing between symmetric and non-symmetric memory restart files.
-subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
+subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
                                        restart_file, restart_dir)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in "read" mode
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object
+                                                         !! opened in "read" mode
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
   character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
@@ -708,11 +701,11 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
   if (G%symmetric) then
 
     if (IST%Cgrid_dyn) then
-      u_set = is_registered_to_restart(restart_fileobj, 'sym_u_ice_C')
-      v_set = is_registered_to_restart(restart_fileobj, 'sym_v_ice_C')
+      u_set = is_registered_to_restart(Ice_restart, 'sym_u_ice_C')
+      v_set = is_registered_to_restart(Ice_restart, 'sym_v_ice_C')
     else
-      u_set = is_registered_to_restart(restart_fileobj, 'sym_u_ice_B')
-      v_set = is_registered_to_restart(restart_fileobj, 'sym_v_ice_B')
+      u_set = is_registered_to_restart(Ice_restart, 'sym_u_ice_B')
+      v_set = is_registered_to_restart(Ice_restart, 'sym_v_ice_B')
     endif
     if (u_set .and. v_set) return
 
@@ -721,18 +714,22 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
 
     call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
                           domain_name="ice temporary domain")
-    if (.not.(check_if_open(restart_fileobj))) call SIS_error(FATAL,"ice_state_read_alt_restarts: "//&
+    if (.not.(check_if_open(Ice_restart))) call SIS_error(FATAL,"ice_state_read_alt_restarts: "//&
       "restart file object is not open")
 
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
       allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
       allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
-      if (variable_exists(restart_fileobj, 'u_ice_C') .and. &
-        variable_exists(restart_fileobj, 'v_ice_C')) then
-        call register_restart_field(restart_fileobj, 'u_ice_C', u_tmp(:,:))
-        call register_restart_field(restart_fileobj, 'v_ice_C', v_tmp(:,:))
-        call read_data(restart_fileobj, 'u_ice_C', u_tmp)
-        call read_data(restart_fileobj, 'v_ice_C', v_tmp)
+      if (variable_exists(Ice_restart, 'u_ice_C') .and. &
+        variable_exists(Ice_restart, 'v_ice_C')) then
+        if (.not. is_registered_to_restart(Ice_restart, 'u_ice_C')) &
+          call register_restart_field(Ice_restart, 'u_ice_C', u_tmp(:,:))
+
+        if (.not. is_registered_to_restart(Ice_restart, 'v_ice_C')) &
+          call register_restart_field(Ice_restart, 'v_ice_C', v_tmp(:,:))
+
+        call read_data(Ice_restart, 'u_ice_C', u_tmp)
+        call read_data(Ice_restart, 'v_ice_C', v_tmp)
         ! The non-symmetric variant of this vector has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=CGRID_NE)
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
@@ -746,12 +743,16 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
       allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
       allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
-      if (variable_exists(restart_fileobj, 'u_ice') .and. &
-        variable_exists(restart_fileobj, 'v_ice')) then
-        call register_restart_field(restart_fileobj, 'u_ice', u_tmp(:,:))
-        call register_restart_field(restart_fileobj, 'v_ice', v_tmp(:,:))
-        call read_data(restart_fileobj, 'u_ice', u_tmp)
-        call read_data(restart_fileobj, 'v_ice', v_tmp)
+      if (variable_exists(Ice_restart, 'u_ice') .and. &
+        variable_exists(Ice_restart, 'v_ice')) then
+        if (.not. is_registered_to_restart(Ice_restart, 'u_ice')) &
+          call register_restart_field(Ice_restart, 'u_ice', u_tmp(:,:))
+
+        if (.not. is_registered_to_restart(Ice_restart, 'v_ice')) &
+          call register_restart_field(Ice_restart, 'v_ice', v_tmp(:,:))
+
+        call read_data(Ice_restart, 'u_ice', u_tmp)
+        call read_data(Ice_restart, 'v_ice', v_tmp)
     
         ! The non-symmetric variant of this variable has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=BGRID_NE)
@@ -764,11 +765,11 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
 
   else  ! .not. symmetric
     if (IST%Cgrid_dyn) then
-      u_set = is_registered_to_restart(restart_fileobj, 'u_ice_C')
-      v_set = is_registered_to_restart(restart_fileobj, 'v_ice_C')
+      u_set = is_registered_to_restart(Ice_restart, 'u_ice_C')
+      v_set = is_registered_to_restart(Ice_restart, 'v_ice_C')
     else
-      u_set = is_registered_to_restart(restart_fileobj, 'u_ice')
-      v_set = is_registered_to_restart(restart_fileobj, 'v_ice')
+      u_set = is_registered_to_restart(Ice_restart, 'u_ice')
+      v_set = is_registered_to_restart(Ice_restart, 'v_ice')
     endif
     if (u_set .and. v_set) return
 
@@ -781,12 +782,16 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
       allocate(u_tmp(G%isd-1:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
       allocate(v_tmp(G%isd:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
-      if (variable_exists(restart_fileobj, 'sym_u_ice_C') .and. &
-        variable_exists(restart_fileobj, 'sym_v_ice_C')) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_C', u_tmp(:,:))
-        call register_restart_field(restart_fileobj, 'sym_v_ice_C', v_tmp(:,:))
-        call read_data(restart_fileobj, 'sym_u_ice_C', u_tmp)
-        call read_data(restart_fileobj, 'sym_v_ice_C', v_tmp)
+      if (variable_exists(Ice_restart, 'sym_u_ice_C') .and. &
+        variable_exists(Ice_restart, 'sym_v_ice_C')) then
+        if (.not. is_registered_to_restart(Ice_restart, 'sym_u_ice_C')) &
+          call register_restart_field(Ice_restart, 'sym_u_ice_C', u_tmp(:,:))
+
+        if (.not. is_registered_to_restart(Ice_restart, 'sym_v_ice_C')) &
+          call register_restart_field(Ice_restart, 'sym_v_ice_C', v_tmp(:,:))
+
+        call read_data(Ice_restart, 'sym_u_ice_C', u_tmp)
+        call read_data(Ice_restart, 'sym_v_ice_C', v_tmp)
         ! The symmetric variant of this vector has been successfully read.
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
@@ -799,12 +804,16 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, restart_fileobj, &
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
       allocate(u_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; u_tmp(:,:) = 0.0
       allocate(v_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
-      if (variable_exists(restart_fileobj, 'sym_u_ice_B') .and. &
-          variable_exists(restart_fileobj, 'sym_v_ice_B')) then
-        call register_restart_field(restart_fileobj, 'sym_u_ice_B', u_tmp(:,:))
-        call register_restart_field(restart_fileobj, 'sym_v_ice_B', v_tmp(:,:))
-        call read_data(restart_fileobj, 'sym_v_ice_B', v_tmp)
-      
+      if (variable_exists(Ice_restart, 'sym_u_ice_B') .and. &
+          variable_exists(Ice_restart, 'sym_v_ice_B')) then
+        if (.not. is_registered_to_restart(Ice_restart, 'sym_u_ice_B')) &
+          call register_restart_field(Ice_restart, 'sym_u_ice_B', u_tmp(:,:))
+
+        if (.not. is_registered_to_restart(Ice_restart, 'sym_v_ice_B')) &
+          call register_restart_field(Ice_restart, 'sym_v_ice_B', v_tmp(:,:))
+
+        call read_data(Ice_restart, 'sym_u_ice_B', u_tmp)
+        call read_data(Ice_restart, 'sym_v_ice_B', v_tmp)
         ! The symmetric variant of this variable has been successfully read.
         do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_B(I,J) = u_tmp(I,J)
@@ -1080,21 +1089,21 @@ end subroutine alloc_total_sfc_flux
 !!     and registers any variables in the ice rad type that need to be included
 !!     in the restart files.
 subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
-                                     restart_fileobj, restart_file)
+                                     Ice_restart, restart_file)
   type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain describing the ice decomposition
   type(hor_index_type),    intent(in)    :: HI  !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
                                                 !! reflection and transmission of shortwave radiation.
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/overwrite/append mode                           
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< pointer to restart file object opened
+                                                     !! in read/write/overwrite/append mode                           
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
 
-  if (.not.(check_if_open(restart_fileobj))) call SIS_error(FATAL, &
-    "ice_rad_register_restarts: restart_fileobj is not open.")
+  if (.not.(check_if_open(Ice_restart))) call SIS_error(FATAL, &
+    "ice_rad_register_restarts: Ice_restart is not open.")
 
   if (.not.associated(Rad)) allocate(Rad)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
@@ -1120,11 +1129,13 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
     allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
   if (.not.(allocated(Rad%coszen_lastrad))) &
     allocate(Rad%coszen_lastrad(isd:ied, jsd:jed)) ; Rad%coszen_lastrad(:,:) = 0.0
-
-  call register_restart_field(restart_fileobj, 'coszen', Rad%coszen_nextrad, &
-    dimensions = (/"xaxis_1","yaxis_1","Time   "/))
-  call register_restart_field(restart_fileobj, 'T_skin', Rad%t_skin, &
-    dimensions = (/"xaxis_1","yaxis_1", "zaxis_2", "Time   "/))
+  
+  if (.not. is_registered_to_restart(Ice_restart, 'coszen')) &
+    call register_restart_field(Ice_restart, 'coszen', Rad%coszen_nextrad, &
+      dimensions = (/"xaxis_1","yaxis_1","Time   "/))
+  if (.not. is_registered_to_restart(Ice_restart, 'T_skin')) &
+    call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, &
+      dimensions = (/"xaxis_1","yaxis_1", "zaxis_2", "Time   "/))
 
 end subroutine ice_rad_register_restarts
 
@@ -2187,15 +2198,15 @@ end subroutine redistribute_Rad_to_Rad
 !!   the model is restart.  These are the fields that would be copied via the
 !!   subroutines copy_FIA_to_FIA, copy_TSF_to_TSF and copy_Rad_to_Rad, and it
 !!   should be called from the fast ice processors when redo_fast_update is true.
-subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, restart_fileobj, restart_file, nc_mode)
+subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart, restart_file, nc_mode)
   type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/overwrite/append mode
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< pointer to restart file object opened
+                                                     !! in read/write/overwrite/append mode
   character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
-  character(len=*),          intent(in)    :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
+  character(len=*),          intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 
   integer :: idr
   integer :: num_restart_dims ! number of dimensions in the netcdf file
@@ -2210,8 +2221,8 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, restart_fil
 
   ! create, register and write restart axes
   if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), mpp_domain, &
+    if (.not.(check_if_open(Ice_restart))) then
+      file_open_success=fms2_open_file(Ice_restart, trim(restart_file), trim(nc_mode), mpp_domain, &
                                        is_restart=.true.)
       if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_types::register_fast_to_slow_restarts: '// &
                                         'Unable to open file '//trim(restart_file))
@@ -2230,29 +2241,29 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, restart_fil
     dim_lengths = (/1, 1, size(FIA%flux_sh_top,3), size(FIA%flux_sh_top,3)-1, NBANDS, unlimited/) ! x and y 
                                                  ! axis lengths are determined by domain decomposition in fms
     do i=1,num_restart_dims
-      if (.not. dimension_exists(restart_fileobj, trim(dim_names(i)))) &
-        call register_restart_axis(restart_fileobj, trim(dim_names(i)), dim_lengths(i))
-      if (.not. variable_exists(restart_fileobj, trim(dim_names(i)))) then
+      if (.not. dimension_exists(Ice_restart, trim(dim_names(i)))) &
+        call register_restart_axis(Ice_restart, trim(dim_names(i)), dim_lengths(i))
+      if (.not. variable_exists(Ice_restart, trim(dim_names(i)))) then
         if (dim_lengths(i) .ne. unlimited) &
-          call write_restart_axis(restart_fileobj, trim(dim_names(i)), axis_length=dim_lengths(i))
+          call write_restart_axis(Ice_restart, trim(dim_names(i)), axis_length=dim_lengths(i))
       endif
     enddo
   elseif (trim(nc_mode) .eq. "read") then
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), mpp_domain, &
+    if (.not.(check_if_open(Ice_restart))) then
+      file_open_success=fms2_open_file(Ice_restart, trim(restart_file), trim(nc_mode), mpp_domain, &
                                       is_restart=.true.)
       if (.not.(file_open_success)) call SIS_error(FATAL,'SIS_types::register_fast_to_slow_restarts: '// &
                                         'Unable to open file '//trim(restart_file))
     endif
     ! get the dimension names and lengths
-    num_restart_dims = get_num_dimensions(restart_fileobj)
+    num_restart_dims = get_num_dimensions(Ice_restart)
     allocate(dim_names(num_restart_dims))
     allocate(dim_lengths(num_restart_dims))
     dim_names(:) = ""
     dim_lengths(:) = 0
-    call get_dimension_names(restart_fileobj, dim_names)
+    call get_dimension_names(Ice_restart, dim_names)
     do i=1,num_restart_dims
-      call get_dimension_size(restart_fileobj, trim(dim_names(i)), dim_lengths(i))
+      call get_dimension_size(Ice_restart, trim(dim_names(i)), dim_lengths(i))
     enddo
   else
     call SIS_error(FATAL,'SIS_types::register_fast_to_slow_restarts: nc_mode is invalid.'// &
@@ -2265,98 +2276,98 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, restart_fil
   set4 = (/1,2,5,6/) ! xaxis_1, yaxis_1, aaxis_4, time
   set5 = (/1,2,3,5,6/) ! xaxis_1, yaxis_1, zaxis_1,aaxis_4, time
 
-  call register_restart_field(restart_fileobj, 'flux_sh_top', FIA%flux_sh_top, dimensions=dim_names(set2)) 
-  call register_restart_field(restart_fileobj,  'evap_top', FIA%evap_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'flux_lw_top', FIA%flux_lw_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'flux_lh_top', FIA%flux_lh_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'lprec_top', FIA%lprec_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'fprec_top', FIA%fprec_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'flux_sw_top', FIA%flux_sw_top, dimensions=dim_names(set2))
-  call register_restart_field(restart_fileobj, 'WindStr_x', FIA%WindStr_x, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'WindStr_y', FIA%WindStr_y, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'WindStr_ocn_x', FIA%WindStr_ocn_x, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'WindStr_ocn_y', FIA%WindStr_ocn_y, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'p_atm_surf', FIA%p_atm_surf, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'runoff', FIA%runoff, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'calving', FIA%calving, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'runoff_hflx', FIA%runoff_hflx, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'calving_hflx', FIA%calving_hflx, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'Tskin_avg', FIA%Tskin_avg, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'ice_free', FIA%ice_free, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'ice_cover', FIA%ice_cover, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'flux_sw_dn', FIA%flux_sw_dn, dimensions=dim_names(set4))
+  call register_restart_field(Ice_restart, 'flux_sh_top', FIA%flux_sh_top, dimensions=dim_names(set2)) 
+  call register_restart_field(Ice_restart,  'evap_top', FIA%evap_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'flux_lw_top', FIA%flux_lw_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'flux_lh_top', FIA%flux_lh_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'lprec_top', FIA%lprec_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'fprec_top', FIA%fprec_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, dimensions=dim_names(set2))
+  call register_restart_field(Ice_restart, 'WindStr_x', FIA%WindStr_x, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'WindStr_y', FIA%WindStr_y, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'WindStr_ocn_x', FIA%WindStr_ocn_x, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'WindStr_ocn_y', FIA%WindStr_ocn_y, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'p_atm_surf', FIA%p_atm_surf, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'runoff', FIA%runoff, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'calving', FIA%calving, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'runoff_hflx', FIA%runoff_hflx, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'calving_hflx', FIA%calving_hflx, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'Tskin_avg', FIA%Tskin_avg, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'ice_free', FIA%ice_free, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'ice_cover', FIA%ice_cover, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'flux_sw_dn', FIA%flux_sw_dn, dimensions=dim_names(set4))
   ! register the variable units
   if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-    call register_variable_attribute(restart_fileobj, "flux_sh_top", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "flux_evap_top", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "flux_lw_top", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "flux_lh_top", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "lprec_top", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "fprec_top", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "flux_sw_top", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "WindStr_x", "units", "Pa")
-    call register_variable_attribute(restart_fileobj, "WindStr_y", "units", "Pa")
-    call register_variable_attribute(restart_fileobj, "WindStr_ocn_x", "units", "Pa")
-    call register_variable_attribute(restart_fileobj, "WindStr_ocn_y", "units", "Pa")
-    call register_variable_attribute(restart_fileobj, "p_atm_srf", "units", "Pa")
-    call register_variable_attribute(restart_fileobj, "runoff", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "calving", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "runoff_hflx", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "calving_hflx", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "Tskin_avg", "units", "degC")
-    call register_variable_attribute(restart_fileobj, "ice_free", "units", "nondim")
-    call register_variable_attribute(restart_fileobj, "ice_cover", "units", "nondim")
-    call register_variable_attribute(restart_fileobj, "flux_sw_dn", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "flux_sh_top", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "flux_evap_top", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "flux_lw_top", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "flux_lh_top", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "lprec_top", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "fprec_top", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "flux_sw_top", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "WindStr_x", "units", "Pa")
+    call register_variable_attribute(Ice_restart, "WindStr_y", "units", "Pa")
+    call register_variable_attribute(Ice_restart, "WindStr_ocn_x", "units", "Pa")
+    call register_variable_attribute(Ice_restart, "WindStr_ocn_y", "units", "Pa")
+    call register_variable_attribute(Ice_restart, "p_atm_srf", "units", "Pa")
+    call register_variable_attribute(Ice_restart, "runoff", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "calving", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "runoff_hflx", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "calving_hflx", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "Tskin_avg", "units", "degC")
+    call register_variable_attribute(Ice_restart, "ice_free", "units", "nondim")
+    call register_variable_attribute(Ice_restart, "ice_cover", "units", "nondim")
+    call register_variable_attribute(Ice_restart, "flux_sw_dn", "units", "W m-2")
   endif
   if (allocated(FIA%flux_sh0)) then
-    call register_restart_field(restart_fileobj, 'flux_sh_T0', FIA%flux_sh0, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'flux_lw_T0', FIA%flux_lw0, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'evap_T0', FIA%evap0, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'dsh_dT', FIA%dshdt, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'dlw_dT', FIA%dlwdt, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'devap_dT', FIA%devapdt, dimensions=dim_names(set2))
-    call register_restart_field(restart_fileobj, 'Tskin_can', FIA%Tskin_cat, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'flux_sh_T0', FIA%flux_sh0, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'flux_lw_T0', FIA%flux_lw0, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, dimensions=dim_names(set2))
+    call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, dimensions=dim_names(set2))
     ! register variable units
     if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-      call register_variable_attribute(restart_fileobj, "flux_sh_T0", "units", "W m-2")
-      call register_variable_attribute(restart_fileobj, "flux_lw_T0", "units", "W m-2")
-      call register_variable_attribute(restart_fileobj, "evap_T0", "units", "kg m-2 s-1")
-      call register_variable_attribute(restart_fileobj, "dsh_dT", "units", "W m-2 degC-1")
-      call register_variable_attribute(restart_fileobj, "dlw_dT", "units", "W m-2 degC-1")
-      call register_variable_attribute(restart_fileobj, "devap_dT", "units", "kg m-2 s-1 degC-1")
-      call register_variable_attribute(restart_fileobj, "Tskin_can", "units", "degC")
+      call register_variable_attribute(Ice_restart, "flux_sh_T0", "units", "W m-2")
+      call register_variable_attribute(Ice_restart, "flux_lw_T0", "units", "W m-2")
+      call register_variable_attribute(Ice_restart, "evap_T0", "units", "kg m-2 s-1")
+      call register_variable_attribute(Ice_restart, "dsh_dT", "units", "W m-2 degC-1")
+      call register_variable_attribute(Ice_restart, "dlw_dT", "units", "W m-2 degC-1")
+      call register_variable_attribute(Ice_restart, "devap_dT", "units", "kg m-2 s-1 degC-1")
+      call register_variable_attribute(Ice_restart, "Tskin_can", "units", "degC")
     endif
   endif
 
-  call register_restart_field(restart_fileobj, 'tskin_rad', Rad%tskin_rad, dimensions=dim_names(set3))
-  call register_restart_field(restart_fileobj, 'coszen_rad', Rad%coszen_lastrad, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_flux_sh', TSF%flux_sh, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_flux_lw', TSF%flux_lw, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_flux_lh', TSF%flux_lh, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_evap', TSF%evap, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_lprec', TSF%lprec, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_fprec', TSF%fprec, dimensions=dim_names(set1))
-  call register_restart_field(restart_fileobj, 'total_flux_sw', TSF%flux_sw, dimensions=dim_names(set5))
+  call register_restart_field(Ice_restart, 'tskin_rad', Rad%tskin_rad, dimensions=dim_names(set3))
+  call register_restart_field(Ice_restart, 'coszen_rad', Rad%coszen_lastrad, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_flux_sh', TSF%flux_sh, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_flux_lw', TSF%flux_lw, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_flux_lh', TSF%flux_lh, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_evap', TSF%evap, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_lprec', TSF%lprec, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_fprec', TSF%fprec, dimensions=dim_names(set1))
+  call register_restart_field(Ice_restart, 'total_flux_sw', TSF%flux_sw, dimensions=dim_names(set5))
   ! register the variable units and longname
   if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
-    call register_variable_attribute(restart_fileobj, "tskin_rad", "units", "degC")
-    call register_variable_attribute(restart_fileobj, "coszen_rad", "units", "nondim")
-    call register_variable_attribute(restart_fileobj, "total_flux_sh", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "total_flux_lw", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "total_flux_sh", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "total_evap", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "total_lprec", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "total_fprec", "units", "kg m-2 s-1")
-    call register_variable_attribute(restart_fileobj, "total_flux_sw", "units", "W m-2")
-    call register_variable_attribute(restart_fileobj, "total_flux_sw", "longname", &
+    call register_variable_attribute(Ice_restart, "tskin_rad", "units", "degC")
+    call register_variable_attribute(Ice_restart, "coszen_rad", "units", "nondim")
+    call register_variable_attribute(Ice_restart, "total_flux_sh", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "total_flux_lw", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "total_flux_sh", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "total_evap", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "total_lprec", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "total_fprec", "units", "kg m-2 s-1")
+    call register_variable_attribute(Ice_restart, "total_flux_sw", "units", "W m-2")
+    call register_variable_attribute(Ice_restart, "total_flux_sw", "longname", &
     "Total shortwave flux by frequency and angular band")
   endif
   
   if (coupler_type_initialized(TSF%tr_flux) .and. &
       coupler_type_initialized(FIA%tr_flux)) then
-    call coupler_type_register_restarts(TSF%tr_flux, restart_fileobj, "write", restart_file, &
+    call coupler_type_register_restarts(TSF%tr_flux, Ice_restart, "write", restart_file, &
                                          mpp_domain, "TSF_")
-    call coupler_type_register_restarts(FIA%tr_flux, restart_fileobj, "write", restart_file, &
+    call coupler_type_register_restarts(FIA%tr_flux, Ice_restart, "write", restart_file, &
                                         mpp_domain, "FIA_")
   endif
   if (allocated(dim_names)) deallocate(dim_names)

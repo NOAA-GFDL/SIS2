@@ -184,8 +184,8 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, Ice_resta
   integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
-                                                                !! read/write/overwrite/append mode
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
+                                                     !! read/write/overwrite/append mode
   character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   character(len=*),        intent(in)    :: nc_mode !< netcdf file mode: read, write, overwrite, append
   type(coupler_1d_bc_type), &
@@ -367,13 +367,13 @@ end subroutine ice_type_slow_reg_restarts
 !> ice_type_fast_reg_restarts allocates the arrays in the ice_data_type that are
 !! predominantly associated with the fast processors, and registers any variables
 !! in the ice data type that need to be included in the fast ice restart files.
-subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, restart_fileobj, &
+subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, Ice_restart, &
                                       restart_file, nc_mode, gas_fields_ocn)
   type(domain2d),          intent(in)    :: domain   !< The ice models' FMS domain type
   integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
-  type(FmsNetcdfDomainFile_t), intent(inout) :: restart_fileobj !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
                                                                 !! read/write/overwrite/append mode
   character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   character(len=*),        intent(in)    :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
@@ -395,7 +395,8 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, restart_f
   call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
+  if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" &
+    .or. trim(nc_mode) .eq. "append" .or. trim(nc_mode) .eq. "read") then
     if(.not.(associated(Ice%t_surf))) &
       allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
     if(.not.(associated(Ice%s_surf))) &
@@ -431,8 +432,8 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, restart_f
       call coupler_type_spawn(gas_fields_ocn, Ice%ocean_fields, (/isc,isc,iec,iec/), &
                             (/jsc,jsc,jec,jec/), (/1, km/), suffix = '_ice')
     ! open the file if necessary
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), domain, &
+    if (.not.(check_if_open(Ice_restart))) then
+      file_open_success=fms2_open_file(Ice_restart, trim(restart_file), trim(nc_mode), domain, &
                                        is_restart=.true.)
       if (.not.(file_open_success)) call SIS_error(FATAL,'ice_type::ice_type_fast_reg_restarts: '// &
                                         'Unable to open file '//trim(restart_file))
@@ -447,36 +448,24 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, restart_f
     dim_names(3)(1:len_trim("zaxis_1")) = "zaxis_1"
     dim_names(4)(1:len_trim("Time")) = "Time"
     dim_lengths = (/1, 1, km, unlimited/) ! x and y axis lengths determined by domain decomposition in fms
-    do i=1,num_restart_dims
-      if (.not. dimension_exists(restart_fileobj, trim(dim_names(i)))) &
-        call register_restart_axis(restart_fileobj, trim(dim_names(i)), dim_lengths(i))
-      if (.not. variable_exists(restart_fileobj, trim(dim_names(i)))) then
-        if (dim_lengths(i) .ne. unlimited) &
-          call write_restart_axis(restart_fileobj, trim(dim_names(i)), axis_length=dim_lengths(i))
-      endif
-    enddo
+    if (trim(nc_mode) .eq. "write" .or. trim(nc_mode) .eq. "overwrite" .or. trim(nc_mode) .eq. "append") then
+      do i=1,num_restart_dims
+        if (.not. dimension_exists(Ice_restart, trim(dim_names(i)))) &
+          call register_restart_axis(Ice_restart, trim(dim_names(i)), dim_lengths(i))
+        if (.not. variable_exists(Ice_restart, trim(dim_names(i)))) then
+          if (dim_lengths(i) .ne. unlimited) &
+            call write_restart_axis(Ice_restart, trim(dim_names(i)), axis_length=dim_lengths(i))
+        endif
+      enddo
+    endif
     ! Now register some of these arrays to be read from the restart files.
     ! These are used by the atmospheric model, and need to be in the fast PE restarts.
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_mom')) &
-      call register_restart_field(restart_fileobj, 'rough_mom', Ice%rough_mom, dimensions=dim_names)
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_heat')) &
-      call register_restart_field(restart_fileobj, 'rough_heat', Ice%rough_heat, dimensions=dim_names)
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_moist')) &
-      call register_restart_field(restart_fileobj, 'rough_moist', Ice%rough_moist, dimensions=dim_names)
-  elseif (trim(nc_mode) .eq. "read") then
-    if (.not.(check_if_open(restart_fileobj))) then
-      file_open_success=fms2_open_file(restart_fileobj, trim(restart_file), trim(nc_mode), domain, &
-                                      is_restart=.true.)
-      if (.not.(file_open_success)) call SIS_error(FATAL,'ice_type::ice_type_fast_reg_restarts: '// &
-                                        'Unable to open file '//trim(restart_file))
-    endif
-    ! register arrays to read in
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_mom')) &
-      call register_restart_field(restart_fileobj, 'rough_mom', Ice%rough_mom)
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_heat')) &
-      call register_restart_field(restart_fileobj, 'rough_heat', Ice%rough_heat)
-    if (.not.is_registered_to_restart(restart_fileobj, 'rough_moist')) &
-      call register_restart_field(restart_fileobj, 'rough_moist', Ice%rough_moist)
+    if (.not.is_registered_to_restart(Ice_restart, 'rough_mom')) &
+      call register_restart_field(Ice_restart, 'rough_mom', Ice%rough_mom, dimensions=dim_names)
+    if (.not.is_registered_to_restart(Ice_restart, 'rough_heat')) &
+      call register_restart_field(Ice_restart, 'rough_heat', Ice%rough_heat, dimensions=dim_names)
+    if (.not.is_registered_to_restart(Ice_restart, 'rough_moist')) &
+      call register_restart_field(Ice_restart, 'rough_moist', Ice%rough_moist, dimensions=dim_names)
   else
     call SIS_error(FATAL,'ice_type::ice_type_fast_reg_restarts: nc_mode is invalid.'// &
                    'Must be read, write, overwrite, or append')
@@ -673,12 +662,12 @@ end subroutine Ice_public_type_bounds_check
 ! </DESCRIPTION>
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !>  Write out restart files registered through register_restart_file
-subroutine ice_model_restart(Ice, restart_fileobj, restart_time, time_stamp)
-  type(ice_data_type), optional, intent(inout) :: Ice !< The publicly visible ice data type.
-   type(FmsNetcdfDomainFile_t), optional, intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                !! read/write/overwrite/append mode
-  type(time_type), optional, intent(in) :: restart_time !< time value to write to restart
-  character(len=*), optional, intent(in) :: time_stamp !< A date stamp to include in the restart file name
+subroutine ice_model_restart(Ice, Ice_restart, restart_time, time_stamp)
+  type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
+  type(FmsNetcdfDomainFile_t), target, optional:: Ice_restart !< restart file object opened in
+                                                              !! read/write/overwrite/append mode
+  type(time_type), intent(in), optional :: restart_time !< time value to write to restart
+  character(len=*), intent(in), optional :: time_stamp !< A date stamp to include in the restart file name
   ! local
   real :: real_time ! time value converted from time type
 
@@ -686,13 +675,13 @@ subroutine ice_model_restart(Ice, restart_fileobj, restart_time, time_stamp)
     ! register and write the restart time value
   real_time = 1.0
   if (present(restart_time)) real_time = time_type_to_real(restart_time) / 86400.0
-  if (.not. (variable_exists(restart_fileobj, "Time"))) then
-    call register_field(restart_fileobj, "Time", "double", dimensions=(/"Time"/))
-    call register_variable_attribute(restart_fileobj, "Time", "units", "days")
-    call write_data(restart_fileobj, "Time", (/real_time/))
+  if (.not. (variable_exists(Ice_restart, "Time"))) then
+    call register_field(Ice_restart, "Time", "double", dimensions=(/"Time"/))
+    call register_variable_attribute(Ice_restart, "Time", "units", "days")
+    call write_data(Ice_restart, "Time", (/real_time/))
   endif
   ! write the rest of the data to the restart file
-  call write_restart(restart_fileobj)
+  call write_restart(Ice_restart)
   !endif
   call icebergs_save_restart(Ice%icebergs, time_stamp)
 

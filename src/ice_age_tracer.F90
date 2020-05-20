@@ -24,8 +24,8 @@ use MOM_string_functions, only  : slasher
 use MOM_unit_scaling, only      : unit_scale_type
 
 use fms_mod, only               : read_data
-use fms2_io_mod, only           : register_restart_field, fms2_read_data => read_data, &
-                                  FmsNetcdfDomainFile_t, dimension_exists
+use fms2_io_mod, only           : FmsNetcdfDomainFile_t, register_restart_field,  &
+                                  dimension_exists, is_registered_to_restart
 use ice_grid, only              : ice_grid_type
 
 implicit none ; private
@@ -98,7 +98,7 @@ contains
 
 !> Register tracers from the ice age package
 logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
-                                         restart_fileobj, restart_file)
+                                         Ice_restart, restart_file)
   type(sis_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -106,8 +106,8 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
                                                       !! structure for the ice age tracer
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(FmsNetcdfDomainFile_t),   intent(inout) :: restart_fileobj !< restart file object opened in
-                                                                  !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+                                                     !! read/write/append mode
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
@@ -179,9 +179,9 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   CS%diag => diag
 
   ! register and write a dummy dimension for ntr
-  if (.not.(dimension_exists(restart_fileobj, "aaxis_3"))) then
-    call register_restart_axis(restart_fileobj, "aaxis_3", CS%ntr)
-    call write_restart_axis(restart_fileobj, "aaxis_3", axis_length=CS%ntr)
+  if (.not.(dimension_exists(Ice_restart, "aaxis_3"))) then
+    call register_restart_axis(Ice_restart, "aaxis_3", CS%ntr)
+    call write_restart_axis(Ice_restart, "aaxis_3", axis_length=CS%ntr)
   endif
 
   do m=1,CS%ntr
@@ -194,8 +194,9 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
      !   CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
      !   mandatory=.false.)
     CS%id_tracer(m) = m
-    call register_restart_field(restart_fileobj, trim(var_name), CS%tr(:,:,:,1,m), &
-                                dimensions=(/"xaxis_1","yaxis_1","zaxis_2","aaxis_3","Time   "/))
+    if (.not. is_registered_to_restart(Ice_restart, trim(var_name))) &
+      call register_restart_field(Ice_restart, trim(var_name), CS%tr(:,:,:,1,m), &
+                                  dimensions=(/"xaxis_1","yaxis_1","zaxis_2","aaxis_3","Time   "/))
 
     ocean_BC_ptr => CS%ocean_BC(:,:,:,m)
     snow_BC_ptr  => CS%snow_BC(:,:,:,m)
