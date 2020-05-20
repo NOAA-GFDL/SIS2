@@ -451,6 +451,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   if (present(do_ridging)) then ; if (do_ridging) then
     allocate(IST%snow_to_ocn(isd:ied, jsd:jed)) ; IST%snow_to_ocn(:,:) = 0.0
     allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed)) ; IST%enth_snow_to_ocn(:,:) = 0.0
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif ; endif
 
   if (do_vel) then
@@ -462,9 +463,6 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
       allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
       allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
     endif
-
-    ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif
 
   if (do_Tsurf) then
@@ -1222,8 +1220,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
 
@@ -1239,8 +1236,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
     call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
                           IST_out%part_size, complete=.true.)
