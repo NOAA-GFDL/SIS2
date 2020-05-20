@@ -2067,7 +2067,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     !call set_domain(sGD%mpp_domain)
-    !if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
+    if (.not.associated(Ice%Ice_restart_write)) allocate(Ice%Ice_restart_write)
 
     !call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
     !                  param_file, Ice, Ice%Ice_restart, restart_file)
@@ -2075,7 +2075,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.(file_exists("RESTART/"//trim(restart_file)))) nc_mode = "write"
   
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, param_file, Ice, &
-                                    restart_fileobj_write_slow, "RESTART/"//trim(restart_file), &
+                                    Ice%Ice_restart_write, "RESTART/"//trim(restart_file), &
                                     nc_mode=trim(nc_mode))
 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
@@ -2226,11 +2226,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     !if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
-    !if (split_restart_files) then
-    !  if (.not.associated(Ice%Ice_fast_restart)) allocate(Ice%Ice_fast_restart)
-    !else
-     ! Ice%Ice_fast_restart => Ice%Ice_restart
-    !endif
+    if (split_restart_files) then
+      if (.not.associated(Ice%Ice_fast_restart_write)) allocate(Ice%Ice_fast_restart_write)
+    else
+      Ice%Ice_fast_restart_write => Ice%Ice_restart_write
+    endif
 
   ! These allocation routines are called on all PEs; whether or not the variables
   ! they allocate are registered for inclusion in restart files is determined by
@@ -2347,7 +2347,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       !> @NOTE Variables associated with a file object need to be registered each time the file is opened.
       !! Here, it is opened in 'read' mode instead of 'write/overwrite/append mode'
       call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, param_file, &
-                                      Ice, restart_fileobj_read_slow, trim(restart_path), nc_mode="read")
+                                      Ice, Ice%Ice_restart_read, trim(restart_path), nc_mode="read")
       call ice_state_register_restarts(sIST, sG, sIG, restart_fileobj_read_slow, &
                                        trim(restart_path), nc_mode="read")
 
@@ -2740,9 +2740,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
       if (file_exists(fast_rest_path)) then
         !call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
-
-        ! register the axes to the restart file object
         if (split_restart_files) then
+          if (.not.associated(Ice%Ice_fast_restart_read)) allocate(Ice%Ice_fast_restart_read)
+          ! register the axes to the restart file object
           call register_axes_to_read_file_object(restart_fileobj_read_fast, trim(fast_rest_path), &
                                                  sGD%mpp_domain, is_restart=.true.)
           ! register the restart variables to the file object
@@ -2753,21 +2753,21 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
           call read_restart(restart_fileobj_read_fast)
 
-          init_coszen = .not.is_registered_to_restart(restart_fileobj_read_fast, 'coszen')
-          init_Tskin = .not.is_registered_to_restart(restart_fileobj_read_fast, 'T_skin')
-          init_rough  = .not.(is_registered_to_restart(restart_fileobj_read_fast, 'rough_mom') .and. &
-                              is_registered_to_restart(restart_fileobj_read_fast, 'rough_heat') .and. &
-                              is_registered_to_restart(restart_fileobj_read_fast, 'rough_moist'))
+          !init_coszen = .not.is_registered_to_restart(restart_fileobj_read_fast, 'coszen')
+          !init_Tskin = .not.is_registered_to_restart(restart_fileobj_read_fast, 'T_skin')
+          !init_rough  = .not.(is_registered_to_restart(restart_fileobj_read_fast, 'rough_mom') .and. &
+          !                    is_registered_to_restart(restart_fileobj_read_fast, 'rough_heat') .and. &
+          !                    is_registered_to_restart(restart_fileobj_read_fast, 'rough_moist'))
         else
           !>@NOTE root pe broadcasts data read in to all pes, so is is unnecessary to read from the file again
-          !call read_restart(restart_fileobj_read_slow)
-          init_coszen = .not.is_registered_to_restart(restart_fileobj_read_slow, 'coszen')
-          init_Tskin = .not.is_registered_to_restart(restart_fileobj_read_slow, 'T_skin')
-          init_rough  = .not.(is_registered_to_restart(restart_fileobj_read_slow, 'rough_mom') .and. &
-                              is_registered_to_restart(restart_fileobj_read_slow, 'rough_heat') .and. &
-                              is_registered_to_restart(restart_fileobj_read_slow, 'rough_moist'))
+          Ice%Ice_fast_restart_read => Ice%Ice_restart_read
         endif
-
+          !call read_restart(restart_fileobj_read_slow)
+          init_coszen = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'coszen')
+          init_Tskin = .not.is_registered_to_restart(Ice%Ice_fast_restart_read, 'T_skin')
+          init_rough  = .not.(is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_mom') .and. &
+                              is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_heat') .and. &
+                              is_registered_to_restart(Ice%Ice_fast_restart_read, 'rough_moist'))
       else
         init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
       endif
@@ -3002,9 +3002,12 @@ subroutine ice_model_end(Ice, restart_time)
         call SIS_hor_grid_end(Ice%fCS%G)
     endif
 
-   ! if (associated(Ice%Ice_fast_restart) .and. &
-   !     (.not.associated(Ice%Ice_fast_restart, Ice%Ice_restart))) &
-   !   deallocate(Ice%Ice_fast_restart)
+    if (associated(Ice%Ice_fast_restart_write) .and. &
+        (.not.associated(Ice%Ice_fast_restart_write, Ice%Ice_restart_write))) &
+      deallocate(Ice%Ice_fast_restart_write)
+    if (associated(Ice%Ice_fast_restart_read) .and. &
+        (.not.associated(Ice%Ice_fast_restart_read, Ice%Ice_restart_read))) &
+      deallocate(Ice%Ice_fast_restart_read)
 
   endif
 
@@ -3052,7 +3055,8 @@ subroutine ice_model_end(Ice, restart_time)
 
   call dealloc_Ice_arrays(Ice)
 
-  !if (associated(Ice%Ice_restart)) deallocate(Ice%Ice_restart)
+  if (associated(Ice%Ice_restart_write)) deallocate(Ice%Ice_restart_write)
+  if (associated(Ice%Ice_restart_read)) deallocate(Ice%Ice_restart_read)
 
   if (slow_ice_PE) then
     call SIS_diag_mediator_end(Ice%sCS%Time, Ice%sCS%diag)
