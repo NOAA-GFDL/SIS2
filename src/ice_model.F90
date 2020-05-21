@@ -52,6 +52,7 @@ use MOM_unit_scaling, only : unit_scaling_end, fix_restart_unit_scaling
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
+use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
 use fms_io_mod, only : restore_state, query_initialized
@@ -1659,9 +1660,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                          ! model run and the input files.
 
   real, allocatable, dimension(:,:) :: &
-    h_ice_input, dummy,dummy2d  ! Temporary arrays.
-  real, allocatable, dimension(:,:,:) :: &
-    dummy3d ! Temporary arrays.
+    h_ice_input, dummy   ! Temporary arrays.
   real, allocatable, dimension(:,:) :: &
     str_x, str_y, stress_mag ! Temporary stress arrays
 
@@ -1701,7 +1700,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: do_icebergs, pass_iceberg_area_to_ocean
   logical :: pass_stress_mag
   logical :: do_ridging
-  logical :: specified_ice
+  logical :: specified_ice    ! If true, the ice is specified and there is no dynamics.
   logical :: Cgrid_dyn
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
                          ! with effectively zero heat capacity of ice and snow.
@@ -1956,7 +1955,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
      ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
-  nudge_sea_ice = .false. ; call read_param(param_file, "NUDGE_SEA_ICE", nudge_sea_ice)
+  call get_param(param_file, mdl, "NUDGE_SEA_ICE", nudge_sea_ice, &
+                 "If true, constrain the sea ice concentrations using observations.", &
+                 default=.false., do_not_log=.true.) ! Defer logging to SIS_slow_thermo.
   nCat_dflt = 5 ; if (slab_ice) nCat_dflt = 1
   opm_dflt = 0.0 ; if (redo_fast_update) opm_dflt = 1.0e-40
 #ifdef SYMMETRIC_MEMORY_
@@ -2292,7 +2293,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Approximately initialize state fields that are not present
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
 
-      ! Initialize the ice salinity.
+      ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
       if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
         allocate(sal_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
         do n=1,NkIce
@@ -2327,6 +2328,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       read_aux_restart = (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
                          (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))
       if (read_aux_restart) then
+        ! Try to initialize the ice enthalpy from separate temperature variables for each layer,
+        ! perhaps from a SIS1 restart.
         allocate(t_snow_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce)) ; t_snow_tmp(:,:,:) = 0.0
         allocate(t_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
 
@@ -2498,23 +2501,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
       endif
 
-      !When SPECIFIED_ICE=True variable Ice%sCS%OSS%SST_C is used for the skin temperature
-      !and should be updated during each restart.
-      !However it is not an ice state variable and hence is not in ice restarts.
-      !Updating it from specified_ice data avoids restart issues for such models.
-      if (specified_ice) then
-        allocate(dummy2d(isc:iec,jsc:jec))
-        allocate(dummy3d(isc:iec,jsc:jec,2))
-        call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_C(isc:iec,jsc:jec), &
-                             dummy3d,dummy2d, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
-        deallocate(dummy2d,dummy3d)
-      endif
-
       call callTree_leave("ice_model_init():restore_from_restart_files")
     else ! no restart file implies initialization with no ice
       sIST%part_size(:,:,:) = 0.0
       sIST%part_size(:,:,0) = 1.0
 
+!### Add the ability to specify ice temperature and salinity and snow thickness.
       if (allocated(sIST%t_surf)) sIST%t_surf(:,:,:) = T_0degC
       sIST%sal_ice(:,:,:,:) = ice_bulk_salin
 
@@ -2525,13 +2517,26 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%enth_ice(:,:,:,n) = enth_spec_ice
       enddo
 
-      allocate(h_ice_input(sG%isc:sG%iec,sG%jsc:sG%jec))
-      call get_sea_surface(Ice%sCS%Time, Ice%sCS%OSS%SST_C(isc:iec,jsc:jec), &
-                           sIST%part_size(isc:iec,jsc:jec,0:1), &
-                           h_ice_input, ice_domain=Ice%slow_domain_NH, ts_in_K=.false. )
+      allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+      ! This may use data override to set the ice concentration and thickness, but takes input
+      ! on limits from a namelist.
+      call get_sea_surface(Ice%sCS%Time, sG%HI, ice_conc=sIST%part_size(:,:,1), &
+                           ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
+
+      ! Get observed total ice thickness and concentration to initialize the ice.
+      ! There is no need to apply limits.
+      !### This is equivalent, but code needs to be added to allow for a different initialization time.
+!      call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
+!      call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
+!      call data_override('ICE', 'sic_obs', sIST%part_size(isc:iec,jsc:jec,1), Ice%sCS%Time)
+!      call data_override('ICE', 'sit_obs', h_ice_input(isc:iec,jsc:jec), Ice%sCS%Time)
+!      call data_override_unset_domains(unset_Ice=.true.)
+
       do j=jsc,jec ; do i=isc,iec
+        sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
       enddo ; enddo
+      deallocate(h_ice_input)
 
       !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
       ! the first call to ice_redistribute has the same result.  At present, all
@@ -2553,8 +2558,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
         sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
       enddo ; enddo ; endif
-
-      deallocate(h_ice_input)
 
       call pass_var(sIST%part_size, sGD, complete=.true. )
       call pass_var(sIST%mH_ice, sGD, complete=.true. )
@@ -2583,6 +2586,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               Ice%sCS%specified_ice_CSp, dirs%output_directory, Time_Init)
       call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
                    sum_out_CSp=specified_ice_sum_output_CS(Ice%sCS%specified_ice_CSp))
+
+      ! When SPECIFIED_ICE=True, the variable Ice%sCS%OSS%SST_C is used for the skin temperature
+      ! and needs to be updated for each run segment, regardless of whether a restart file is used.
+      call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_domain=Ice%slow_domain_NH)
     else
       call SIS_dyn_trans_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
