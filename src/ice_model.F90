@@ -107,6 +107,7 @@ use SIS_dyn_trans,   only : slab_ice_dyn_trans
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
 use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
 use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
+use SIS_transport,   only : adjust_ice_categories
 use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
 use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
 use SIS_fast_thermo, only : accumulate_deposition_fluxes, convert_frost_to_snow
@@ -1732,6 +1733,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! mH_pond, t_surf, t_skin, sal_ice, enth_ice and enth_snow
                               ! after a restart. However this may cause answers to diverge
                               ! after a restart.Provide a switch to turn this option off.
+  logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
+                              ! categories after initialiation.
   logical :: Verona
   logical :: Concurrent
   logical :: read_aux_restart
@@ -2277,6 +2280,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       H_to_kg_m2_tmp = sIG%H_to_kg_m2
       sIG%H_to_kg_m2 = -1.0
       is_restart = .true.
+      recategorize_ice = .false. ! Assume that the ice is already in the right thickness categories.
 
       call restore_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
 
@@ -2369,8 +2373,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
           if (spec_thermo_sal) then
             do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-              sIST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), &
-                               S_col(n), sIST%ITV)
+              sIST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), S_col(n), sIST%ITV)
             enddo ; enddo ; enddo
           else
             do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -2400,16 +2403,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
 
-      if (allocated(sIST%t_surf)) then
-        if (.not.query_initialized(Ice%Ice_restart, 't_surf_ice')) then
-          sIST%t_surf(:,:,:) = T_0degC
-        elseif (do_mask_restart) then
-          do j=jsc,jec ; do i=isc,iec
-            if (sG%mask2dT(i,j) < 0.5) sIST%t_surf(i,j,:) = T_0degC
-          enddo ; enddo
-        endif
+      if (allocated(sIST%t_surf) .and. (.not.query_initialized(Ice%Ice_restart, 't_surf_ice'))) then
+        sIST%t_surf(:,:,:) = T_0degC
       endif
 
+      ! Determine the thickness rescaling factors that are needed.
       H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
       if (sIG%H_to_kg_m2 == -1.0) then
         ! This is an older restart file, and the snow and ice thicknesses are in
@@ -2421,53 +2419,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         H_rescale_snow = H_rescale_ice
       endif
       sIG%H_to_kg_m2 = H_to_kg_m2_tmp
-
-      ! Deal with any ice masses or thicknesses over land, and rescale to
-      ! account for differences between the current thickness units and whatever
-      ! thickness units were in the input restart file.
-      ! However, in some model this causes answers to change after a restart
-      ! because these state variables are changed only after a restart and
-      ! not at each timestep. Provide a switch to turn this option off.
-      if (do_mask_restart) then
-        do n=1,NkIce
-            do k=1,CatIce
-              sIST%sal_ice(:,:,k,n) = sIST%sal_ice(:,:,k,n) * sG%mask2dT(:,:)
-              sIST%enth_ice(:,:,k,n) = sIST%enth_ice(:,:,k,n) * sG%mask2dT(:,:)
-            enddo
-        enddo
-        do k=1,CatIce
-          sIST%mH_snow(:,:,k) = sIST%mH_snow(:,:,k) * H_rescale_snow * sG%mask2dT(:,:)
-          sIST%enth_snow(:,:,k,1) = sIST%enth_snow(:,:,k,1) * sG%mask2dT(:,:)
-          sIST%mH_ice(:,:,k) = sIST%mH_ice(:,:,k) * H_rescale_ice * sG%mask2dT(:,:)
-          sIST%mH_pond(:,:,k) = sIST%mH_pond(:,:,k) * sG%mask2dT(:,:)
-          sIST%part_size(:,:,k) = sIST%part_size(:,:,k) * sG%mask2dT(:,:)
-        enddo
-        ! Since we masked out the part_size on land we should set
-        ! part_size(:,:,0) = 1. on land to satisfy the summation check
-        do j=jsc,jec ; do i=isc,iec
-          if (sG%mask2dT(i,j) < 0.5) sIST%part_size(i,j,0) = 1.
-        enddo ; enddo
-      endif
-
-      if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
-        sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
-      enddo ; enddo ; endif
-
-      !--- update the halo values.
-      call pass_var(sIST%part_size, sGD)
-      call pass_var(sIST%mH_ice, sGD, complete=.false.)
-      call pass_var(sIST%mH_snow, sGD, complete=.false.)
-      call pass_var(sIST%mH_pond, sGD, complete=.false.)
-      do l=1,NkIce
-        call pass_var(sIST%enth_ice(:,:,:,l), sGD, complete=.false.)
-      enddo
-      call pass_var(sIST%enth_snow(:,:,:,1), sGD, complete=.true.)
-
-      if (Cgrid_dyn) then
-        call pass_vector(sIST%u_ice_C, sIST%v_ice_C, sGD, stagger=CGRID_NE)
-      else
-        call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
-      endif
 
       if (Ice%sCS%pass_stress_mag .and. .not.query_initialized(Ice%Ice_restart, 'stress_mag')) then
         ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
@@ -2517,20 +2468,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%enth_ice(:,:,:,n) = enth_spec_ice
       enddo
 
-      allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
-      ! This may use data override to set the ice concentration and thickness, but takes input
-      ! on limits from a namelist.
-      call get_sea_surface(Ice%sCS%Time, sG%HI, ice_conc=sIST%part_size(:,:,1), &
-                           ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
-
       ! Get observed total ice thickness and concentration to initialize the ice.
       ! There is no need to apply limits.
-      !### This is equivalent, but code needs to be added to allow for a different initialization time.
-!      call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
-!      call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
-!      call data_override('ICE', 'sic_obs', sIST%part_size(isc:iec,jsc:jec,1), Ice%sCS%Time)
-!      call data_override('ICE', 'sit_obs', h_ice_input(isc:iec,jsc:jec), Ice%sCS%Time)
-!      call data_override_unset_domains(unset_Ice=.true.)
+      allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+      !### Code needs to be added to allow for a different initialization time.
+      call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
+      call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
+      call data_override('ICE', 'sic_obs', sIST%part_size(isc:iec,jsc:jec,1), Ice%sCS%Time)
+      call data_override('ICE', 'sit_obs', h_ice_input(isc:iec,jsc:jec), Ice%sCS%Time)
+      call data_override_unset_domains(unset_Ice=.true.)
 
       do j=jsc,jec ; do i=isc,iec
         sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
@@ -2538,39 +2484,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       enddo ; enddo
       deallocate(h_ice_input)
 
-      !   Transfer ice to the correct thickness category.  If do_ridging=.false.,
-      ! the first call to ice_redistribute has the same result.  At present, all
-      ! tracers are initialized to their default values, and snow is set to 0,
-      ! and so do not need to be updated here.
-      if (do_ridging) then
-        do j=jsc,jec ; do i=isc,iec ; if (sIST%mH_ice(i,j,1) > sIG%mH_cat_bound(1)) then
-          do k=CatIce,2,-1 ; if (sIST%mH_ice(i,j,1) > sIG%mH_cat_bound(k-1)) then
-            sIST%part_size(i,j,k) = sIST%part_size(i,j,1)
-            sIST%part_size(i,j,1) = 0.0
-            sIST%mH_ice(i,j,k) = sIST%mH_ice(i,j,1) ; sIST%mH_ice(i,j,1) = 0.0
-            !  sIST%mH_snow(i,j,k) = sIST%mH_snow(i,j,1) ; sIST%mH_snow(i,j,1) = 0.0
-            !  sIST%mH_pond(i,j,k) = sIST%mH_pond(i,j,1) ; sIST%mH_pond(i,j,1) = 0.0
-            exit ! from k-loop
-          endif ; enddo
-        endif ; enddo ; enddo
-      endif
-
-      if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
-        sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
-      enddo ; enddo ; endif
-
-      call pass_var(sIST%part_size, sGD, complete=.true. )
-      call pass_var(sIST%mH_ice, sGD, complete=.true. )
-
+      ! Record the need to transfer ice to the correct thickness category.
+      recategorize_ice = .true.
+      H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
       init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
 
     endif ! file_exist(restart_path)
 
     deallocate(S_col)
 
-  ! The restart files have now been read or the variables that would have been
-  ! in the restart files have been initialized.  Now call the initialization
-  ! routines for any dependent sub-modules.
+    ! The restart files have now been read or the variables that would have been in the restart
+    ! files have been initialized, although some corrections and halo updates still need to be done.
+    ! Now call the initialization routines for any dependent sub-modules.
 
     call ice_diagnostics_init(Ice%sCS%IOF, Ice%sCS%OSS, Ice%sCS%FIA, sG, US, sIG, &
                               Ice%sCS%diag, Ice%sCS%Time, Cgrid=sIST%Cgrid_dyn)
@@ -2590,6 +2515,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! When SPECIFIED_ICE=True, the variable Ice%sCS%OSS%SST_C is used for the skin temperature
       ! and needs to be updated for each run segment, regardless of whether a restart file is used.
       call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_domain=Ice%slow_domain_NH)
+
+      !### Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
+      ! allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+      ! call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
+      !                      ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
+      ! do j=jsc,jec ; do i=isc,iec
+      !   sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
+      !   sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
+      ! enddo ; enddo
+      ! deallocate(h_ice_input)
     else
       call SIS_dyn_trans_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
@@ -2598,6 +2533,63 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                    transport_CSp=SIS_dyn_trans_transport_CS(Ice%sCS%dyn_trans_CSp), &
                    sum_out_CSp=SIS_dyn_trans_sum_output_CS(Ice%sCS%dyn_trans_CSp))
     endif
+
+
+    ! Apply corrections to the ice state, like readjusting ice categories and fixing values on land.
+    ! These corrections occur here so that they can use adjust_ice_categories.
+
+    if (do_mask_restart) then
+      ! Deal with any ice masses or thicknesses over land, and rescale to account for differences
+      ! between the current thickness units and whatever thickness units were in the input restart
+      ! file or other initialization.
+      if (allocated(sIST%t_surf)) then ; do j=jsc,jec ; do i=isc,iec
+        if (sG%mask2dT(i,j) < 0.5) sIST%t_surf(i,j,:) = T_0degC
+      enddo ; enddo ; endif
+      do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
+        sIST%sal_ice(i,j,k,n) = sIST%sal_ice(i,j,k,n) * sG%mask2dT(i,j)
+        sIST%enth_ice(i,j,k,n) = sIST%enth_ice(i,j,k,n) * sG%mask2dT(i,j)
+      enddo ; enddo ; enddo ; enddo
+      do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
+        sIST%mH_snow(i,j,k) = sIST%mH_snow(i,j,k) * H_rescale_snow * sG%mask2dT(i,j)
+        sIST%enth_snow(i,j,k,1) = sIST%enth_snow(i,j,k,1) * sG%mask2dT(i,j)
+        sIST%mH_ice(i,j,k) = sIST%mH_ice(i,j,k) * H_rescale_ice * sG%mask2dT(i,j)
+        sIST%mH_pond(i,j,k) = sIST%mH_pond(i,j,k) * sG%mask2dT(i,j)
+        sIST%part_size(i,j,k) = sIST%part_size(i,j,k) * sG%mask2dT(i,j)
+      enddo ; enddo ; enddo
+      ! Since we masked out the part_size on land we should set
+      ! part_size(i,j,0) = 1. on land to satisfy the summation check
+      do j=jsc,jec ; do i=isc,iec
+        if (sG%mask2dT(i,j) < 0.5) sIST%part_size(i,j,0) = 1.
+      enddo ; enddo
+    endif
+
+    if (recategorize_ice) then
+      ! Transfer ice to the correct thickness categories.  This does not change the thicknesses or
+      ! other properties where the ice is already in the correct categories.
+      call adjust_ice_categories(sIST%mH_ice, sIST%mH_snow, sIST%mH_pond, sIST%part_size, &
+                            sIST%TrReg, sG, sIG, SIS_dyn_trans_transport_CS(Ice%sCS%dyn_trans_CSp))
+    endif
+
+    if (sIG%ocean_part_min > 0.0) then ; do j=jsc,jec ; do i=isc,iec
+      sIST%part_size(i,j,0) = max(sIST%part_size(i,j,0), sIG%ocean_part_min)
+    enddo ; enddo ; endif
+
+    !--- update the halo values for the physical ice state.
+    call pass_var(sIST%part_size, sGD, complete=.true.)
+    call pass_var(sIST%mH_ice, sGD, complete=.false.)
+    call pass_var(sIST%mH_snow, sGD, complete=.false.)
+    call pass_var(sIST%mH_pond, sGD, complete=.false.)
+    do l=1,NkIce
+      call pass_var(sIST%enth_ice(:,:,:,l), sGD, complete=.false.)
+    enddo
+    call pass_var(sIST%enth_snow(:,:,:,1), sGD, complete=.true.)
+    if (Cgrid_dyn) then
+      call pass_vector(sIST%u_ice_C, sIST%v_ice_C, sGD, stagger=CGRID_NE)
+    else
+      call pass_vector(sIST%u_ice_B, sIST%v_ice_B, sGD, stagger=BGRID_NE)
+    endif
+
+    ! The slow physical ice properties do not change after this point.
 
     if (Ice%sCS%redo_fast_update) then
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
