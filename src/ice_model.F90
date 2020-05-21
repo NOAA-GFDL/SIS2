@@ -1709,8 +1709,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   integer :: CatIce, NkIce, isd, ied, jsd, jed
   integer :: idr, id_sal
   integer :: write_geom
-  integer :: num_restart_dims, num_restart_vars
-  integer, allocatable :: dim_lengths(:) ! dimension lengths
   logical :: nudge_sea_ice
   logical :: atmos_winds, slp2ocean
   logical :: do_icebergs, pass_iceberg_area_to_ocean
@@ -1754,8 +1752,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16)  :: stagger, dflt_stagger
-  character(len=20), allocatable :: dim_names(:) !< netcdf file dimension names
-  character(len=96), allocatable :: var_names(:) !< netcdf file variable names
   character(len=20) :: nc_mode !< netcdf file mode; "read", "write", "overwrite", "append"
   ! ### These are just here to keep the order of SIS_parameter_doc.
   logical :: column_check
@@ -2242,12 +2238,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! These allocation routines are called on all PEs; whether or not the variables
   ! they allocate are registered for inclusion in restart files is determined by
   ! whether the Ice%Ice...restart types are associated.
-
-    ! call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart, fast_rest_file)
-    call register_unit_conversion_restarts(Ice%fCS%US, Ice%ice_fast_restart_write, fast_rest_file, nc_mode)
-    call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
+   call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_fast_restart_write, fast_rest_file, nc_mode=nc_mode)
- 
+
+    if (split_restart_files) &
+      call register_unit_conversion_restarts(Ice%fCS%US, Ice%ice_fast_restart_write, fast_rest_file, nc_mode)
+
     if (redo_fast_update .or. .not.single_IST) then
       call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
                             omit_velocities=.true., omit_tsurf=Eulerian_tsurf)

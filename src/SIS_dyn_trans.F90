@@ -2109,8 +2109,8 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, I
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
-                                                     !! read/write/append mode
+  type(FmsNetcdfDomainFile_t), pointer :: Ice_restart !< pointer to restart file object opened in
+                                                      !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
 
@@ -2146,7 +2146,7 @@ subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
-  type(FmsNetcdfDomainFile_t), intent(inout) :: Ice_restart !< restart file object opened in read mode
+  type(FmsNetcdfDomainFile_t), pointer :: Ice_restart !< restart file object opened in read mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 

@@ -1583,7 +1583,7 @@ subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
                                                      !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
@@ -1635,7 +1635,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
                                                      !! read/write/append mode
   !type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
@@ -1654,9 +1654,8 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
                           domain_name="ice temporary domain")
       allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed)) ; str_tmp(:,:) = 0.0
 
-      !call register_restart_field(retart_fileobj, 'str_s', str_tmp) ! &
-                 !domain=domain_tmp%mpp_domain, position=CORNER, &
-                ! mandatory=.false., read_only=.true.)
+      call register_restart_field(Ice_restart, 'str_s', str_tmp, &
+                                  dimensions=(/"xaxis_2", "yaxis_2", "Time   "/))
       call read_data(Ice_restart, 'str_s', str_tmp(G%isd:G%ied, G%jsd:G%jed))
       ! The non-symmetric variant of this variable has been successfully read.
       call pass_var(str_tmp, domain_tmp, position=CORNER)
@@ -1665,15 +1664,14 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, res
       enddo ; enddo
     endif
 
-  elseif ((.not.G%symmetric) .and. (.not.variable_exists(Ice_restart, 'str_s'))) then
+  elseif ((.not.G%symmetric) .and. (.not.variable_exists(Ice_restart, 'sym_str_s'))) then
     if (variable_exists(Ice_restart, 'sym_str_s')) then
       call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
                           domain_name="ice temporary domain")
       allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; str_tmp(:,:) = 0.0
 
-      !call register_restart_field(Ice_restart, 'sym_str_s', str_tmp)! &
-                 !domain=domain_tmp%mpp_domain, position=CORNER, &
-                ! mandatory=.false., read_only=.true.)
+      call register_restart_field(Ice_restart, 'sym_str_s', str_tmp, &
+                                  dimensions=(/"xaxis_2", "yaxis_2", "Time   "/))
       call read_data(Ice_restart,'sym_str_s', str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed))
       ! The symmetric variant of this variable has been successfully read.
       do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec

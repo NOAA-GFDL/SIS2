@@ -92,7 +92,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
                                                       !! control structure for the tracer flow control
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< pointer to restart file object opened in
                                                      !! read/write/append mode
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 

@@ -106,7 +106,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
                                                       !! structure for the ice age tracer
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
                                                      !! read/write/append mode
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 

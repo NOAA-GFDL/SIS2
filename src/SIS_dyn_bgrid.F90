@@ -708,7 +708,7 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
-  type(FmsNetcdfDomainFile_t), target :: Ice_restart !< restart file object opened in
+  type(FmsNetcdfDomainFile_t), pointer, intent(in) :: Ice_restart !< restart file object opened in
                                                      !! read/write/append mode
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: nc_mode !< mode to open netcdf file in; read, write, append, overwrite
