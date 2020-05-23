@@ -102,6 +102,8 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
+! use SIS_state_initialization, only : read_archaic_thermo_restarts, initialize_ice_categories
+! use SIS_state_initialization, only : ice_state_mass_init, ice_state_thermo_init
 use SIS_dyn_trans,   only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
 use SIS_dyn_trans,   only : slab_ice_dyn_trans
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
@@ -1652,13 +1654,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Parameters that properly belong exclusively to ice_thm.
   real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
-                         ! of the thickness to mass-per-unit-area conversion
-                         ! factor.
+                         ! of the thickness to mass-per-unit-area conversion factor.
   real :: massless_ice_enth, massless_snow_enth ! Enthalpy fill values [Q ~> J kg-1]
   real :: massless_ice_salin
-  real :: H_rescale_ice, H_rescale_snow ! Rescaling factors to account for
-                         ! differences in thickness units between the current
-                         ! model run and the input files.
 
   real, allocatable, dimension(:,:) :: &
     h_ice_input, dummy   ! Temporary arrays.
@@ -2292,10 +2290,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
 
-      call rescale_ice_state_restart_fields(sIST, sG, US, sIG)
+
+      call rescale_ice_state_restart_fields(sIST, sG, US, sIG, H_to_kg_m2_tmp, Rho_ice, Rho_snow)
+      sIG%H_to_kg_m2 = H_to_kg_m2_tmp
 
       ! Approximately initialize state fields that are not present
       ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
+
+!      if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
+!          (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) .or. &
+!          (.not.query_initialized(Ice%Ice_restart, 'sal_ice'))) then
+!        call read_archaic_thermo_restarts(Ice, sIST, sG, sIG, US, param_file, dirs, restart_file)
+!      endif
 
       ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
       if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
@@ -2407,18 +2413,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%t_surf(:,:,:) = T_0degC
       endif
 
-      ! Determine the thickness rescaling factors that are needed.
-      H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
-      if (sIG%H_to_kg_m2 == -1.0) then
-        ! This is an older restart file, and the snow and ice thicknesses are in
-        ! m, and not a mass coordinate.
-        H_rescale_ice = US%R_to_kg_m3*Rho_ice / H_to_kg_m2_tmp
-        H_rescale_snow = US%R_to_kg_m3*Rho_snow / H_to_kg_m2_tmp
-      elseif (sIG%H_to_kg_m2 /= H_to_kg_m2_tmp) then
-        H_rescale_ice = sIG%H_to_kg_m2 / H_to_kg_m2_tmp
-        H_rescale_snow = H_rescale_ice
-      endif
-      sIG%H_to_kg_m2 = H_to_kg_m2_tmp
+! End of code that will be in read_archaic_thermo_restarts
 
       if (Ice%sCS%pass_stress_mag .and. .not.query_initialized(Ice%Ice_restart, 'stress_mag')) then
         ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
@@ -2483,10 +2478,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
       enddo ; enddo
       deallocate(h_ice_input)
+!### This is the end of the code that will be deleted.
+      ! call ice_state_mass_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
+      ! call ice_state_thermo_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
 
       ! Record the need to transfer ice to the correct thickness category.
       recategorize_ice = .true.
-      H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
       init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
 
     endif ! file_exist(restart_path)
@@ -2539,9 +2536,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     ! These corrections occur here so that they can use adjust_ice_categories.
 
     if (do_mask_restart) then
-      ! Deal with any ice masses or thicknesses over land, and rescale to account for differences
-      ! between the current thickness units and whatever thickness units were in the input restart
-      ! file or other initialization.
+      ! Deal with any ice masses, thicknesses and other properties over land.
       if (allocated(sIST%t_surf)) then ; do j=jsc,jec ; do i=isc,iec
         if (sG%mask2dT(i,j) < 0.5) sIST%t_surf(i,j,:) = T_0degC
       enddo ; enddo ; endif
@@ -2550,9 +2545,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         sIST%enth_ice(i,j,k,n) = sIST%enth_ice(i,j,k,n) * sG%mask2dT(i,j)
       enddo ; enddo ; enddo ; enddo
       do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-        sIST%mH_snow(i,j,k) = sIST%mH_snow(i,j,k) * H_rescale_snow * sG%mask2dT(i,j)
+        sIST%mH_snow(i,j,k) = sIST%mH_snow(i,j,k) * sG%mask2dT(i,j)
         sIST%enth_snow(i,j,k,1) = sIST%enth_snow(i,j,k,1) * sG%mask2dT(i,j)
-        sIST%mH_ice(i,j,k) = sIST%mH_ice(i,j,k) * H_rescale_ice * sG%mask2dT(i,j)
+        sIST%mH_ice(i,j,k) = sIST%mH_ice(i,j,k) * sG%mask2dT(i,j)
         sIST%mH_pond(i,j,k) = sIST%mH_pond(i,j,k) * sG%mask2dT(i,j)
         sIST%part_size(i,j,k) = sIST%part_size(i,j,k) * sG%mask2dT(i,j)
       enddo ; enddo ; enddo
