@@ -52,7 +52,6 @@ use MOM_unit_scaling, only : unit_scaling_end, fix_restart_unit_scaling
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
-use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
 use fms_mod, only : file_exist, clock_flag_default
 use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
 use fms_io_mod, only : restore_state, query_initialized
@@ -102,8 +101,8 @@ use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
 use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
 
-! use SIS_state_initialization, only : read_archaic_thermo_restarts, initialize_ice_categories
-! use SIS_state_initialization, only : ice_state_mass_init, ice_state_thermo_init
+use SIS_state_initialization, only : read_archaic_thermo_restarts, initialize_ice_categories
+use SIS_state_initialization, only : ice_state_mass_init, ice_state_thermo_init
 use SIS_dyn_trans,   only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
 use SIS_dyn_trans,   only : slab_ice_dyn_trans
 use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
@@ -471,7 +470,7 @@ subroutine exchange_fast_to_slow_ice(Ice)
                               (/isd, isc, iec, ied/),  (/jsd, jsc, jec, jed/), as_needed=.true.)
   endif
 
-  if(Ice%xtype == DIRECT) then
+  if (Ice%xtype == DIRECT) then
     if (.not.associated(Ice%fCS) .or. .not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "With xtype=DIRECT, both the pointer to Ice%sCS and the pointer to Ice%fCS must be "//&
       "associated (although perhaps not with each other) in exchange_fast_to_slow_ice.")
@@ -1616,11 +1615,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   real :: enth_spec_snow, enth_spec_ice
-  real, allocatable :: S_col(:)
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, nCat_dflt
-  logical :: spec_thermo_sal
   character(len=120) :: restart_file, fast_rest_file
   character(len=240) :: restart_path, fast_rest_path
   character(len=40)  :: mdl = "ice_model" ! This module's name.
@@ -1663,8 +1660,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real, allocatable, dimension(:,:) :: &
     str_x, str_y, stress_mag ! Temporary stress arrays
 
-  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
-  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   real :: g_Earth        !   The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
@@ -1706,7 +1701,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: debug, debug_slow, debug_fast, bounds_check
   logical :: do_sun_angle_for_alb, add_diurnal_sw
   logical :: init_coszen, init_Tskin, init_rough
-  logical :: write_error_mesg
   logical :: Eulerian_tsurf   ! If true, use previous calculations of the ice-top
                               ! surface skin temperature for tsurf at the start of
                               ! atmospheric time stepping, including interpolating between
@@ -1738,7 +1732,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
-  character(len=16)  :: stagger, dflt_stagger
+  character(len=16) :: stagger, dflt_stagger
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -2265,9 +2259,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     ! Set some pointers for convenience.
     sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G
 
-    allocate(S_col(NkIce)) ; S_col(:) = 0.0
-    call get_SIS2_thermo_coefs(sIST%ITV, ice_salinity=S_col, spec_thermo_salin=spec_thermo_sal)
-
     restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
 
     if (file_exist(restart_path)) then
@@ -2294,126 +2285,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call rescale_ice_state_restart_fields(sIST, sG, US, sIG, H_to_kg_m2_tmp, Rho_ice, Rho_snow)
       sIG%H_to_kg_m2 = H_to_kg_m2_tmp
 
-      ! Approximately initialize state fields that are not present
-      ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
-
-!      if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
-!          (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) .or. &
-!          (.not.query_initialized(Ice%Ice_restart, 'sal_ice'))) then
-!        call read_archaic_thermo_restarts(Ice, sIST, sG, sIG, US, param_file, dirs, restart_file)
-!      endif
-
-      ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
-      if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
-        allocate(sal_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
-        do n=1,NkIce
-          write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          id_sal = register_restart_field(Ice%Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
-                                       sal_ice_tmp(:,:,:,n), domain=sGD%mpp_domain, &
-                                       mandatory=.false., read_only=.true.)
-          call restore_state(Ice%Ice_restart, id_sal, directory=dirs%restart_input_dir)
-        enddo
-
-        if (query_initialized(Ice%Ice_restart, 'sal_ice1')) then
-          do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-            sIST%sal_ice(i,j,k,1) = sal_ice_tmp(i,j,k,1)
-          enddo ; enddo ; enddo
-        else
-          sIST%sal_ice(:,:,:,1) = ice_bulk_salin
-        endif
-        do n=2,NkIce
-          write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          if (query_initialized(Ice%Ice_restart, 'sal_ice'//trim(nstr))) then
-            do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-              sIST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k,n)
-            enddo ; enddo ; enddo
-          else
-            sIST%sal_ice(:,:,:,n) = sIST%sal_ice(:,:,:,n-1)
-          endif
-        enddo
-
-        deallocate(sal_ice_tmp)
+      if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
+          (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) .or. &
+          (.not.query_initialized(Ice%Ice_restart, 'sal_ice'))) then
+        ! Approximately initialize state fields that are not present
+        ! in SIS1 restart files.  This is obsolete and can probably be eliminated.
+        call read_archaic_thermo_restarts(Ice, sIST, sG, sIG, US, param_file, dirs, restart_file)
       endif
-
-      read_aux_restart = (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
-                         (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))
-      if (read_aux_restart) then
-        ! Try to initialize the ice enthalpy from separate temperature variables for each layer,
-        ! perhaps from a SIS1 restart.
-        allocate(t_snow_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce)) ; t_snow_tmp(:,:,:) = 0.0
-        allocate(t_ice_tmp(sG%isd:sG%ied, sG%jsd:sG%jed, CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
-
-        idr = register_restart_field(Ice%Ice_restart, restart_file, 't_snow', t_snow_tmp, &
-                                     domain=sGD%mpp_domain, mandatory=.false., read_only=.true.)
-        call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
-        do n=1,NkIce
-          write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          idr = register_restart_field(Ice%Ice_restart, restart_file, 't_ice'//trim(nstr), &
-                                       t_ice_tmp(:,:,:,n), domain=sGD%mpp_domain, &
-                                       mandatory=.false., read_only=.true.)
-          call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
-        enddo
-      endif
-
-      ! Initialize the ice enthalpy.
-      if (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) then
-        if (.not.query_initialized(Ice%Ice_restart, 't_ice1')) then
-          call SIS_error(FATAL, "Either t_ice1 or enth_ice must be present in the SIS2 restart file "//restart_path)
-        endif
-
-        if (spec_thermo_sal) then
-          do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-            sIST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), S_col(1), sIST%ITV)
-          enddo ; enddo ; enddo
-        else
-          do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-            sIST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), &
-                     sIST%sal_ice(i,j,k,1), sIST%ITV)
-          enddo ; enddo ; enddo
-        endif
-
-        do n=2,NkIce
-          write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-          if (.not.query_initialized(Ice%Ice_restart, 't_ice'//trim(nstr))) &
-            t_ice_tmp(:,:,:,n) = t_ice_tmp(:,:,:,n-1)
-
-          if (spec_thermo_sal) then
-            do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-              sIST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), S_col(n), sIST%ITV)
-            enddo ; enddo ; enddo
-          else
-            do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-              sIST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), &
-                               sIST%sal_ice(i,j,k,n), sIST%ITV)
-            enddo ; enddo ; enddo
-          endif
-        enddo
-      endif
-
-      ! Initialize the snow enthalpy.
-      if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
-        if (.not.query_initialized(Ice%Ice_restart, 't_snow')) then
-          if (query_initialized(Ice%Ice_restart, 't_ice1')) then
-            t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
-          else
-            do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-              t_snow_tmp(i,j,k) = Temp_from_En_S(sIST%enth_ice(i,j,k,1), &
-                                    sIST%sal_ice(i,j,k,1), sIST%ITV)
-            enddo ; enddo ; enddo
-          endif
-        endif
-        do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-          sIST%enth_snow(i,j,k,1) = Enth_from_TS(t_snow_tmp(i,j,k), 0.0, sIST%ITV)
-        enddo ; enddo ; enddo
-      endif
-
-      if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
-
-      if (allocated(sIST%t_surf) .and. (.not.query_initialized(Ice%Ice_restart, 't_surf_ice'))) then
-        sIST%t_surf(:,:,:) = T_0degC
-      endif
-
-! End of code that will be in read_archaic_thermo_restarts
 
       if (Ice%sCS%pass_stress_mag .and. .not.query_initialized(Ice%Ice_restart, 'stress_mag')) then
         ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
@@ -2449,46 +2327,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       call callTree_leave("ice_model_init():restore_from_restart_files")
     else ! no restart file implies initialization with no ice
-      sIST%part_size(:,:,:) = 0.0
-      sIST%part_size(:,:,0) = 1.0
+      call ice_state_mass_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
 
-!### Add the ability to specify ice temperature and salinity and snow thickness.
-      if (allocated(sIST%t_surf)) sIST%t_surf(:,:,:) = T_0degC
-      sIST%sal_ice(:,:,:,:) = ice_bulk_salin
-
-      enth_spec_snow = Enth_from_TS(0.0, 0.0, sIST%ITV)
-      sIST%enth_snow(:,:,:,1) = enth_spec_snow
-      do n=1,NkIce
-        enth_spec_ice = Enth_from_TS(0.0, S_col(n), sIST%ITV)
-        sIST%enth_ice(:,:,:,n) = enth_spec_ice
-      enddo
-
-      ! Get observed total ice thickness and concentration to initialize the ice.
-      ! There is no need to apply limits.
-      allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
-      !### Code needs to be added to allow for a different initialization time.
-      call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
-      call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
-      call data_override('ICE', 'sic_obs', sIST%part_size(isc:iec,jsc:jec,1), Ice%sCS%Time)
-      call data_override('ICE', 'sit_obs', h_ice_input(isc:iec,jsc:jec), Ice%sCS%Time)
-      call data_override_unset_domains(unset_Ice=.true.)
-
-      do j=jsc,jec ; do i=isc,iec
-        sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
-        sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
-      enddo ; enddo
-      deallocate(h_ice_input)
-!### This is the end of the code that will be deleted.
-      ! call ice_state_mass_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
-      ! call ice_state_thermo_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
+      call ice_state_thermo_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, &
+                                just_read_params=is_restart)
 
       ! Record the need to transfer ice to the correct thickness category.
       recategorize_ice = .true.
       init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
 
     endif ! file_exist(restart_path)
-
-    deallocate(S_col)
 
     ! The restart files have now been read or the variables that would have been in the restart
     ! files have been initialized, although some corrections and halo updates still need to be done.
@@ -2786,42 +2634,6 @@ subroutine share_ice_domains(Ice)
 
 end subroutine share_ice_domains
 
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> initialize_ice_categories sets the bounds of the ice thickness categories.
-subroutine initialize_ice_categories(IG, Rho_ice, US, param_file, hLim_vals)
-  type(ice_grid_type),          intent(inout) :: IG  !< The sea-ice specific grid type
-  real,                         intent(in)    :: Rho_ice !< The nominal ice density [R ~> kg m-3].
-  type(unit_scale_type),        intent(in)    :: US  !< A structure with unit conversion factors
-  type(param_file_type),        intent(in)    :: param_file !< A structure to parse for run-time parameters
-  real, dimension(:), optional, intent(in)    :: hLim_vals !< The ice category thickness limits [m].
-
-  ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
-  !  ###This subroutine should be extended to add more options.
-
-  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...CatIce
-  integer :: k, CatIce, list_size
-
-  CatIce = IG%CatIce
-  list_size = -1
-  if (present(hLim_vals)) then ; if (size(hLim_vals(:)) > 1) then
-    list_size = size(hlim_vals(:))
-    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_vals(k) ; enddo
-  endif ; endif
-  if (list_size < 2) then  ! Use the default categories.
-    list_size = size(hlim_dflt(:))
-    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_dflt(k) ; enddo
-  endif
-
-  if ((CatIce+1 > list_size) .and. (list_size > 1)) then
-    do k=list_size+1, CatIce+1
-      IG%cat_thick_lim(k) =  2.0*IG%cat_thick_lim(k-1) - IG%cat_thick_lim(k-2)
-    enddo
-  endif
-
-  do k=1,IG%CatIce+1
-    IG%mH_cat_bound(k) = IG%cat_thick_lim(k)*US%m_to_Z * Rho_ice
-  enddo
-end subroutine initialize_ice_categories
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> update_ice_atm_deposition_flux updates the values of any fluxes that are
