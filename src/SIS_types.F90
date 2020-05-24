@@ -430,6 +430,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   logical,    optional, intent(in)    :: omit_Tsurf !< If true, do not allocate the surface temperature array
   logical,    optional, intent(in)    :: do_ridging !< If true, allocate arrays related to ridging
 
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel, do_Tsurf
 
@@ -467,7 +468,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
 
   if (do_Tsurf) then
     ! IST%tsurf is only used with some older options.
-    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = 0.0
+    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = T_0degC
   endif
 
 end subroutine alloc_IST_arrays
