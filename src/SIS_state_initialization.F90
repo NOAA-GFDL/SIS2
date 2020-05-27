@@ -284,7 +284,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
             " \t\t specified depression below the bulk ice freezing point \n"//&
             " \t file - Read sea ice temperatures or enthalpies from a specified file \n"//&
             " \t data_override - use the data_override capability or freezing enthalpy everywhere.", &
-            default='uniform', do_not_log=just_read)
+            default='uniform_temp', do_not_log=just_read)
 
   call get_param(PF, mdl, "SNOW_ENTHALPY_INIT_CONFIG", enth_snow_config, &
             "A string that determines how the snow enthalpy is initialized for a new run: \n"//&
@@ -293,7 +293,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
             " \t\t specified depression below the bulk ice freezing point \n"//&
             " \t file - Read sea ice temperatures or enthalpies from a specified file \n"//&
             " \t data_override - use the data_override capability or freezing enthalpy everywhere.", &
-            default='uniform', do_not_log=just_read)
+            default='uniform_temp', do_not_log=just_read)
 
   call get_param(PF, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", units = "g/kg", &
@@ -343,7 +343,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("uniform_temp")
       call get_param(PF, mdl, "ICE_TEMPERATURE_IC", ice_temp_IC, &
                  "The uniform sea ice and snow temperature used for the initial condition", &
-                 units="degC", default=0.0, do_not_log=just_read)
+                 units="degC", default=-4.0, do_not_log=just_read)
       if (spec_thermo_sal .and. (.not.just_read)) then
         do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%enth_ice(i,j,k,n) = Enth_from_TS(ice_temp_IC, S_col(n), IST%ITV)
@@ -356,7 +356,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("relative_temp")
       call get_param(PF, mdl, "ICE_RELATIVE_TEMP_IC", ice_rel_temp_IC, &
                  "The sea ice and snow temperature relative to the local bulk freezing point "//&
-                 "used for the initial condition", units="degC", default=0.0, do_not_log=just_read)
+                 "used for the initial condition", units="degC", default=-4.0, do_not_log=just_read)
       if (.not.just_read) then ; do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_ice(i,j,k,n) = Enth_from_TS(ice_rel_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; enddo ; endif
@@ -396,14 +396,14 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("uniform_temp")
       call get_param(PF, mdl, "ICE_TEMPERATURE_IC", ice_temp_IC, &
                  "The uniform sea ice and snow temperature used for the initial condition", &
-                 units="degC", default=0.0, do_not_log=just_read)
+                 units="degC", default=-4.0, do_not_log=just_read)
       if (.not.just_read) then ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_snow(i,j,k,1) = Enth_from_TS(ice_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; endif
     case ("relative_temp")
       call get_param(PF, mdl, "ICE_RELATIVE_TEMP_IC", ice_rel_temp_IC, &
                  "The sea ice and snow temperature relative to the local bulk freezing point "//&
-                 "used for the initial condition", units="degC", default=0.0, do_not_log=just_read)
+                 "used for the initial condition", units="degC", default=-4.0, do_not_log=just_read)
       if (.not.just_read) then ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_snow(i,j,k,1) = Enth_from_TS(ice_rel_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; endif
