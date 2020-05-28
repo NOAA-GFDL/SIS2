@@ -5,6 +5,7 @@ use fms_mod, only: open_namelist_file, check_nml_error, close_file, &
                    stdlog, stdout, mpp_pe, mpp_root_pe, write_version_number
 use mpp_mod, only: input_nml_file
 use mpp_domains_mod, only : domain2d
+use MOM_hor_index,   only : hor_index_type
 
 use time_manager_mod, only: time_type, get_date, set_date
 use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
@@ -35,35 +36,36 @@ namelist / ice_spec_nml / mcm_ice, do_leads, minimum_ice_concentration, &
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> get_sea_surface obtains SST, ice concentration and thickness from data
-subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in_K)
+!> get_sea_surface obtains some combination of SST, ice concentration and ice thickness, from data override files
+subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_domain_end)
   type (time_type),         intent(in)  :: Time !< The current model time
-  real, dimension(:, :),    intent(out) :: ts !< The surface temperature [degC] or [degK]
-  real, dimension(size(ts,1),size(ts,2),2), &
-                            intent(out) :: cn !< The fractional ocean and ice concentration [nondim]
-  real, dimension(size(ts,1),size(ts,2)), &
-                            intent(out) :: iceh !< The ice thickness [m]
+  type(hor_index_type),     intent(in)  :: HI  !< The horizontal index type describing the domain
+  real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), &
+                  optional, intent(out) :: SST   !< The surface temperature [degC]
+  real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), &
+                  optional, intent(out) :: ice_conc   !< The fractional ice concentration [nondim]
+  real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), &
+                  optional, intent(out) :: ice_thick !< The ice thickness [m]
   type(domain2d), optional, intent(in)  :: ice_domain !< The domain used to read this data
   type(domain2d), optional, intent(in)  :: ice_domain_end !< If present reset the data override ice
                                                    !! domain back to this one at the end of this routine
-  logical,        optional, intent(in)  :: ts_in_K !< If true, return the surface temperature in [degK].
-                                                   !! The default is true.
 
-  real, dimension(size(ts,1),size(ts,2))                :: sst, icec
+  ! These local variables do not need halos, so they are declared without them.
+  real, dimension(HI%isc:HI%iec,HI%jsc:HI%jec) :: sst_obs ! Observed sea surface temperature [degC] or [degK]
+  real, dimension(HI%isc:HI%iec,HI%jsc:HI%jec) :: icec ! Observed sea ice concentration [nondim]
+  real, dimension(HI%isc:HI%iec,HI%jsc:HI%jec) :: iceh ! Observed sea ice thickness [m]
 
   character(len=128), parameter :: version = '$Id: ice_spec.F90,v 1.1.2.1.6.1.2.1.2.1 2013/06/18 22:24:14 nnz Exp $'
   character(len=128), parameter :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
   real ::  t_sw_freeze0 = -1.8
   real ::  t_sw_freeze
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  logical :: ts_in_degK
+  real :: SST_offset ! An offset between the observed SST and the output value, either to correct
+                     ! for differences in temperature units or to apply a perturbation [degC]
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
+  integer :: i, j
   integer :: ierr, io, unit
   type(time_type) :: Spec_Time
   integer :: tod(3), dum1, dum2, dum3
-  integer :: stdoutunit,stdlogunit
-
-  stdoutunit=stdout()
-  stdlogunit=stdlog()
 
   if (.not.module_is_initialized) then
 #ifdef INTERNAL_FILE_NML
@@ -74,9 +76,9 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
     call close_file (unit)
 #endif
     ierr = check_nml_error(io,'ice_spec_nml')
-    write (stdoutunit,'(/)')
-    write (stdoutunit, ice_spec_nml)
-    write (stdlogunit, ice_spec_nml)
+    write (stdout(),'(/)')
+    write (stdout(), ice_spec_nml)
+    write (stdlog(), ice_spec_nml)
 
     call write_version_number(version, tagname)
     module_is_initialized = .true.
@@ -87,8 +89,6 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
     call data_override_init(Ice_domain_in = Ice_domain)
   endif
 
-  ts_in_degK = .true. ; if (present(ts_in_K)) ts_in_degK = ts_in_K
-
 ! modify time repeating single day option
   if (all(repeat_date>0)) then
     call get_date(Time,dum1,dum2,dum3,tod(1),tod(2),tod(3))
@@ -97,14 +97,20 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
     Spec_Time = Time
   endif
 
-  t_sw_freeze = t_sw_freeze0
-  if (sst_degk) then
-    t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
-  endif
-  icec = 0.0; iceh(:,:) = 0.0; sst(:,:) = t_sw_freeze;
+  icec(:,:) = 0.0 ; iceh(:,:) = 0.0
   call data_override('ICE', 'sic_obs', icec, Spec_Time)
   call data_override('ICE', 'sit_obs', iceh, Spec_Time)
-  call data_override('ICE', 'sst_obs', sst,  Spec_Time)
+
+  if (present(SST)) then
+    t_sw_freeze = t_sw_freeze0
+    if (sst_degk) then
+      t_sw_freeze = t_sw_freeze0 + T_0degC ! convert sea water freeze point to degK
+    endif
+
+    sst_obs(:,:) = t_sw_freeze
+    call data_override('ICE', 'sst_obs', sst_obs,  Spec_Time)
+  endif
+
   if (present(ice_domain)) then
     call data_override_unset_domains(unset_Ice=.true.)
 
@@ -124,14 +130,12 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
 !           5/22/01; 8/23/01
 
     where (iceh < 0.01) iceh=0.0
-    where (iceh>0.0)
+    where (iceh > 0.0)
       icec = 1.0
-      sst  = t_sw_freeze
     end where
   else
     where (icec >= minimum_ice_concentration)
       iceh = max(iceh, minimum_ice_thickness)
-      sst = t_sw_freeze
     elsewhere
       icec = 0.0
       iceh = 0.0
@@ -141,24 +145,32 @@ subroutine get_sea_surface(Time, ts, cn, iceh, ice_domain, ice_domain_end, ts_in
     endif
   endif
 
-  where (icec==0.0 .and. sst<=t_sw_freeze) sst = t_sw_freeze+1e-10
-
-! add on non-zero sea surface temperature perturbation (namelist option)
-! this perturbation may be useful in accessing model sensitivities
-
-  if ( abs(sst_pert) > 0.0001 ) then
-    sst(:,:) = sst(:,:) + sst_pert
+  if (present(ice_thick)) then
+    do j=HI%jsc,HI%jec ; do i=HI%isc,HI%iec
+      ice_thick(i,j) = iceh(i,j)
+    enddo ; enddo
   endif
 
-  cn(:,:,2) = icec(:,:)
-  cn(:,:,1) = 1.0 - cn(:,:,2)
+  if (present(ice_conc)) then
+    do j=HI%jsc,HI%jec ; do i=HI%isc,HI%iec
+      ice_conc(i,j) = icec(i,j)
+    enddo ; enddo
+  endif
 
-  if (sst_degk .eqv. ts_in_degK) then ! ts and sst have the same units.
-    ts(:,:) = sst(:,:)
-  elseif (ts_in_degK) then ! ts is in Kelvin and sst is in Celsius.
-    ts(:,:) = sst(:,:) + T_0degC
-  else ! ts is in Celsius and sst in Kelvin.
-    ts(:,:) = sst(:,:) - T_0degC
+  if (present(SST)) then
+    ! SST is in Celsius, but sst_obs may be in Kelvin.
+    SST_offset = 0.0 ; if (sst_degk) SST_offset = -T_0degC
+
+    ! Add on non-zero sea surface temperature perturbation (namelist option)
+    ! this perturbation may be useful in accessing model sensitivities
+    if ( abs(sst_pert) > 0.0001 ) SST_offset = SST_offset + sst_pert
+
+    do j=HI%jsc,HI%jec ; do i=HI%isc,HI%iec
+      if (icec(i,j) > 0.0) sst_obs(i,j) = t_sw_freeze
+      if ((icec(i,j) == 0.0) .and. (sst_obs(i,j) <= t_sw_freeze)) sst_obs(i,j) = t_sw_freeze + 1e-10
+
+      SST(i,j) = sst_obs(i,j) + SST_offset
+    enddo ; enddo
   endif
 
 end subroutine get_sea_surface

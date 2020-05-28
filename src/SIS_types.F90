@@ -430,6 +430,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   logical,    optional, intent(in)    :: omit_Tsurf !< If true, do not allocate the surface temperature array
   logical,    optional, intent(in)    :: do_ridging !< If true, allocate arrays related to ridging
 
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
   logical :: do_vel, do_Tsurf
 
@@ -451,6 +452,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   if (present(do_ridging)) then ; if (do_ridging) then
     allocate(IST%snow_to_ocn(isd:ied, jsd:jed)) ; IST%snow_to_ocn(:,:) = 0.0
     allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed)) ; IST%enth_snow_to_ocn(:,:) = 0.0
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif ; endif
 
   if (do_vel) then
@@ -462,14 +464,11 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
       allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
       allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
     endif
-
-    ! ### THESE ARE DIAGNOSTICS.  PERHAPS THEY SHOULD ONLY BE ALLOCATED IF USED.
-    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
   endif
 
   if (do_Tsurf) then
     ! IST%tsurf is only used with some older options.
-    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = 0.0
+    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = T_0degC
   endif
 
 end subroutine alloc_IST_arrays
@@ -724,14 +723,18 @@ end subroutine ice_state_read_alt_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> rescale_ice_state_restart_fields handles any changes in dimensional rescaling of ice state
 !! variables between what is stored in the restart file and what is done for the current run segment.
-subroutine rescale_ice_state_restart_fields(IST, G, US, IG)
+subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice, Rho_snow)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  real,                    intent(in)    :: H_to_kg_m2 !< The mass conversion_factor that will be
+                                                     !! used for the run [kg m-2 H-1 ~> 1].
+  real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-2]
+  real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-2]
 
   ! Local variables
-  real :: vel_rescale, Q_rescale, RZ_rescale
+  real :: vel_rescale, Q_rescale, RZ_rescale, H_rescale_ice, H_rescale_snow
   integer :: i, j, k, m
 
   ! Redo the dimensional rescaling of the ice state type variables as necessary.
@@ -750,6 +753,27 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG)
       (US%kg_m3_to_R*US%m_to_Z) /= (US%kg_m3_to_R_restart*US%m_to_Z_restart)) &
     RZ_rescale = (US%kg_m3_to_R*US%m_to_Z) / (US%kg_m3_to_R_restart*US%m_to_Z_restart)
 
+  ! Determine the thickness rescaling factors that are needed.
+  H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
+  if (IG%H_to_kg_m2 == -1.0) then
+    ! This is an older restart file, and the snow and ice thicknesses are in m.
+    H_rescale_ice = US%R_to_kg_m3*Rho_ice / H_to_kg_m2
+    H_rescale_snow = US%R_to_kg_m3*Rho_snow / H_to_kg_m2
+  elseif (IG%H_to_kg_m2 /= H_to_kg_m2) then
+    H_rescale_ice = IG%H_to_kg_m2 / H_to_kg_m2
+    H_rescale_snow = H_rescale_ice
+  endif
+
+  if (H_rescale_ice /= 1.0) then
+    do k=1,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      IST%mH_ice(i,j,k) = H_rescale_ice * IST%mH_ice(i,j,k)
+    enddo ; enddo ; enddo
+  endif
+  if (H_rescale_snow /= 1.0) then
+    do k=1,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
+      IST%mH_snow(i,j,k) = H_rescale_snow * IST%mH_snow(i,j,k)
+    enddo ; enddo ; enddo
+  endif
 
   if (IST%Cgrid_dyn .and. (vel_rescale /= 1.0)) then
     do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
@@ -1222,8 +1246,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
 
@@ -1239,8 +1262,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being
-  ! copied.
+  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
     call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
                           IST_out%part_size, complete=.true.)

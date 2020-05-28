@@ -253,9 +253,6 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_set_diags(IOF%tr_flux_ocn_top, 'ice_model', diag%axesT1%handles, Time)
 
-!### THIS DIAGNOSTIC IS MISSING.
-!  XYZ%id_strna    = register_SIS_diag_field('ice_model', 'STRAIN_ANGLE', diag%axesT1,Time, &
-!               'strain angle', 'none', missing_value=missing)
 
   FIA%id_sw_dn   = register_SIS_diag_field('ice_model', 'SWDN', diag%axesT1, Time, &
                'Downward shortwave heat flux at the bottom of the atmosphere', &
@@ -344,7 +341,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   if (coupler_type_initialized(OSS%tr_fields)) &
     call coupler_type_set_diags(OSS%tr_fields, 'ice_model', diag%axesT1%handles, Time)
 
-!### THIS DIAGNOSTIC IS MISSING.
+!  These are omitted diagnotics with no imminent plans to add them.
+!  XYZ%id_strna = register_SIS_diag_field('ice_model', 'STRAIN_ANGLE', diag%axesT1,Time, &
+!               'strain angle', 'none', missing_value=missing)
 !  XYZ%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &
 !       'ice observed', '0 or 1', missing_value=missing)
 

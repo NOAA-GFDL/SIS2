@@ -363,14 +363,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   !
   if (CS%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
-    call get_sea_surface(CS%Time, OSS%SST_C(isc:iec,jsc:jec), IST%part_size(isc:iec,jsc:jec,:), &
-                         h_ice_input(isc:iec,jsc:jec), ts_in_K=.false.)
+    call get_sea_surface(CS%Time, G%HI, SST=OSS%SST_C, ice_conc=IST%part_size, ice_thick=h_ice_input)
     call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
-    do j=jsc,jec ; do i=isc,iec
-      IST%mH_ice(i,j,1) = US%m_to_Z*h_ice_input(i,j) * rho_ice
-    enddo ; enddo
 
     do j=jsc,jec ; do i=isc,iec
+      IST%part_size(i,j,0) = 1.0 - IST%part_size(i,j,1)
+      IST%mH_ice(i,j,1) = US%m_to_Z*h_ice_input(i,j) * rho_ice
+
       IOF%flux_sh_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_sh_top(i,j,0)
       IOF%evap_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%evap_top(i,j,0)
       IOF%flux_lw_ocn_top(i,j) = IST%part_size(i,j,0) * FIA%flux_lw_top(i,j,0)
@@ -565,9 +564,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! but with a greater emphasis on enthalpy as the dominant state variable.
 
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: snow_to_ice ! The flux of snow to the ice [R Z ~> kg m-2]
-  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_sst, Obs_h_ice ! for qflux calculation
-  real, dimension(G%isc:G%iec,G%jsc:G%jec,2) :: Obs_cn_ice      ! partition 2 = ice concentration
-  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec, icec_obs
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_h_ice ! Observed ice thickness for qflux calculation
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_cn_ice ! Observed total ice concentration [nondim]
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec  ! Total ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G))   :: &
     salt_change, &        ! The change in integrated salinity [R Z gSalt kg-1 ~> gSalt m-2]
     h2o_change, &         ! The change in water in the ice [R Z ~> kg m-2]
@@ -690,18 +689,21 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     if (.not.allocated(IOF%melt_nudge)) allocate(IOF%melt_nudge(isc:iec,jsc:jec))
 
     cool_nudge(:,:) = 0.0 ; IOF%melt_nudge(:,:) = 0.0
-    icec(:,:) = 0.0
-    call data_override('ICE','icec',icec_obs,CS%Time)
 
+    Obs_cn_ice(:,:) = 0.0
+    call data_override('ICE', 'icec', Obs_cn_ice, CS%Time)
+
+    icec(:,:) = 0.0
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
       icec(i,j) = icec(i,j) + IST%part_size(i,j,k)
     enddo ; enddo ; enddo
     pres_0(:) = 0.0
     call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water, EOS=EOS)
+
     do j=jsc,jec ; do i=isc,iec
-      if (icec(i,j) < icec_obs(i,j) - CS%nudge_conc_tol) then
+      if (icec(i,j) < Obs_cn_ice(i,j) - CS%nudge_conc_tol) then
         cool_nudge(i,j) = CS%nudge_sea_ice_rate * &
-             ((icec_obs(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
+             ((Obs_cn_ice(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
             call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
@@ -710,10 +712,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                                   ((Cp_water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
           endif
         endif
-      elseif (icec(i,j) > icec_obs(i,j) + CS%nudge_conc_tol) then
+      elseif (icec(i,j) > Obs_cn_ice(i,j) + CS%nudge_conc_tol) then
         ! Heat the ice but do not apply a fresh water flux.
         cool_nudge(i,j) = -CS%nudge_sea_ice_rate * &
-             (icec(i,j) - (icec_obs(i,j)+CS%nudge_conc_tol))**2.0 ! W/m2
+             (icec(i,j) - (Obs_cn_ice(i,j)+CS%nudge_conc_tol))**2.0 ! W/m2
       endif
 
       if (cool_nudge(i,J) > 0.0) then
@@ -724,8 +726,12 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     enddo ; enddo
   endif
   if (CS%do_ice_restore) then
-    ! get observed ice thickness for ice restoring, if calculating qflux
-    call get_sea_surface(CS%Time, Obs_SST, Obs_cn_ice, Obs_h_ice)
+    ! Get observed ice thickness and concentration for ice restoring, if calculating qflux.
+    ! There is no need to apply limits, and only the product is used in these calculations.
+    Obs_cn_ice(:,:) = 0.0 ; Obs_h_ice(:,:) = 0.0
+    call data_override('ICE', 'sic_obs', Obs_cn_ice, CS%Time)
+    call data_override('ICE', 'sit_obs', Obs_h_ice, CS%Time)
+
     call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
     qflx_res_ice(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec
@@ -747,7 +753,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           enddo ; endif
         endif
       enddo
-      qflx_res_ice(i,j) = -(LatHtFus*rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j,2) - e2m_tot) / &
+      qflx_res_ice(i,j) = -(LatHtFus*rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j) - e2m_tot) / &
                            CS%ice_restore_timescale
       if (qflx_res_ice(i,j) < 0.0) then
         !There is less ice in model than Obs,
@@ -1178,8 +1184,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (CS%do_ice_limit) then
     qflx_lim_ice(:,:) = 0.0
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,NkIce,IST,G,US, &
-!$OMP                                  spec_thermo_sal,I_Nk,S_col,Obs_h_ice,dt_slow, &
-!$OMP                                  Obs_cn_ice,snow_to_ice,salt_change,qflx_lim_ice, &
+!$OMP                                  spec_thermo_sal,I_Nk,S_col,dt_slow, &
+!$OMP                                  snow_to_ice,salt_change,qflx_lim_ice, &
 !$OMP                                  Idt_slow,net_melt,IG,CS,IOF,FIA,rho_ice)         &
 !$OMP                          private(mtot_ice,frac_keep,frac_melt,salt_to_ice,  &
 !$OMP                                  h2o_ice_to_ocn,enth_to_melt,enth_ice_to_ocn,   &

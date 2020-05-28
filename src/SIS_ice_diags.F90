@@ -52,7 +52,7 @@ type, public :: ice_state_diags_type ; private
   integer :: id_mib=-1, id_mi=-1
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn=-1, id_hi=-1, id_hp=-1, id_hs=-1, id_tsn=-1, id_ext=-1 ! id_hp mw/new
-  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1
+  integer :: id_t_iceav=-1, id_s_iceav=-1, id_e2m=-1, id_rdgf=-1
 
   integer :: id_simass=-1, id_sisnmass=-1, id_sivol=-1
   integer :: id_siconc=-1, id_sithick=-1, id_sisnconc=-1, id_sisnthick=-1
@@ -85,15 +85,13 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     temp_ice    ! A diagnostic array with the ice temperature [degC].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     temp_snow   ! A diagnostic array with the snow temperature [degC].
-  ! ### This diagnostic does not exist yet.
-  ! real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
-  !   rdg_frac    ! fraction of ridged ice per category
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    rdg_frac    ! fraction of ridged ice per category [nondim]
   real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true.
   real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
   real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
-  real :: tmp_mca  ! A temporary cell averaged mass [R Z ~> kg m-2].
   real :: I_Nk     ! The inverse of the number of layers in the ice [nondim].
   logical :: spec_thermo_sal
   logical :: do_temp_diags
@@ -235,23 +233,22 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
                         (enthalpy_liquid_freeze(IST%sal_ice(i,j,k,m), IST%ITV) - IST%enth_ice(i,j,k,m))
       enddo ; endif
     endif ; enddo ; enddo ; enddo
-    call post_data(IDs%id_e2m,  tmp2d(:,:), diag)
+    call post_data(IDs%id_e2m, tmp2d, diag)
   endif
 
-  !TOM> preparing output field fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
-  !     in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
-!     if (IDs%id_rdgf>0) then
-!       !$OMP parallel do default(shared) private(tmp_mca)
-!       do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
-!         tmp_mca = IST%mH_ice(i,j,k)*IST%part_size(i,j,k)
-!         if (tmp_mca > Rho_Ice*1.e-5*US%m_to_Z) then  ! 1 mm ice thickness x 1% ice concentration
-!           rdg_frac(i,j,k) = IST%rdg_mice(i,j,k) / tmp_mca
-!         else
-!           rdg_frac(i,j,k) = 0.0
-!         endif
-!       enddo ; enddo ; enddo
-!       call post_data(IDs%id_rdgf, rdg_frac(isc:iec,jsc:jec), diag)
-!     endif
+  ! Dermine the fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
+  ! in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
+  if (IDs%id_rdgf>0) then
+    !$OMP parallel do default(shared)
+    do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
+      if (IST%mH_ice(i,j,k)*IST%part_size(i,j,k) > 0.0) then
+        rdg_frac(i,j,k) = min(IST%rdg_mice(i,j,k) / (IST%mH_ice(i,j,k)*IST%part_size(i,j,k)), 1.0)
+      else
+        rdg_frac(i,j,k) = 0.0
+      endif
+    enddo ; enddo ; enddo
+    call post_data(IDs%id_rdgf, rdg_frac, diag)
+  endif
 
 end subroutine post_ice_state_diagnostics
 
@@ -302,6 +299,8 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=8) :: nstr
+  character(len=40) :: mdl = "SIS_ice_diags" ! This module's name.
+  logical :: do_ridging
   integer :: n, nLay
   real, parameter :: missing = -1e34
 
@@ -366,12 +365,16 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
                'heat needed to melt ice', 'J/m^2', conversion=US%Q_to_J_kg*US%RZ_to_kg_m2, missing_value=missing)
 
-!### THIS DIAGNOSTIC IS MISSING.
-!  IDs%id_ta    = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &
+!  This diagnostic is not available via the sea ice model.
+!  IDs%id_ta = register_diag_field('ice_model', 'TA', diag%axesT1, Time, &
 !            'surface air temperature', 'C', missing_value=missing)
-!### THESE DIAGNOSTICS DO NOT EXIST YET.
-!  IDs%id_rdgf    = register_diag_field('ice_model','RDG_FRAC' ,diag%axesT1, Time, &
-!               'ridged ice fraction', '0-1', missing_value=missing)
+
+  call get_param(param_file, mdl, "DO_RIDGING", do_ridging, &
+                 "If true, call the ridging routines.", default=.false., do_not_log=.true.)
+  if (do_ridging) then
+    IDs%id_rdgf = register_diag_field('ice_model', 'RDG_FRAC' ,diag%axesT1, Time, &
+                   'ridged ice fraction', '0-1', missing_value=missing)
+  endif
 end subroutine register_ice_state_diagnostics
 
 
