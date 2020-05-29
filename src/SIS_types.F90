@@ -367,7 +367,10 @@ type ice_ocean_flux_type
     stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [R Z L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
                        !! surface salinity to facilitate the retention of sea ice [R Z T-1 ~> kg m-2 s-1].
-    flux_salt, &       !< The flux of salt out of the ocean [kgSalt kg-1 R Z T-1 ~> kgSalt m-2].
+    flux_salt, &       !< The flux of salt out of the ocean [kgSalt kg-1 R Z T-1 ~> kgSalt m-2 s-1].
+    transmutation_salt_flux, & !< The difference between the salt flux extracted from the ice and the
+                       !! salt flux added to the ocean when the ice is transmuted directly into seawater
+                       !! as a form of open boundary condition [kgSalt kg-1 R Z T-1 ~> kgSalt m-2 s-1].
     mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [R Z ~> kg m-2].
     pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
                        !! snow and ponds, exclusive of atmospheric pressure [R Z L T-2 ~> Pa].
@@ -394,8 +397,11 @@ type ice_ocean_flux_type
     Enth_Mass_out_atm, & !< Negative of the enthalpy extracted from the ice by water fluxes to
                          !! the atmosphere [Q R Z ~> J m-2].
     Enth_Mass_in_ocn , & !< The enthalpy introduced to the ice by water fluxes from the ocean [Q R Z ~> J m-2].
-    Enth_Mass_out_ocn    !< Negative of the enthalpy extracted from the ice by water fluxes to
+    Enth_Mass_out_ocn, & !< Negative of the enthalpy extracted from the ice by water fluxes to
                          !! the ocean [Q R Z ~> J m-2].
+    transmutation_enth   !< The difference between the enthalpy extracted from the ice and the
+                         !! enthalpy added to the ocean when the ice is transmuted directly into
+                         !! seawater as a form of open boundary condition [Q R Z ~> J m-2].
 
   integer :: stress_count !< The number of times that the stresses from the ice to the ocean have been incremented.
   integer :: flux_uv_stagger = -999 !< The staggering relative to the tracer points of the two wind
@@ -1069,7 +1075,7 @@ end subroutine alloc_ice_rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
-subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
+subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_transmute)
   type(ice_ocean_flux_type), pointer    :: IOF !< A structure containing fluxes from the ice to
                                                !! the ocean that are calculated by the ice model.
   type(hor_index_type),      intent(in) :: HI  !< The horizontal index type describing the domain
@@ -1077,7 +1083,9 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
                                                !! the magnitude of the ice-ocean stress.
   logical,         optional, intent(in) :: do_iceberg_fields !< If true, allocate fields related
                                                !! to exchanges with icebergs
-
+  logical,         optional, intent(in) :: do_transmute !< If true, allocate fields related to
+                                               !! transmuting ice directly into seawater as a form
+                                               !! of open boundary condition
   integer :: CatIce
   logical :: alloc_bergs, alloc_stress_mag
 
@@ -1087,6 +1095,9 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
   if (.not.associated(IOF)) allocate(IOF)
 
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0
+  if (do_transmute) then
+    allocate(IOF%transmutation_salt_flux(SZI_(HI), SZJ_(HI))) ; IOF%transmutation_salt_flux(:,:) = 0.0
+  endif
 
   allocate(IOF%flux_sh_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sh_ocn_top(:,:) = 0.0
   allocate(IOF%evap_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%evap_ocn_top(:,:) = 0.0
@@ -1107,7 +1118,9 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields)
   allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0
   allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0
   allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0
-
+  if (do_transmute) then
+    allocate(IOF%transmutation_enth(SZI_(HI), SZJ_(HI))) ; IOF%transmutation_enth(:,:) = 0.0
+  endif
   ! Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.)
   ! Please note that these are only allocated on the computational domain so that they
   ! can be passed conveniently to the iceberg code.
@@ -2350,9 +2363,11 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top, IOF%flux_salt)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%pres_ocn_top, IOF%mass_ice_sn_p)
   if (allocated(IOF%stress_mag)) deallocate(IOF%stress_mag)
+  if (allocated(IOF%transmutation_salt_flux)) deallocate(IOF%transmutation_salt_flux)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
   deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
+  if (allocated(IOF%transmutation_enth)) deallocate(IOF%transmutation_enth)
 
   !Deallocating iceberg fields
   if (associated(IOF%mass_berg)) deallocate(IOF%mass_berg)
@@ -2371,25 +2386,30 @@ subroutine IOF_chksum(mesg, IOF, G, US)
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
 
   call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
+  if (allocated(IOF%transmutation_salt_flux)) &
+    call hchksum(IOF%transmutation_salt_flux, trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%RZ_T_to_kg_m2s)
 
-  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//"  IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%evap_ocn_top, trim(mesg)//"  IOF%evap_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%flux_sw_ocn, trim(mesg)//"  IOF%flux_sw_ocn", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%lprec_ocn_top, trim(mesg)//"  IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(IOF%fprec_ocn_top, trim(mesg)//"  IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(IOF%flux_u_ocn, trim(mesg)//"  IOF%flux_u_ocn", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%flux_v_ocn, trim(mesg)//"  IOF%flux_v_ocn", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%pres_ocn_top, trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%mass_ice_sn_p, trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
+  call hchksum(IOF%flux_sw_ocn,     trim(mesg)//" IOF%flux_sw_ocn",     G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
   if (allocated(IOF%stress_mag)) &
-    call hchksum(IOF%stress_mag, trim(mesg)//"  IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 
-  call hchksum(IOF%Enth_Mass_in_atm, trim(mesg)//" IOF%Enth_Mass_in_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_in_atm,  trim(mesg)//" IOF%Enth_Mass_in_atm",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-  call hchksum(IOF%Enth_Mass_in_ocn, trim(mesg)//" IOF%Enth_Mass_in_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(IOF%Enth_Mass_in_ocn,  trim(mesg)//" IOF%Enth_Mass_in_ocn",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+
+  if (allocated(IOF%transmutation_enth)) &
+    call hchksum(IOF%transmutation_enth, trim(mesg)//" IOF%transmutation_enth", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
 end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
