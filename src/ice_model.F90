@@ -1956,7 +1956,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  default=.false., do_not_log=.true.) ! Defer logging to SIS_slow_thermo.
   call get_param(param_file, mdl, "TRANSMUTE_SEA_ICE", transmute_ice, &
                  "If true, allow ice to be transmuted directly into seawater with a spatially "//&
-                 "spatially varying rate as a form of outflow open boundary condition.", &
+                 "varying rate as a form of outflow open boundary condition.", &
                  default=.false., do_not_log=.true.) ! Defer logging to SIS_slow_thermo.
 
 

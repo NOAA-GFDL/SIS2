@@ -1498,8 +1498,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
 
   call get_param(param_file, mdl, "TRANSMUTE_SEA_ICE", CS%transmute_ice, &
                  "If true, allow ice to be transmuted directly into seawater with a spatially "//&
-                 "spatially varying rate as a form of outflow open boundary condition.", &
-                 default=.false.)
+                 "varying rate as a form of outflow open boundary condition.", default=.false.)
   if (CS%transmute_ice) then
 
     allocate(CS%transmutation_rate(SZI_(G), SZJ_(G))) ; CS%transmutation_rate(:,:) = 0.0
