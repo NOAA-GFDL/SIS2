@@ -750,6 +750,7 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
               (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
+
     Flux_SW = 0.0
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.
       Flux_SW = Flux_SW + (IOF%flux_sw_ocn(i,j,b-1) + IOF%flux_sw_ocn(i,j,b))
@@ -761,7 +762,12 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
     CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + &
            ((IOF%Enth_Mass_in_atm(i,j) + IOF%Enth_Mass_in_ocn(i,j)) + &
             (IOF%Enth_Mass_out_atm(i,j) + IOF%Enth_Mass_out_ocn(i,j)) )
+    if (allocated(IOF%transmutation_enth)) &
+      CS%heat_in_col(i,j) = CS%heat_in_col(i,j) + IOF%transmutation_enth(i,j)
+
     CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%flux_salt(i,j)
+    if (allocated(IOF%transmutation_salt_flux)) &
+      CS%salt_in_col(i,j) = CS%salt_in_col(i,j) + dt * IOF%transmutation_salt_flux(i,j)
   enddo ; enddo
 
 end subroutine accumulate_bottom_input

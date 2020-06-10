@@ -120,26 +120,26 @@ subroutine ice_state_mass_init(IST, Ice, G, IG, US, PF, init_Time, just_read_par
   call get_param(PF, mdl, "CONCENTRATION_INIT_CONFIG", conc_config, &
             "A string that determines how the initial total sea ice concentration "//&
             "is initialized for a new run: \n"//&
-            " \t file - read sea ice concentrations from a specified file \n"//&
-            " \t data_override - use the data_override capability or zero everywhere \n"//&
-            " \t zero - there is no sea ice anywhere.\n"//&
-            " \t latitudes - initial sea ice concentration is a function of latitude.", &
+            "    file - read sea ice concentrations from a specified file \n"//&
+            "    data_override - use the data_override capability or zero everywhere \n"//&
+            "    zero - there is no sea ice anywhere \n"//&
+            "    latitudes - initial sea ice concentration is a function of latitude.", &
             default='data_override', do_not_log=just_read)
 
   call get_param(PF, mdl, "ICE_THICKNESS_INIT_CONFIG", hIce_config, &
-            "A string that determines how the initial total sea ice concentration "//&
+            "A string that determines how the initial sea ice thickness "//&
             "is initialized for a new run: \n"//&
-            " \t file - read sea ice concentrations from a specified file \n"//&
-            " \t data_override - use the data_override capability or zero everywhere \n"//&
-            " \t uniform - sea ice has uniform thickness where the concentration is nonzero.", &
+            "    file - read sea ice thickesses from a specified file \n"//&
+            "    data_override - use the data_override capability or zero everywhere \n"//&
+            "    uniform - sea ice has uniform thickness where the concentration is nonzero.", &
             default='data_override', do_not_log=just_read)
 
   call get_param(PF, mdl, "SNOW_THICKNESS_INIT_CONFIG", hSnow_config, &
-            "A string that determines how the initial total sea ice concentration "//&
+            "A string that determines how the initial total snow thickness "//&
             "is initialized for a new run: \n"//&
-            " \t file - read sea ice concentrations from a specified file \n"//&
-            " \t data_override - use the data_override capability or zero everywhere \n"//&
-            " \t uniform - sea ice has uniform thickness where the concentration is nonzero.", &
+            "    file - read sea ice concentrations from a specified file \n"//&
+            "    data_override - use the data_override capability or zero everywhere \n"//&
+            "    uniform - snow has uniform thickness where the concentration is nonzero.", &
             default='data_override', do_not_log=just_read)
 
   any_data_override = (((trim(conc_config)=="data_override") .or. &
