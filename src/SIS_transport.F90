@@ -1186,7 +1186,7 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call get_param(param_file, mdl, "INCONSISTENT_COVER_BUG", CS%inconsistent_cover_bug, &
                  "If true, omit a recalculation of the fractional ice-free "//&
                  "areal coverage after the adjustment of the ice categories.", &
-                 default=.true., do_not_log=merged_cont)
+                 default=.false., do_not_log=merged_cont)
   if (merged_cont) CS%inconsistent_cover_bug = .false.
   call obsolete_logical(param_file, "ADVECT_TSURF", warning_val=.false.)
   call obsolete_real(param_file, "ICE_CHANNEL_VISCOSITY", warning_val=0.0)

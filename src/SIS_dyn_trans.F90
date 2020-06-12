@@ -2122,7 +2122,7 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
   endif
   allocate(CS)
 
-  CS%Cgrid_dyn = .false. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn)
+  CS%Cgrid_dyn = .true. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn)
 
   if (CS%Cgrid_dyn) then
     call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
@@ -2203,7 +2203,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice "//&
                  "dynamics; if false use a B-grid discretization.", &
-                 default=.false.)
+                 default=.true.)
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt_ice_dyn, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions "//&
