@@ -1769,7 +1769,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "CGRID_ICE_DYNAMICS", Cgrid_dyn, &
                  "If true, use a C-grid discretization of the sea-ice "//&
                  "dynamics; if false use a B-grid discretization.", &
-                 default=.false.)
+                 default=.true.)
   if (specified_ice) then
     slab_ice = .true.
     call log_param(param_file, mdl, "USE_SLAB_ICE", slab_ice, &
@@ -2580,7 +2580,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   !but it should be called after restore_state() otherwise it causes a restart mismatch
   call nullify_domain()
 
-  call close_param_file(param_file)
+  ! Close the parameter file, supplying information for logging the default values.
+  if (slow_ice_PE) then
+    call close_param_file(param_file, component='SIS')
+  else
+    call close_param_file(param_file, component='SIS_fast')
+  endif
 
   ! Ice%xtype can be REDIST or DIRECT, depending on the relationship between
   ! the fast and slow ice PEs.  REDIST should always work but may be slower.

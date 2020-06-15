@@ -101,10 +101,10 @@ subroutine SIS_optics_init(param_file, US, CS, slab_optics)
                  "shortwave radiation calculation.", default=.false.)
   call get_param(param_file, mdl, "MIN_POND_FRAC", CS%min_pond_frac, &
                  "Minimum melt pond cover (by ponds at sea level) "//&
-                 "pond drains to this when ice is porous.", default=0.2)
+                 "pond drains to this when ice is porous.", default=0.2, units="nondim")
   call get_param(param_file, mdl, "MAX_POND_FRAC", CS%max_pond_frac, &
                  "Maximum melt pond cover - associated with pond volume "//&
-                 "that suppresses ice top to waterline", default=0.5)
+                 "that suppresses ice top to waterline", default=0.5, units="nondim")
 
   call get_param(param_file, mdl, "ICE_DELTA_EDD_R_ICE", deltaEdd_R_ice, &
                  "A dreadfully documented tuning parameter for the radiative "//&

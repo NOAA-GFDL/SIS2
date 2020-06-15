@@ -1845,7 +1845,7 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
                  "If true use a globally constant negligible volume in the denominator of the "//&
                  "tracer advection CFL calculation, reproducing an older incorrect expression, "//&
                  "rather than using a proper scaling of this negligible mass with cell area.", &
-                 default=.true.)
+                 default=.false.)
 
   if (first_call) then
     id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)

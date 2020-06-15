@@ -125,7 +125,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
 !  call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
 !                 "The time unit for ENERGYSAVEDAYS.", units="s", default=86400.0)
 
-  call close_param_file(param_file)
+  call close_param_file(param_file, component="CIOD")
   CS%CS_is_initialized = .true.
 
   call callTree_leave("ice_ocean_driver_init(")
