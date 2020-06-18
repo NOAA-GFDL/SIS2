@@ -373,17 +373,18 @@ end subroutine dealloc_Ice_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Ice_public_type_chksum writes out checksums of the variables in a publicly
 !! visible ice data type
-subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
+subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow, check_rough)
   character(len=*),    intent(in) :: mesg !< An identifying message
   type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
   logical, optional,   intent(in) :: check_fast !< If true, check the fast ice fields
   logical, optional,   intent(in) :: check_slow !< If true, check the slow ice fields
+  logical, optional,   intent(in) :: check_rough !< If true, check the roughness fields
 !   This subroutine writes out chksums for the model's basic state variables.
 
   ! Note that the publicly visible ice_data_type has no halos, so it is not
   ! possible do check their values.
 
-  logical :: fast_fields, slow_fields
+  logical :: fast_fields, slow_fields, roughnesses
 
   fast_fields = Ice%fast_ice_PE ; slow_fields = Ice%slow_ice_PE
 
@@ -394,6 +395,8 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
     slow_fields = Ice%slow_ice_PE .and. check_slow
   endif
 
+  roughnesses = fast_fields ; if (present(check_rough)) roughnesses = Ice%fast_ice_PE .and. check_rough
+
   if (fast_fields) then ! This is a fast-ice PE.
     call chksum(Ice%part_size, trim(mesg)//" Ice%part_size")
     call chksum(Ice%albedo, trim(mesg)//" Ice%albedo")
@@ -401,14 +404,16 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow)
     call chksum(Ice%albedo_nir_dir, trim(mesg)//" Ice%albedo_nir_dir")
     call chksum(Ice%albedo_vis_dif, trim(mesg)//" Ice%albedo_vis_dif")
     call chksum(Ice%albedo_nir_dif, trim(mesg)//" Ice%albedo_nir_dif")
-    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
-    call chksum(Ice%rough_heat, trim(mesg)//" Ice%rough_heat")
-    call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
 
     call chksum(Ice%t_surf, trim(mesg)//" Ice%t_surf")
     call chksum(Ice%s_surf, trim(mesg)//" Ice%s_surf")
     call chksum(Ice%u_surf, trim(mesg)//" Ice%u_surf")
     call chksum(Ice%v_surf, trim(mesg)//" Ice%v_surf")
+  endif
+  if (roughnesses) then
+    call chksum(Ice%rough_mom, trim(mesg)//" Ice%rough_mom")
+    call chksum(Ice%rough_heat, trim(mesg)//" Ice%rough_heat")
+    call chksum(Ice%rough_moist, trim(mesg)//" Ice%rough_moist")
   endif
 
   if (slow_fields) then ! This is a slow-ice PE.

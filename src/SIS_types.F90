@@ -40,12 +40,12 @@ public :: rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
 public :: ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
 public :: ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
 public :: fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg, copy_FIA_to_FIA
-public :: IOF_chksum, FIA_chksum, register_unit_conversion_restarts
+public :: OSS_chksum, IOF_chksum, FIA_chksum, register_unit_conversion_restarts
 public :: ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad
 public :: simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS, copy_sOSS_to_sOSS
 public :: redistribute_IST_to_IST, redistribute_FIA_to_FIA, redistribute_sOSS_to_sOSS
 public :: total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
-public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF
+public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
 public :: copy_Rad_to_Rad, redistribute_Rad_to_Rad, alloc_ice_Rad
 public :: translate_OSS_to_sOSS
 
@@ -2379,37 +2379,53 @@ end subroutine dealloc_ice_ocean_flux
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in an ice_ocean_flux_type.
-subroutine IOF_chksum(mesg, IOF, G, US)
+subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
   character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_ocean_flux_type), intent(in) :: IOF   !< The structure whose arrays are being checksummed.
   type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
+  logical,         optional, intent(in)    :: mech_fluxes !< If true, do checksums of mechanical fluxes
+  logical,         optional, intent(in)    :: thermo_fluxes !< If true, do checksums of thermodynamic fluxes
 
-  call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
-  if (allocated(IOF%transmutation_salt_flux)) &
-    call hchksum(IOF%transmutation_salt_flux, trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%RZ_T_to_kg_m2s)
+  logical :: do_mech, do_thermo
 
-  call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%flux_sw_ocn,     trim(mesg)//" IOF%flux_sw_ocn",     G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
-  if (allocated(IOF%stress_mag)) &
-    call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  ! Do all fluxes unless a subset of fluxes are specified, in which case only do those that are
+  ! indicated by the arguments.
+  do_mech = .not.present(thermo_fluxes) ; do_thermo = .not.present(mech_fluxes)
+  if (present(mech_fluxes)) then ; do_mech = mech_fluxes ; endif
+  if (present(thermo_fluxes)) then ; do_thermo = thermo_fluxes ; endif
 
-  call hchksum(IOF%Enth_Mass_in_atm,  trim(mesg)//" IOF%Enth_Mass_in_atm",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-  call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-  call hchksum(IOF%Enth_Mass_in_ocn,  trim(mesg)//" IOF%Enth_Mass_in_ocn",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-  call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  if (do_thermo) then
+    call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
+    if (allocated(IOF%transmutation_salt_flux)) call hchksum(IOF%transmutation_salt_flux, &
+          trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%RZ_T_to_kg_m2s)
 
-  if (allocated(IOF%transmutation_enth)) &
-    call hchksum(IOF%transmutation_enth, trim(mesg)//" IOF%transmutation_enth", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_sw_ocn,     trim(mesg)//" IOF%flux_sw_ocn",     G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  endif
+  if (do_mech) then
+    call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
+    if (allocated(IOF%stress_mag)) &
+      call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  endif
+
+  if (do_thermo) then
+    call hchksum(IOF%Enth_Mass_in_atm,  trim(mesg)//" IOF%Enth_Mass_in_atm",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_in_ocn,  trim(mesg)//" IOF%Enth_Mass_in_ocn",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+
+    if (allocated(IOF%transmutation_enth)) call hchksum(IOF%transmutation_enth, &
+          trim(mesg)//" IOF%transmutation_enth", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  endif
 end subroutine IOF_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -2468,6 +2484,73 @@ subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
 
 end subroutine FIA_chksum
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays in an ocean_surface_state_type.
+subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
+  character(len=*),           intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(ocean_sfc_state_type), intent(in) :: OSS   !< A structure containing the arrays that describe
+                                                  !! the ocean's surface state for the ice model.
+  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizonal grid type.
+  type(unit_scale_type),      intent(in) :: US    !< A structure with unit conversion factors
+  integer,          optional, intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
+
+  ! Local variables
+  integer :: hs
+
+  ! Note that for the chksum calls to be useful for reproducing across PE
+  ! counts, there must be no redundant points, so all variables use is..ie
+  ! and js...je as their extent.
+  hs=0 ; if (present(haloshift)) hs=haloshift
+
+  call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs)
+  call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs)
+  call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs)
+  call hchksum(OSS%sea_lev, trim(mesg)//" OSS%sea_lev", G%HI, haloshift=hs, scale=US%Z_to_m)
+  call hchksum(OSS%bheat, trim(mesg)//" OSS%bheat", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
+  call hchksum(OSS%frazil, trim(mesg)//" OSS%frazil", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+
+  if (OSS%Cgrid_dyn) then
+    call uvchksum(mesg//" OSS%[uv]_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=hs, scale=US%L_T_to_m_s)
+    call check_redundant_C(mesg//" OSS%u/v_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G)
+  else
+    call Bchksum_pair(mesg//" OSS%[uv]_ocn_B", OSS%u_ocn_B, OSS%v_ocn_B, G, halos=hs, scale=US%L_T_to_m_s)
+    call check_redundant_B(mesg//" OSS%u/v_ocn", OSS%u_ocn_B, OSS%v_ocn_B, G)
+  endif
+
+end subroutine OSS_chksum
+
+
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> Perform checksums on various arrays in an total_sfc_flux_type.
+subroutine TSF_chksum(mesg, TSF, G, US, haloshift)
+  character(len=*),           intent(in) :: mesg  !< A message that appears on the chksum lines.
+  type(total_sfc_flux_type),  pointer    :: TSF   !< The total_sfc_flux_type being checksummed.
+  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizonal grid type.
+  type(unit_scale_type),      intent(in) :: US    !< A structure with unit conversion factors
+  integer,          optional, intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
+
+  ! Local variables
+  integer :: hs, nb
+
+  ! Note that for the chksum calls to be useful for reproducing across PE
+  ! counts, there must be no redundant points, so all variables use is..ie
+  ! and js...je as their extent.
+  hs=0 ; if (present(haloshift)) hs=haloshift
+
+  call hchksum(TSF%flux_sh, trim(mesg)//" TSF%flux_sh", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
+  ! call hchksum(TSF%flux_sw, trim(mesg)//" TSF%flux_sw", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%flux_lw, trim(mesg)//" TSF%flux_lw", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%flux_lh, trim(mesg)//" TSF%flux_lh", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%evap, trim(mesg)//" TSF%evap", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(TSF%lprec, trim(mesg)//" TSF%lprec", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(TSF%fprec, trim(mesg)//" TSF%fprec", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
+  call uvchksum(mesg//" TSF%flux_[uv]", TSF%flux_u, TSF%flux_v, G, halos=hs, scale=US%L_T_to_m_s)
+
+end subroutine TSF_chksum
+
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Perform checksums on various arrays in an ice_state_type.
