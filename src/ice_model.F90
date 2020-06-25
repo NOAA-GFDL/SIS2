@@ -74,7 +74,7 @@ use ice_boundary_types, only : lnd_ice_bnd_type_chksum
 use SIS_ctrl_types, only : SIS_slow_CS, SIS_fast_CS
 use SIS_ctrl_types, only : ice_diagnostics_init, ice_diags_fast_init
 use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
-use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state
+use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state, OSS_chksum
 use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
 use SIS_types, only : total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
 use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, alloc_ice_rad
@@ -85,7 +85,7 @@ use SIS_types, only : ice_state_read_alt_restarts, register_fast_to_slow_restart
 use SIS_types, only : register_unit_conversion_restarts
 use SIS_types, only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
 use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
-use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF
+use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
 use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
 use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
@@ -198,7 +198,7 @@ subroutine update_ice_slow_thermo(Ice)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Start update_ice_slow_thermo", Ice, check_slow=.true.)
     call FIA_chksum("Start update_ice_slow_thermo", FIA, sG, US)
-    call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG, US)
+    ! call IOF_chksum("Start update_ice_slow_thermo", Ice%sCS%IOF, sG, US)
   endif
 
   ! Store some diagnostic fluxes...
@@ -242,14 +242,19 @@ subroutine update_ice_slow_thermo(Ice)
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before slow_thermodynamics", Ice, check_slow=.true.)
-    call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG, US)
+    call FIA_chksum("Before slow_thermodynamics", FIA, sG, US)
+    call IST_chksum("Before slow_thermodynamics", sIST, sG, US, sIG)
+    call OSS_chksum("Before slow_thermodynamics", Ice%sCS%OSS, sG, US)
+    if (associated(Ice%sCS%XSF)) &
+      call TSF_chksum("Before slow_thermodynamics XSF", Ice%sCS%XSF, sG, US)
+    ! call IOF_chksum("Before slow_thermodynamics", Ice%sCS%IOF, sG, US)
   endif
 
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
                            Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG, US)
+    call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG, US, thermo_fluxes=.true.)
     call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, US, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
@@ -309,7 +314,6 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
 
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before SIS_dynamics_trans", Ice, check_slow=.true.)
-    call IOF_chksum("Before SIS_dynamics_trans", Ice%sCS%IOF, sG, US)
   endif
 
   do_multi_trans = (present(start_cycle) .or. present(end_cycle) .or. present(cycle_length))
@@ -332,6 +336,9 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
   if (sIST%valid_IST) call ice_mass_from_IST(sIST, Ice%sCS%IOF, sG, sIG)
 
+  if (Ice%sCS%debug) then
+    call IOF_chksum("Before set_ocean_top_dyn_fluxes", Ice%sCS%IOF, sG, US, mech_fluxes=.true.)
+  endif
   call set_ocean_top_dyn_fluxes(Ice, Ice%sCS%IOF, FIA, sG, US, Ice%sCS)
 
   if (Ice%sCS%debug) then
@@ -560,7 +567,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G, sCS%US)
+    call IOF_chksum("Start set_ocean_top_fluxes", IOF, G, sCS%US, thermo_fluxes=.true.)
     call FIA_chksum("Start set_ocean_top_fluxes", FIA, G, US)
   endif
 
@@ -657,8 +664,8 @@ end subroutine ice_mass_from_IST
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_ocean_top_dyn_fluxes translates ice-bottom stresses and massfrom the ice
-!!  model's ice-ocean flux type  and the fast-ice average type to the public
+!> set_ocean_top_dyn_fluxes translates ice-bottom stresses and mass from the ice
+!!  model's ice-ocean flux type and the fast-ice average type to the public
 !!  ice data type for use by the ocean model.
 subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
@@ -677,7 +684,7 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
 
   if (sCS%debug) then
     call Ice_public_type_chksum("Start set_ocean_top_dyn_fluxes", Ice, check_slow=.true.)
-    call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G, US)
+    call IOF_chksum("Start set_ocean_top_dyn_fluxes", IOF, G, US, mech_fluxes=.true.)
   endif
 
   ! Sum the concentration weighted mass.
@@ -1012,11 +1019,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
 
   if (fCS%debug) then
     call IST_chksum("Start set_ice_surface_state", IST, G, fCS%US, IG)
-    call Ice_public_type_chksum("Start set_ice_surface_state", Ice, check_fast=.true.)
+    call Ice_public_type_chksum("Start set_ice_surface_state", Ice, &
+                                check_fast=.false., check_rough=.true.)
   endif
 
   m_ice_tot(:,:) = 0.0
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot)
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,G,IST,OSS,FIA,ncat,m_ice_tot)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     FIA%tmelt(i,j,k) = 0.0 ; FIA%bmelt(i,j,k) = 0.0
     m_ice_tot(i,j) = m_ice_tot(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
@@ -1048,30 +1056,41 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
                         fCS%Time + dT_r, Rad%coszen_nextrad)
 
   !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay,albedos)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
+  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
-             Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, albedos, &
-             Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-             US, fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
-    Ice%albedo_vis_dir(i2,j2,k2) = albedos(VIS_DIR)
-    Ice%albedo_vis_dif(i2,j2,k2) = albedos(VIS_DIF)
-    Ice%albedo_nir_dir(i2,j2,k2) = albedos(NIR_DIR)
-    Ice%albedo_nir_dif(i2,j2,k2) = albedos(NIR_DIF)
+    if (IST%part_size(i,j,k) > 0.0) then
+      call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
+               Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, albedos, &
+               Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
+               sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
+               US, fCS%optics_CSp, IST%ITV, coszen_in=Rad%coszen_nextrad(i,j))
+      Ice%albedo_vis_dir(i2,j2,k2) = albedos(VIS_DIR)
+      Ice%albedo_vis_dif(i2,j2,k2) = albedos(VIS_DIF)
+      Ice%albedo_nir_dir(i2,j2,k2) = albedos(NIR_DIR)
+      Ice%albedo_nir_dif(i2,j2,k2) = albedos(NIR_DIF)
 
-    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
+      do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
 
-    !Niki: Is the following correct for diagnostics?
-    !###  This calculation of the "average" albedo should be replaced
-    ! with a calculation that weights the averaging by the fraction of the
-    ! shortwave radiation in each wavelength and orientation band.  However,
-    ! since this is only used for diagnostic purposes, making this change
-    ! might not be too urgent. -RWH
-    Ice%albedo(i2,j2,k2) = (Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
-                      +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
-
-  endif ; enddo ; enddo ; enddo
+      !Niki: Is the following correct for diagnostics?
+      !###  This calculation of the "average" albedo should be replaced
+      ! with a calculation that weights the averaging by the fraction of the
+      ! shortwave radiation in each wavelength and orientation band.  However,
+      ! since this is only used for diagnostic purposes, making this change
+      ! might not be too urgent. -RWH
+      Ice%albedo(i2,j2,k2) = (Ice%albedo_vis_dir(i2,j2,k2)+Ice%albedo_nir_dir(i2,j2,k2)&
+                        +Ice%albedo_vis_dif(i2,j2,k2)+Ice%albedo_nir_dif(i2,j2,k2))/4
+    else ! Zero the albedos and absorbed shortwave radiation out for debugging purposes.
+      Rad%sw_abs_sfc(i,j,k) = 0.0
+      Rad%sw_abs_snow(i,j,k) = 0.0
+      Rad%sw_abs_int(i,j,k) = 0.0
+      Rad%sw_abs_ocn(i,j,k) = 0.0
+      Ice%albedo_vis_dir(i2,j2,k2) = 0.0
+      Ice%albedo_vis_dif(i2,j2,k2) = 0.0
+      Ice%albedo_nir_dir(i2,j2,k2) = 0.0
+      Ice%albedo_nir_dif(i2,j2,k2) = 0.0
+      Ice%albedo(i2,j2,k2) = 0.0
+    endif
+  enddo ; enddo ; enddo
 
   !$OMP parallel do default(shared)
   do j=jsc,jec
