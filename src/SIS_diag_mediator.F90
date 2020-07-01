@@ -14,7 +14,7 @@ use MOM_string_functions, only : lowercase, uppercase, slasher
 use MOM_time_manager, only : time_type
 
 use diag_manager_mod, only : diag_manager_init
-use diag_manager_mod, only : send_data, diag_axis_init
+use diag_manager_mod, only : send_data, diag_axis_init,EAST,NORTH
 use diag_manager_mod, only : register_diag_field_fms=>register_diag_field
 use diag_manager_mod, only : register_static_field_fms=>register_static_field
 
@@ -175,17 +175,17 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 
   id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
             'Boundary point nominal longitude',set_name=set_name, &
-             Domain2=G%Domain%mpp_domain)
+             Domain2=G%Domain%mpp_domain, domain_position=EAST)
   id_yq = diag_axis_init('yB', G%gridLatB(G%jsgB:G%jegB), G%y_axis_units, 'y', &
             'Boundary point nominal latitude', set_name=set_name, &
-             Domain2=G%Domain%mpp_domain)
+             Domain2=G%Domain%mpp_domain, domain_position=NORTH)
 
   id_xhe = diag_axis_init('xTe', G%gridLonB(G%isg-1:G%ieg), G%x_axis_units, 'x', &
             'T-cell edge nominal longitude', set_name=set_name, &
-             Domain2=G%Domain%mpp_domain)
+             Domain2=G%Domain%mpp_domain, domain_position=EAST)
   id_yhe = diag_axis_init('yTe', G%gridLatB(G%jsg-1:G%jeg), G%y_axis_units, 'y', &
             'T-cell edge nominal latitude', set_name=set_name, &
-            Domain2=G%Domain%mpp_domain)
+            Domain2=G%Domain%mpp_domain, domain_position=NORTH)
   id_xh = diag_axis_init('xT', G%gridLonT(G%isg:G%ieg), G%x_axis_units, 'x', &
               'T point nominal longitude', set_name=set_name, edges=id_xhe, &
               Domain2=G%Domain%mpp_domain)
