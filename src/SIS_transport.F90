@@ -42,9 +42,11 @@ type, public :: SIS_transport_CS ; private
 
   real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3], used here only in
                               !! rolling and setting ridging parameters
-  real :: Roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
+  real :: roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
                               !! to become thinner by rolling is increased, or 0 to disable rolling.
                               !! Sensible values are 0 or larger than 1.
+  real :: ice_cover_discard   !< A tiny fractional ice coverage which if positive causes the mass
+                              !! in categories with less than this coverage to be discarded.
 
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
@@ -748,6 +750,12 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
         endif
       enddo
     endif
+    if (CS%ice_cover_discard > 0.0) then
+      do i=is,ie ; if ((part_sz(i,j,1) > 0.0) .and. (part_sz(i,j,1) < CS%ice_cover_discard)) then
+        part_sz(i,j,1) = 0.0
+        resum_cat(i,j) = .true.
+      endif ; enddo
+    endif
 
   endif ; enddo  ! j-loop and do_j
 
@@ -1147,13 +1155,18 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call get_param(param_file, mdl, "RHO_ICE", CS%Rho_ice, &
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0, scale=US%kg_m3_to_R)
-  call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%Roll_factor, &
+  call get_param(param_file, mdl, "SEA_ICE_ROLL_FACTOR", CS%roll_factor, &
                  "A factor by which the propensity of small amounts of "//&
                  "thick sea-ice to become thinner by rolling is increased "//&
                  "or 0 to disable rolling.  This can be thought of as the "//&
                  "minimum number of ice floes in a grid cell divided by "//&
                  "the horizontal floe aspect ratio.  Sensible values are "//&
                  "0 (no rolling) or larger than 1.", units="Nondim", default=1.0)
+  call get_param(param_file, mdl, "ICE_COVER_DISCARD", CS%ice_cover_discard, &
+                 "A tiny fractional ice coverage which if positive causes the mass "//&
+                 "in categories with less than this coverage to be discarded.", &
+                 units="nondim", default=-1.0)
+
 
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow "//&
