@@ -187,12 +187,12 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
                                     h2=CAS%m_snow, uh2=uh_snow, vh2=vh_snow, &
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
-      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
-                      dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, &
-                      dt_adv, G, US, IG, CS%continuity_CSp)
-      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, &
-                      dt_adv, G, US, IG, CS%continuity_CSp)
+      call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, &
+                      G, US, IG, CS%continuity_CSp, use_h_neg=.true.)
+      call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, &
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+      call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, &
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
@@ -1194,7 +1194,7 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call obsolete_logical(param_file, "USE_SIS_CONTINUITY", .true.)
   call obsolete_logical(param_file, "USE_SIS_THICKNESS_ADVECTION", .true.)
 
-  call SIS_continuity_init(Time, G, param_file, diag, CS%continuity_CSp, &
+  call SIS_continuity_init(Time, G, US, param_file, diag, CS%continuity_CSp, &
                            CS_cvr=cover_trans_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
 
