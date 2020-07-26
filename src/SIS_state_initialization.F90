@@ -158,7 +158,8 @@ subroutine ice_state_mass_init(IST, Ice, G, IG, US, PF, init_Time, just_read_par
 
   select case (trim(conc_config))
     case ("data_override")
-      call data_override('ICE', 'sic_obs', IST%part_size(isc:iec,jsc:jec,1), init_Time)
+      if (.not.just_read) &
+        call data_override('ICE', 'sic_obs', IST%part_size(isc:iec,jsc:jec,1), init_Time)
     case ("file")
       call initialize_concentration_from_file(IST%part_size, G, IG, US, PF, just_read_params=just_read)
     case ("zero")
