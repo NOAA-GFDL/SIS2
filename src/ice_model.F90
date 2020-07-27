@@ -2352,17 +2352,20 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
 
       call callTree_leave("ice_model_init():restore_from_restart_files")
-    else ! no restart file implies initialization with no ice
-      call ice_state_mass_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
+    endif ! file_exists(restart_path)
 
-      call ice_state_thermo_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, &
-                                just_read_params=is_restart)
+    ! If there is not a restart file, initialize the ice another way, perhaps with no ice.
+    ! If there is a restart file, the following two calls are just here to read and log parameters.
+    call ice_state_mass_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, just_read_params=is_restart)
 
+    call ice_state_thermo_init(sIST, Ice, sG, sIG, US, param_file, Ice%sCS%Time, &
+                               just_read_params=is_restart)
+
+    if (.not.is_restart) then
       ! Record the need to transfer ice to the correct thickness category.
       recategorize_ice = .true.
       init_coszen = .true. ; init_Tskin = .true. ; init_rough = .true.
-
-    endif ! file_exists(restart_path)
+    endif
 
     ! The restart files have now been read or the variables that would have been in the restart
     ! files have been initialized, although some corrections and halo updates still need to be done.
