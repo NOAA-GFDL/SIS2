@@ -36,9 +36,8 @@ type, public :: SIS_tracer_advect_CS ; private
                             !! denominator of the tracer advection CFL calculation, reproducing an
                             !! older incorrect expression, rather than using a proper scaling of this
                             !! negligible mass with cell area.  This should eventually be obsoleted.
-  logical :: refill_massless !< If true, adjust the emphasis of the previous tracer values in the
-                            !! construction of the new tracer value when the previous mass plus the
-                            !! mass passing through a cell is less than H_subroundoff*area.
+  logical :: Adcroft_CFL    !< If true use the Adcroft reciprocal of the cell mass when calculating
+                            !! the advective CFL numbers used in PPM tracer advection schemes.
 end type SIS_tracer_advect_CS
 
 ! This is outside of the control structure do avoid unnecessary double logging
@@ -312,11 +311,13 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
       if (x_first) then
   !    First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS) !(, OBC)
+                      isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, &
+                      CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
   !    Next, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                      isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                      CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -324,11 +325,13 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
       else
   !    First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                      isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, &
+                      CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
   !    Next, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                      isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                      CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
         domore_k(k) = 0
         do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -557,11 +560,13 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
         if (x_first) then
     !    First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                               isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS) !(, OBC)
+                        isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
     !    Next, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                               isv, iev, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                        isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -569,11 +574,13 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
         else
     !    First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                               isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                        isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
     !    Next, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                               isv, iev, jsv, jev, k, G, US, IG, CS) !(, OBC)
+                        isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
@@ -602,8 +609,8 @@ end subroutine advect_scalar
 
 !> advect_scalar_x does 1-d flux-form advection in the x-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
-subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                           is, ie, js, je, k, G, US, IG, CS) ! (, OBC)
+subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie, js, je, k, &
+                           G, US, IG, usePPM, usePCM, fixed_mass_neglect, Adcroft_CFL) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -628,8 +635,16 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   integer,                     intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                     intent(in)    :: k   !< The thickness category to work on
   type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
-  type(SIS_tracer_advect_CS), pointer    :: CS  !< The control structure returned by a previous
-                                                !! call to SIS_tracer_advect_init.
+  logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
+  logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
+  logical,                     intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
+                                                    !! negligible volume in the denominator of the tracer
+                                                    !! advection CFL calculation, rather than using a proper
+                                                    !! scaling with the cell area.  This is here to reproduce
+                                                    !! old answers and should eventually be obsoleted.
+  logical,                     intent(in)    :: Adcroft_CFL !< If true, use an Adcroft reciprocal of the
+                                                    !! cell mass when computing the advective CFL number.
+
   ! Local variables
   real, dimension(SZI_(G)) :: &
     slope_x         ! The concentration slope per grid point [Conc].
@@ -672,7 +687,8 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
   usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
 
   h_neglect = IG%H_subroundoff
-  mass_neglect = 0.0 ; if (CS%fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  if (Adcroft_CFL) mass_neglect = -1.0*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
   if (CS%usePCM) then ; do i=is-1,ie+1 ; slope_x(i) = 0.0 ; enddo ; endif
@@ -756,8 +772,8 @@ end subroutine advect_scalar_x
 
 !> advect_x does 1-d flux-form advection of multiple tracers in the x-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
-subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, US, IG, CS) ! (, OBC)
+subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, ie, js, je, k, &
+                    G, US, IG, usePPM, usePCM, fixed_mass_neglect, Adcroft_CFL) ! (, OBC)
   type(SIS_hor_grid_type),     intent(inout) :: G     !< The horizontal grid type
   type(ice_grid_type),         intent(in)    :: IG    !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
@@ -784,8 +800,15 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   integer,                     intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                     intent(in)    :: k   !< The thickness category to work on
   type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
-  type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
-                                                      !! call to SIS_tracer_advect_init.
+  logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
+  logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
+  logical,                     intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
+                                                    !! negligible volume in the denominator of the tracer
+                                                    !! advection CFL calculation, rather than using a proper
+                                                    !! scaling with the cell area.  This is here to reproduce
+                                                    !! old answers and should eventually be obsoleted.
+  logical,                     intent(in)    :: Adcroft_CFL !< If true, use an Adcroft reciprocal of the
+                                                    !! cell mass when computing the advective CFL number.
 
   ! Local variables
   real, dimension(SZI_(G),nL_max,ntr) :: &
@@ -828,7 +851,8 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
   usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
 
   h_neglect = IG%H_subroundoff
-  mass_neglect = 0.0 ; if (CS%fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  if (Adcroft_CFL) mass_neglect = -1.0*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
 
@@ -952,7 +976,8 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
                                                   !! in roundoff and can be neglected [R Z L2 ~> kg].
   real,                      intent(in)    :: mass_neglect ! A cell mass that is so small it is usually
                                                   !! lost in roundoff and can be neglected, or 0 to use
-                                                  !! h_neglect times area [R Z L2 ~> kg].
+                                                  !! h_neglect times area [R Z L2 ~> kg].  If this is
+                                                 !! negative use an Adcroft-rule reciprocal in CFL.
   ! Local
   integer :: i
   real :: hup, hlos ! Upwind cell mass and an outward transport [R Z L2 ~> kg]
@@ -961,6 +986,11 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
     if (uhr(I,j) == 0.0) then
       uhh(I) = 0.0
       CFL(I) = 0.0
+    elseif (((uhr(I,j) < 0.0) .and. (hprev(i+1,j) == 0.0)) .or. &
+            ((uhr(I,j) > 0.0) .and. (hprev(i,j) == 0.0)) ) then
+      uhh(I) = 0.0
+      CFL(I) = 0.0
+      domore_u = .true.
     elseif (uhr(I,j) < 0.0) then
       hup = hprev(i+1,j)
       hlos = MAX(0.0,uhr(I+1,j))
@@ -971,7 +1001,9 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
       else
         uhh(I) = uhr(I,j)
       endif
-      if (mass_neglect > 0.0) then
+      if (mass_neglect < 0.0) then
+        CFL(I) = -uhh(I) / (hprev(i+1,j)) ! CFL is positive
+      elseif (mass_neglect > 0.0) then
         CFL(I) = -uhh(I) / (hprev(i+1,j) + mass_neglect) ! CFL is positive
       else
         CFL(I) = -uhh(I) / (hprev(i+1,j) + h_neglect*G%areaT(i+1,j)) ! CFL is positive
@@ -986,7 +1018,9 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
       else
         uhh(I) = uhr(I,j)
       endif
-      if (mass_neglect > 0.0) then
+      if (mass_neglect < 0.0) then
+        CFL(I) = uhh(I) / (hprev(i,j)) ! CFL is positive
+      elseif (mass_neglect > 0.0) then
         CFL(I) = uhh(I) / (hprev(i,j) + mass_neglect) ! CFL is positive
       else
         CFL(I) = uhh(I) / (hprev(i,j) + h_neglect*G%areaT(i,j)) ! CFL is positive
@@ -1103,8 +1137,8 @@ end subroutine kernel_PPMH3_Tr_x
 
 !> advect_scalar_y does 1-d flux-form advection in the y-direction using a
 !! monotonic piecewise constant, linear, or parabolic scheme.
-subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                    is, ie, js, je, k, G, US, IG, CS) ! (, OBC)
+subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie, js, je, k, &
+                           G, US, IG, usePPM, usePCM, fixed_mass_neglect, Adcroft_CFL) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -1129,8 +1163,15 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   integer,                 intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                 intent(in)    :: k   !< The thickness category to work on
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
-  type(SIS_tracer_advect_CS), pointer    :: CS  !< The control structure returned by a previous
-                                                !! call to SIS_tracer_advect_init.
+  logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
+  logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
+  logical,                 intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
+                                                !! negligible volume in the denominator of the tracer
+                                                !! advection CFL calculation, rather than using a proper
+                                                !! scaling with the cell area.  This is here to reproduce
+                                                !! old answers and should eventually be obsoleted.
+  logical,                 intent(in)    :: Adcroft_CFL !< If true, use an Adcroft reciprocal of the
+                                                !! cell mass when computing the advective CFL number.
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
@@ -1175,7 +1216,8 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
   usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
 
   h_neglect = IG%H_subroundoff
-  mass_neglect = 0.0 ; if (CS%fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  if (Adcroft_CFL) mass_neglect = -1.0*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1265,8 +1307,8 @@ end subroutine advect_scalar_y
 
 !> advect_y does 1-d flux-form advection of multiple tracers in the y-direction
 !! using a monotonic piecewise constant, linear, or parabolic scheme.
-subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                    is, ie, js, je, k, G, US, IG, CS) ! (, OBC)
+subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, ie, js, je, k, &
+                    G, US, IG, usePPM, usePCM, fixed_mass_neglect, Adcroft_CFL) ! (, OBC)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_tracer_type), dimension(ntr), &
@@ -1293,8 +1335,15 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   integer,                 intent(in)    :: je  !< The ending tracer j-index to work on
   integer,                 intent(in)    :: k   !< The thickness category to work on
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
-  type(SIS_tracer_advect_CS), pointer    :: CS  !< The control structure returned by a previous
-                                                !! call to SIS_tracer_advect_init.
+  logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
+  logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
+  logical,                 intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
+                                                !! negligible volume in the denominator of the tracer
+                                                !! advection CFL calculation, rather than using a proper
+                                                !! scaling with the cell area.  This is here to reproduce
+                                                !! old answers and should eventually be obsoleted.
+  logical,                 intent(in)    :: Adcroft_CFL !< If true, use an Adcroft reciprocal of the
+                                                !! cell mass when computing the advective CFL number.
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G),nL_max,ntr) :: &
@@ -1338,7 +1387,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
   usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
 
   h_neglect = IG%H_subroundoff
-  mass_neglect = 0.0 ; if (CS%fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
+  if (Adcroft_CFL) mass_neglect = -1.0*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2
 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
@@ -1483,7 +1533,8 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
                                                  !! in roundoff and can be neglected [R Z L2 ~> kg m-2].
   real,                     intent(in)    :: mass_neglect ! A cell mass that is so small it is usually
                                                  !! lost in roundoff and can be neglected, or 0 to use
-                                                 !! h_neglect times area [R Z L2 ~> kg].
+                                                 !! h_neglect times area [R Z L2 ~> kg].  If this is
+                                                 !! negative use an Adcroft-rule reciprocal in CFL.
   ! Local variables
   integer :: i
   real :: hup, hlos  ! Upwind cell mass and an outward transport [R Z L2 ~> kg]
@@ -1493,6 +1544,11 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
     if (vhr(i,J) == 0.0) then
       vhh(i,J) = 0.0
       CFL(i) = 0.0
+    elseif (((vhr(i,J) < 0.0) .and. (hprev(i,j+1) == 0.0)) .or. &
+            ((vhr(i,J) > 0.0) .and. (hprev(i,j) == 0.0)) ) then
+      vhh(i,J) = 0.0
+      CFL(i) = 0.0
+      domore_v(J) = .true.
     elseif (vhr(i,J) < 0.0) then
       hup = hprev(i,j+1)
       hlos = MAX(0.0,vhr(i,J+1))
@@ -1503,7 +1559,9 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
       else
         vhh(i,J) = vhr(i,J)
       endif
-      if (mass_neglect > 0.0) then
+      if (mass_neglect < 0.0) then
+        CFL(i) = -vhh(i,J) / (hprev(i,j+1)) ! CFL is positive
+      elseif (mass_neglect > 0.0) then
         CFL(i) = -vhh(i,J) / (hprev(i,j+1) + mass_neglect) ! CFL is positive
       else
         CFL(i) = -vhh(i,J) / (hprev(i,j+1) + h_neglect*G%areaT(i,j+1)) ! CFL is positive
@@ -1518,7 +1576,9 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
       else
         vhh(i,J) = vhr(i,J)
       endif
-      if (mass_neglect > 0.0) then
+      if (mass_neglect < 0.0) then
+        CFL(i) = vhh(i,J) / (hprev(i,j)) ! CFL is positive
+      elseif (mass_neglect > 0.0) then
         CFL(i) = vhh(i,J) / (hprev(i,j) + mass_neglect) ! CFL is positive
       else
         CFL(i) = vhh(i,J) / (hprev(i,j) + h_neglect*G%areaT(i,j)) ! CFL is positive
@@ -1855,6 +1915,10 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
                  "tracer advection CFL calculation, reproducing an older incorrect expression, "//&
                  "rather than using a proper scaling of this negligible mass with cell area.", &
                  default=.false.)
+  call get_param(param_file, mdl, "ADCROFT_ADVECTIVE_CFL", CS%Adcroft_CFL, &
+                 "If true use the Adcroft reciprocal of the cell mass when calculating the "//&
+                 "advective CFL numbers used in PPM tracer advection schemes, rather than adding "//&
+                 "a small mass in the denominator of the advective CFL ratio.", default=.false.)
 
   if (first_call) then
     id_clock_advect = cpu_clock_id('(Ocean advect tracer)', grain=CLOCK_MODULE)
