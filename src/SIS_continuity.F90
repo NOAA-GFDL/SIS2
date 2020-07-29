@@ -135,7 +135,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
       if (apply_h_neg .and. (h_up < CS%h_neglect_cont)) h_up = 0.0
 
       uh(I,j,k) = G%dy_Cu(I,j) * u(I,j) * h_up
-      if (present(masking_uh)) then ; if (masking_uh(I,j,k) == 0.0) uh(I,j,k) = 0.0 ; endif
+      if (present(masking_uh)) then
+        if (masking_uh(I,j,k) == 0.0) uh(I,j,k) = 0.0
+        if (abs(uh(I,j,k)) < CS%frac_neglect*abs(masking_uh(I,j,k))) uh(I,j,k) = 0.0
+      endif
     enddo ; enddo ; enddo
     !$OMP do
     do J=js-1,je ; do k=1,nCat ; do i=is,ie
@@ -144,7 +147,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
       if (apply_h_neg .and. (h_up < CS%h_neglect_cont)) h_up = 0.0
 
       vh(i,J,k) = G%dx_Cv(i,J) * v(i,J) * h_up
-      if (present(masking_vh)) then ; if (masking_vh(i,J,k) == 0.0) vh(i,J,k) = 0.0 ; endif
+      if (present(masking_vh)) then
+        if (masking_vh(i,J,k) == 0.0) vh(i,J,k) = 0.0
+        if (abs(vh(i,J,k)) < CS%frac_neglect*abs(masking_vh(i,J,k))) vh(i,J,k) = 0.0
+      endif
     enddo ; enddo ; enddo
     !$OMP do
     do j=js,je ; do k=1,nCat ; do i=is,ie
@@ -1124,6 +1130,7 @@ subroutine zonal_mass_flux(u, dt, G, US, IG, CS, LB, h_in, uh, htot_in, uh_tot, 
     if (present(masking_uh) .and. present(uh)) then
       do k=1,nCat ; do I=ish-1,ieh
         if (masking_uh(I,j,k) == 0.0) uh(I,j,k) = 0.0
+        if (abs(uh(I,j,k)) < CS%frac_neglect*abs(masking_uh(I,j,k))) uh(I,j,k) = 0.0
       enddo ; enddo
     endif
 
@@ -1294,6 +1301,7 @@ subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_
     if (present(masking_vh) .and. present(vh)) then
       do k=1,nCat ; do i=ish,ieh
         if (masking_vh(i,J,k) == 0.0) vh(i,J,k) = 0.0
+        if (abs(vh(i,J,k)) < CS%frac_neglect*abs(masking_vh(i,J,k))) vh(i,J,k) = 0.0
       enddo ; enddo
     endif
 
@@ -1641,8 +1649,10 @@ subroutine SIS_continuity_init(Time, G, US, param_file, diag, CS, CS_cvr)
   call get_param(param_file, mdl, "CONTINUITY_FRAC_NEGLECT", CS%frac_neglect, &
                  "When the total fluxes are distributed between categories with "//&
                  "MERGED_CONTINUITY, any category whose ice is less than this fraction of the "//&
-                 "total mass contributes no flux.  A suggested non-default value might be of "//&
-                 "order 1e-20.", default=0.0, units="nondim")
+                 "total mass contributes no flux.  Without MERGED_CONTINUITY, any snow or "//&
+                 "melt pond transport that is less than this fraction of the ice transport "//&
+                 "is zeroed out.  A suggested non-default value might be of order 1e-20.", &
+                 default=0.0, units="nondim")
 
   CS%diag => diag
 
