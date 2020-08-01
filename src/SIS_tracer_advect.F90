@@ -671,9 +671,8 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
   real :: hnew      ! The projected thickness [R Z L2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: htot      ! The sum of thickness within or passing or out of a cell [R Z L2 ~> kg].
   real :: I_htot    ! The inverse of the sum of thickness within or passing or
-                    ! out of a cell [R-1 Z-1 L-2 ~> kg-1].
+                    ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
   real :: mass_neglect ! A cell mass that is so small it is usually lost in roundoff and can be
@@ -684,19 +683,19 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
 !  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
+  usePLMslope = .not.(usePCM .or. usePPM)
 
   h_neglect = IG%H_subroundoff
   mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
   if (Adcroft_CFL) mass_neglect = -1.0*US%kg_m3_to_R*US%m_to_Z*US%m_to_L**2
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
-  if (CS%usePCM) then ; do i=is-1,ie+1 ; slope_x(i) = 0.0 ; enddo ; endif
+  if (usePCM) then ; do i=is-1,ie+1 ; slope_x(i) = 0.0 ; enddo ; endif
 
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
 
-    if (CS%usePPM .or. usePLMslope) then ; do I=is-2,ie+1
+    if (usePPM .or. usePLMslope) then ; do I=is-2,ie+1
       mass_mask(I,j) = 0.0
       if (G%mask2dCu(I,j) * hprev(i,j,k)*hprev(i+1,j,k) > 0.0) mass_mask(I,j) = 1.0
     enddo ; endif
@@ -709,7 +708,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
     call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, &
                           domore_u(j,k), h_neglect, mass_neglect)
 
-    if (CS%usePPM) then
+    if (usePPM) then
       call kernel_PPMH3_Tr_x(G, is-1, ie, j, &
              scalar(:,:,k), mass_mask, uhh, CFL, Tr_x(:))
     else ! PLM
@@ -720,7 +719,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
           Tr_x(I) = scalar(i+1,j,k) - 0.5 * slope_x(i+1) * ( 1. - CFL(I) )
         endif
       enddo
-    endif ! CS%usePPM
+    endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
     do I=is-1,ie
@@ -740,12 +739,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
-          htot = hlst(i) + (abs(uhh(I)) + abs(uhh(I-1)))
-          if (CS%refill_massless .and. (htot < h_neglect*G%areaT(i,j))) then
-            hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - htot)
-            htot = h_neglect*G%areaT(i,j)
-          endif
-          I_htot = 1.0 / htot
+          I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
           haddE(i) = h_add * (abs(uhh(I))*I_htot)
@@ -836,7 +830,6 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
   real :: hnew      ! The projected thickness [R Z L2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: htot      ! The sum of thickness within or passing or out of a cell [R Z L2 ~> kg].
   real :: I_htot    ! The inverse of the sum of thickness within or passing or
                     ! out of a cell [R-1 Z-1 L-2 ~> kg-1].
   real :: h_neglect ! A thickness that is so small it is usually lost
@@ -848,7 +841,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
   integer :: i, j, l, m
   logical :: usePLMslope
 
-  usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
+  usePLMslope = .not.(usePCM .or. usePPM)
 
   h_neglect = IG%H_subroundoff
   mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
@@ -856,14 +849,14 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
 
   do I=is-1,ie ; CFL(I) = 0.0 ; enddo
 
-  if (CS%usePCM) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is-1,ie+1
+  if (usePCM) then ; do m=1,ntr ; do l=1,Tr(m)%nL ; do i=is-1,ie+1
     slope_x(i,l,m) = 0.0
   enddo ; enddo ; enddo ; endif
 
   do j=js,je ; if (domore_u(j,k)) then
     domore_u(j,k) = .false.
 
-    if (CS%usePPM .or. usePLMslope) then ; do I=is-2,ie+1
+    if (usePPM .or. usePLMslope) then ; do I=is-2,ie+1
       mass_mask(I,j) = 0.0
       if (G%mask2dCu(I,j)*hprev(i,j,k)*hprev(i+1,j,k) > 0.0) mass_mask(I,j) = 1.0
     enddo ; endif
@@ -878,7 +871,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
     call kernel_uhh_CFL_x(G, is-1, ie, j, hprev(:,:,k), uhr(:,:,k), uhh, CFL, &
                           domore_u(j,k), h_neglect, mass_neglect)
 
-    if (CS%usePPM) then
+    if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PPMH3_Tr_x(G, is-1, ie, j, &
                Tr(m)%t(:,:,k,l), mass_mask, uhh, CFL, Tr_x(:,l,m))
@@ -891,7 +884,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
           Tr_x(I,l,m) = Tr(m)%t(i+1,j,k,l) - 0.5 * slope_x(i+1,l,m) * ( 1. - CFL(I) )
         endif
       enddo ; enddo ; enddo
-    endif ! CS%usePPM
+    endif ! usePPM
 
     ! Calculate new tracer concentration in each cell after accounting for the i-direction fluxes.
     do I=is-1,ie
@@ -911,12 +904,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
-          htot = hlst(i) + (abs(uhh(I)) + abs(uhh(I-1)))
-          if (CS%refill_massless .and. (htot < h_neglect*G%areaT(i,j))) then
-            hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - htot)
-            htot = h_neglect*G%areaT(i,j)
-          endif
-          I_htot = 1.0 / htot
+          I_htot = 1.0 / (hlst(i) + (abs(uhh(I)) + abs(uhh(I-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddW(i) = h_add * (abs(uhh(I-1))*I_htot)
           haddE(i) = h_add * (abs(uhh(I))*I_htot)
@@ -1199,9 +1187,8 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
   real :: hnew      ! The projected thickness [R Z L2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: htot      ! The sum of thickness within or passing or out of a cell [R Z L2 ~> kg].
   real :: I_htot    ! The inverse of the sum of thickness within or passing or
-                    ! out of a cell [R-1 Z-1 L-2 ~> kg-1].
+                    ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
   real :: mass_neglect ! A cell mass that is so small it is usually lost in roundoff and can be
@@ -1213,7 +1200,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
 !  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
-  usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
+  usePLMslope = .not.(usePCM .or. usePPM)
 
   h_neglect = IG%H_subroundoff
   mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
@@ -1222,7 +1209,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
 
-  if (CS%usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
+  if (usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
     mass_mask(i,J) = 0.0
     if (G%mask2dCv(i,J)*hprev(i,j,k)*hprev(i,j+1,k) > 0.0) mass_mask(i,J) = 1.0
   enddo ; enddo ; endif
@@ -1232,14 +1219,14 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
     do j=js-1,je+1 ; if (do_j_tr(j)) then
       call kernel_PLM_slope_y(G, is, ie, j, scalar(:,:,k), mass_mask, slope_y(:,j))
     endif ; enddo
-  elseif (CS%usePCM) then
+  elseif (usePCM) then
     do j=js-1,je+1 ; do i=is,ie ; slope_y(i,j) = 0.0 ; enddo ; enddo
   endif ! usePLMslope
 
   do J=js-1,je ; if (domore_v(J,k)) then
     call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, &
                           domore_v(:,k), h_neglect, mass_neglect)
-    if (CS%usePPM) then
+    if (usePPM) then
       call kernel_PPMH3_Tr_y(G, is, ie, J, &
              scalar(:,:,k), mass_mask, vhh, CFL, Tr_y(:,J))
     else ! PLM
@@ -1250,7 +1237,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
           Tr_y(i,J) = scalar(i,j+1,k) - 0.5 * slope_y(i,j+1) * ( 1. - CFL(i) )
         endif
       enddo
-    endif ! CS%usePPM
+    endif ! usePPM
 
   else ! not domore_v.
     do i=is,ie ; vhh(i,J) = 0.0 ; Tr_y(i,J) = 0.0 ; enddo
@@ -1276,12 +1263,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
-          htot = hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1)))
-          if (CS%refill_massless .and. (htot < h_neglect*G%areaT(i,j))) then
-            hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - htot)
-            htot = h_neglect*G%areaT(i,j)
-          endif
-          I_htot = 1.0 / htot
+          I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
           haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
@@ -1371,9 +1353,8 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   real :: hnew      ! The projected thickness [R Z L2 ~> kg].
   real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: htot      ! The sum of thickness within or passing or out of a cell [R Z L2 ~> kg].
   real :: I_htot    ! The inverse of the sum of thickness within or passing or
-                    ! out of a cell [R-1 Z-1 L-2 ~> kg-1].
+                    ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
   real :: mass_neglect ! A cell mass that is so small it is usually lost in roundoff and can be
@@ -1384,7 +1365,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   logical :: usePLMslope
   integer :: i, j, l, m
 
-  usePLMslope = .not.(CS%usePCM .or. CS%usePPM)
+  usePLMslope = .not.(usePCM .or. usePPM)
 
   h_neglect = IG%H_subroundoff
   mass_neglect = 0.0 ; if (fixed_mass_neglect) mass_neglect = h_neglect*US%m_to_L**2
@@ -1393,7 +1374,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   do_j_tr(js-1) = domore_v(js-1,k) ; do_j_tr(je+1) = domore_v(je,k)
   do j=js,je ; do_j_tr(j) = (domore_v(J-1,k) .or. domore_v(J,k)) ; enddo
 
-  if (CS%usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
+  if (usePPM .or. usePLMslope) then ; do J=js-2,je+1 ; do i=is,ie
     mass_mask(i,J) = 0.0
     if (G%mask2dCv(i,J)*hprev(i,j,k)*hprev(i,j+1,k) > 0.0) mass_mask(i,J) = 1.0
   enddo ; enddo ; endif
@@ -1403,7 +1384,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
     do j=js-1,je+1 ; if (do_j_tr(j)) then ; do m=1,ntr ; do l=1,Tr(m)%nL
       call kernel_PLM_slope_y(G, is, ie, j, Tr(m)%t(:,:,k,l), mass_mask, slope_y(:,j,l,m))
     enddo ; enddo ; endif ; enddo ! End of l-, m-, & j- loops.
-  elseif (CS%usePCM) then
+  elseif (usePCM) then
     do m=1,ntr ; do l=1,Tr(m)%nL ; do j=js-1,je+1 ; do i=is,ie
       slope_y(i,j,l,m) = 0.0
     enddo ; enddo ; enddo ; enddo
@@ -1412,7 +1393,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   do J=js-1,je ; if (domore_v(J,k)) then
     call kernel_vhh_CFL_y(G, is, ie, J, hprev(:,:,k), vhr(:,:,k), vhh, CFL, &
                           domore_v(:,k), h_neglect, mass_neglect)
-    if (CS%usePPM) then
+    if (usePPM) then
       do m=1,ntr ; do l=1,Tr(m)%nL
         call kernel_PPMH3_Tr_y(G, is, ie, J, &
                Tr(m)%t(:,:,k,l), mass_mask, vhh, CFL, Tr_y(:,J,l,m))
@@ -1425,7 +1406,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
           Tr_y(i,J,l,m) = Tr(m)%t(i,j+1,k,l) - 0.5 * slope_y(i,j+1,l,m) * ( 1. - CFL(i) )
         endif
       enddo ; enddo ; enddo
-    endif ! CS%usePPM
+    endif ! usePPM
 
   else ! not domore_v.
     do i=is,ie ; vhh(i,J) = 0.0 ; enddo
@@ -1452,12 +1433,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
-          htot = hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1)))
-          if (CS%refill_massless .and. (htot < h_neglect*G%areaT(i,j))) then
-            hlst(i) = hlst(i) + (h_neglect*G%areaT(i,j) - htot)
-            htot = h_neglect*G%areaT(i,j)
-          endif
-          I_htot = 1.0 / htot
+          I_htot = 1.0 / (hlst(i) + (abs(vhh(i,J)) + abs(vhh(i,J-1))))
           hlst(i) = hlst(i) + h_add*(hlst(i)*I_htot)
           haddS(i) = h_add * (abs(vhh(i,J-1))*I_htot)
           haddN(i) = h_add * (abs(vhh(i,J))*I_htot)
@@ -1905,11 +1881,6 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
            "Unknown SIS_TRACER_ADVECTION_SCHEME = "//trim(mesg))
       endif
   end select
-  call get_param(param_file, mdl, "TRACER_ADV_REFILL_MASSLESS", CS%refill_massless, &
-                 "If true, increase the emphasis of the previous tracer values when the previous "//&
-                 "mass plus the mass passing through a cell is less than H_subroundoff*area.", &
-                 default=.false.)
-
   call get_param(param_file, mdl, "CFL_MASS_NEGLECT_BUG", CS%fixed_mass_neglect, &
                  "If true use a globally constant negligible volume in the denominator of the "//&
                  "tracer advection CFL calculation, reproducing an older incorrect expression, "//&
