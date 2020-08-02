@@ -13,23 +13,22 @@ module SIS_sum_output
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use MOM_coms, only : sum_across_PEs, PE_here, root_PE, num_PEs, max_across_PEs
-use MOM_coms, only : reproducing_sum
-use MOM_coms, only : EFP_type, operator(+), operator(-), assignment(=), EFP_to_real, real_to_EFP
+use MOM_coms,          only : EFP_type, operator(+), operator(-), assignment(=)
+use MOM_coms,          only : reproducing_sum, reproducing_sum_EFP, EFP_to_real, real_to_EFP
+use MOM_coms,          only : EFP_sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-! use MOM_io, only : create_file, fieldtype, flush_file, reopen_file, vardesc, write_field
-use MOM_io, only : open_file
-use MOM_io, only : APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
+use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
+! use MOM_io,          only : create_file, fieldtype, flush_file, reopen_file, vardesc, write_field
+use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
-use MOM_time_manager, only : time_type, get_time, operator(>), operator(-)
-use MOM_time_manager, only : get_date, get_calendar_type, NO_CALENDAR
-use MOM_unit_scaling, only : unit_scale_type
-use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
-use SIS2_ice_thm, only : enthalpy_liquid_freeze, get_SIS2_thermo_coefs, ice_thermo_type
+use MOM_time_manager,  only : time_type, get_time, operator(>), operator(-)
+use MOM_time_manager,  only : get_date, get_calendar_type, NO_CALENDAR
+use MOM_unit_scaling,  only : unit_scale_type
+use SIS_types,         only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_types,         only : ocean_sfc_state_type
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use ice_grid,          only : ice_grid_type
+use SIS2_ice_thm,      only : enthalpy_liquid_freeze, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
 
 use netcdf
@@ -48,19 +47,6 @@ public accumulate_input_1, accumulate_input_2
 
 !> This structure contains the parameters that regulate the summed output.
 type, public :: SIS_sum_out_CS ; private
-
-  real    :: mass_prev          !<   The total sea ice mass the last time that
-                                !! write_ice_statistics was called [kg].
-  real    :: fresh_water_input  !<   The total mass of fresh water added by
-                                !! surface fluxes since the last time that
-  real    :: salt_prev          !<   The total amount of salt in the sea ice the last
-                                !! time that write_ice_statistics was called [gSalt].
-  real    :: net_salt_input     !<   The total salt added by surface fluxes since the last
-                                !! time that write_ice_statistics was called [gSalt].
-  real    :: heat_prev          !<   The total amount of heat in the sea ice the last
-                                !! time that write_ice_statistics was called [J].
-  real    :: net_heat_input     !<   The total heat added by surface fluxes since the last
-                                !! time that write_ice_statistics was called [J].
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [R Z ~> kg m-2].
@@ -68,6 +54,7 @@ type, public :: SIS_sum_out_CS ; private
                                 !! the last time that write_ice_statistics was called [Q R Z ~> J m-2].
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2].
+    ! These three arrays are only allocated and used for monitoring column-wise conservation.
     water_col_prev, &           !< The column integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
     heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
@@ -75,12 +62,12 @@ type, public :: SIS_sum_out_CS ; private
     salt_col_prev               !< The column integrated salt that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg m-2].
 
-  type(EFP_type) :: fresh_water_in_EFP !< An extended fixed point version of fresh_water_in
-  type(EFP_type) :: net_salt_in_EFP !< An extended fixed point version of net_salt_in
-  type(EFP_type) :: net_heat_in_EFP !< An extended fixed point version of net_heat_in
-  type(EFP_type) :: heat_prev_EFP !< An extended fixed point version of heat_prev
-  type(EFP_type) :: salt_prev_EFP !< An extended fixed point version of salt_prev
-  type(EFP_type) :: mass_prev_EFP !< An extended fixed point version of mass_prev
+  type(EFP_type) :: heat_prev_EFP !<   The total amount of heat in the sea ice the last
+                                !! time that write_ice_statistics was called [J], in EFP form.
+  type(EFP_type) :: salt_prev_EFP !<   The total amount of salt in the sea ice the last
+                                !! time that write_ice_statistics was called [gSalt], in EFP form.
+  type(EFP_type) :: mass_prev_EFP !<   The total sea ice mass the last time that
+                                !! write_ice_statistics was called [kg], in EFP form.
   real    :: dt                 !< The baroclinic dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
@@ -200,9 +187,8 @@ subroutine SIS_sum_output_end(CS)
                                       !! SIS_sum_output_init that is deallocated here
 !   This subroutine deallocates the memory owned by this module.
 
-  if (associated(CS)) then
-    deallocate(CS)
-  endif
+  if (associated(CS)) deallocate(CS)
+
 end subroutine SIS_sum_output_end
 
 !> Write out the sea ice statistics of the total sea-ice mass, heat and salt by
@@ -230,14 +216,10 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
     ice_area, &    ! The area of ice in each cell and hemisphere [m2].
-    ice_extent, &  ! The extent (cells with >10% coverage) of ice in each
-                   ! cell and hemisphere [m2].
-    col_mass, &    ! The column integrated ice and snow mass in each cell and
-                   ! hemisphere [kg].
-    col_heat, &    ! The column integrated ice and snow heat in each cell and
-                   ! hemisphere [J].
-    col_salt       ! The column integrated salt in the ice in each cell and
-                   ! hemisphere [kg].
+    ice_extent, &  ! The extent (cells with >10% coverage) of ice in each cell and hemisphere [m2].
+    col_mass, &    ! The column integrated ice and snow mass in each cell and hemisphere [kg].
+    col_heat, &    ! The column integrated ice and snow heat in each cell and hemisphere [J].
+    col_salt       ! The column integrated salt in the ice in each cell and hemisphere [kg].
 
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres [m2].
@@ -253,53 +235,64 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: mass_anom    ! The change in fresh water that cannot be accounted for
                        ! by the surface fluxes [kg].
   real :: I_Mass       ! Adcroft's rule reciprocal of mass: 1/Mass or 0 [kg-1].
-  real :: Salt         ! The total amount of salt in the ocean [gSalt].
+  real :: Salt         ! The total amount of salt in the brine pockets in sea ice [gSalt].
   real :: Salt_chg     ! The change in total sea ice salt since the last call
                        ! to this subroutine [gSalt].
-  real :: Salt_anom    ! The change in salt that cannot be accounted for by
-                       ! the surface fluxes [gSalt].
-  real :: Salt_anom_norm ! The salt anomaly normalized by salt (if it is nonzero).
-  real :: salin        ! The mean salinity of the ocean [gSalt kg-1].
-  real :: salin_chg    ! The change in total salt since the last call
-                       ! to this subroutine divided by total mass [gSalt kg-1].
-  real :: salin_anom   ! The change in total salt that cannot be accounted for by
-                       ! the surface fluxes divided by total mass [gSalt kg-1].
-  real :: salin_mass_in ! The mass of salt input since the last call [kg].
-  real :: Heat         ! The total amount of Heat in the ocean [J].
-  real :: Heat_chg     ! The change in total sea ice heat since the last call
-                       ! to this subroutine [J].
-  real :: Heat_anom    ! The change in heat that cannot be accounted for by
-                       ! the surface fluxes [J].
+  real :: Salt_anom    ! The change in salt that cannot be accounted for by the surface fluxes [gSalt].
+  real :: Salt_anom_norm ! The salt anomaly normalized by salt (if it is nonzero) [nondim].
+  real :: Heat         ! The total amount of enthalpy in the sea ice, brine pockets and melt ponds [J].
+  real :: Heat_chg     ! The change in total sea ice heat since the last call to this subroutine [J].
+  real :: Heat_anom    ! The change in heat that cannot be accounted for bythe surface fluxes [J].
   real :: Heat_anom_norm ! The heat anomaly normalized by heat (if it is nonzero) [nondim].
-  real :: temp         ! The mean potential temperature of the ocean [degC].
-  real :: temp_anom    ! The change in total heat that cannot be accounted for
-                       ! by the surface fluxes, divided by the total heat
-                       ! capacity of the ocean [degC].
-  real :: Area         ! The total area of the sea ice [m2].
-  real :: Extent       ! The total extent of the sea ice [m2].
   real :: heat_imb     ! The column integrated heat imbalance [Q kg m-2 ~> J m-2].
   real :: mass_imb     ! The column integrated mass imbalance [kg].
   real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Q ~> J kg-1].
-  real :: I_nlay, kg_H_nlay, area_pt
-  real :: area_h       ! The masked area of a column.
+  real :: kg_H_nlay    ! A mass unit conversion factor divided by the number of layers [kg m-2 H-1 ~> 1]
+  real :: area_pt      ! The area of a thickness catagory in a cell [m2].
+  real :: area_h       ! The masked area of a column [m2].
   type(EFP_type) :: &
-    mass_EFP, &        ! Extended fixed point sums of total mass, etc.
-    salt_EFP, heat_EFP, salt_chg_EFP, heat_chg_EFP, mass_chg_EFP, &
-    mass_anom_EFP, salt_anom_EFP, heat_anom_EFP
+    fresh_water_in_EFP, & ! The total mass of fresh water added by surface fluxes
+                       ! since the last time that write_ice_statistics was called [kg],
+                       ! in extended fixed point (EFP) form.
+    net_salt_in_EFP, & !   The total salt added by surface fluxes since the last
+                       ! time that write_ice_statistics was called [gSalt], in EFP form.
+    net_heat_in_EFP, & !   The total heat added by surface fluxes since the last
+                       ! time that write_ice_statistics was called [J], in EFP form.
+    mass_EFP, &        ! The total water mass of the sea ice and snow and ponds atop it [kg].
+    mass_chg_EFP, &    ! The change in total sea ice mass of fresh water since
+                       ! the last call to this subroutine [kg].
+    mass_anom_EFP, &   ! The change in fresh water that cannot be accounted for
+                       ! by the surface fluxes [kg].
+    salt_EFP, &        ! The total amount of salt in the brine pockets in sea ice [gSalt].
+    salt_chg_EFP, &    ! The change in total sea ice salt since the last call
+                       ! to this subroutine [gSalt].
+    salt_anom_EFP, &   ! The change in total salt that cannot be accounted for by
+                       ! the surface fluxes divided by total mass [gSalt].
+    heat_EFP, &        ! The total amount of enthalpy in the sea ice, snow, brine pockets
+                       ! and melt ponds [J].
+    heat_chg_EFP, &    ! The change in total sea ice heat since the last call
+                       ! to this subroutine [J].
+    heat_anom_EFP      ! The change in heat that cannot be accounted for by the surface fluxes [J].
+  type(EFP_type), dimension(14+MAX_FIELDS_) :: EFP_list ! An array of EFP types for joint global sums.
+
+  ! These real versions of other variables are here for debugging.
+  real    :: fresh_water_input  !   The total mass of fresh water added by surface fluxes since
+                                ! the last time that write_ice_statistics was called [kg].
+  real    :: net_salt_input     !   The total salt added by surface fluxes since the last
+                                ! time that write_ice_statistics was called [gSalt].
+  real    :: net_heat_input     !   The total heat added by surface fluxes since the last
+                                ! time that write_ice_statistics was called [J].
 
   real :: CFL_trans    ! A transport-based definition of the CFL number [nondim].
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection [nondim].
   real :: dt_CFL       ! The timestep for calculating the CFL number [T ~> s].
   real :: max_CFL      ! The maximum of the CFL numbers [nondim].
-  real, dimension(SZI_(G),SZJ_(G)) :: &
-    Temp_int, Salt_int
   logical :: check_col
-  integer :: num_nc_fields  ! The number of fields that will actually go into
-                            ! the NetCDF file.
+  integer :: num_nc_fields  ! The number of fields that will actually go into the NetCDF file.
   integer :: i, j, k, is, ie, js, je, L, m, nlay, ncat, hem
   integer :: start_of_day, num_days
   integer :: iyear, imonth, iday, ihour, iminute, isecond, itick ! For call to get_date()
-  real    :: reday, var
+  real    :: reday     ! A real representation of the output time.
   character(len=120) :: statspath_nc
   character(len=300) :: mesg
   character(len=48)  :: msg_start
@@ -309,9 +302,8 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 
   real :: Tr_stocks(MAX_FIELDS_)
   character(len=40), dimension(MAX_FIELDS_) :: &
-      Tr_names, Tr_units
+    Tr_names, Tr_units
   integer :: nTr_stocks
-
 
 ! real :: Tr_stocks(MAX_FIELDS_)
 ! real :: Tr_min(MAX_FIELDS_),Tr_max(MAX_FIELDS_)
@@ -344,8 +336,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   ncat = IG%CatIce ; nlay = IG%NkIce
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
-  I_nlay = 1.0 / (1.0*nlay)
-  kg_H_nlay = US%RZ_to_kg_m2 * I_nlay
+  kg_H_nlay = US%RZ_to_kg_m2 * (1.0 / nlay)
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "write_ice_statistics: Module must be initialized before it is used.")
@@ -417,10 +408,37 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 !   endif
   endif
 
-! The following quantities are to be written by hemisphere:
-!   Ice area, ice extent, Ice+snow mass, enthalpy, salt
-! Error analysis on mass, enthalpy, salt
+  ! Calculate the global maximum advective CFL numbers.
+  max_CFL = 0.0
+  dt_CFL = max(CS%dt, 0.)
+  if (IST%Cgrid_dyn) then
+    if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
+      if (IST%u_ice_C(I,j) < 0.0) then
+        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
+      else
+        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
+      endif
+      max_CFL = max(max_CFL, CFL_trans)
+    enddo ; enddo ; endif
+    if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
+      if (IST%v_ice_C(i,J) < 0.0) then
+        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
+      else
+        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
+      endif
+      max_CFL = max(max_CFL, CFL_trans)
+    enddo ; enddo ; endif
+  elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
+    do J=js-1,je ; do I=is-1,ie
+      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
+      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
+      max_CFL = max(max_CFL, CFL_u, CFL_v)
+    enddo ; enddo
+  endif
+  call max_across_PEs(max_CFL)
 
+  ! The following quantities are to be written by hemisphere:
+  !   Ice area, ice extent, Ice+snow mass, enthalpy, salt
   ice_area(:,:,:) = 0.0
   ice_extent(:,:,:) = 0.0
   col_mass(:,:,:) = 0.0
@@ -457,95 +475,81 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     if (ice_area(i,j,hem) > 0.1*US%L_to_m**2*G%areaT(i,j)) ice_extent(i,j,hem) = US%L_to_m**2*G%areaT(i,j)
 
   enddo ; enddo
-  Area = reproducing_sum(ice_area, sums=Area_NS)
-  Extent = reproducing_sum(ice_extent, sums=Extent_NS)
-  Heat = reproducing_sum(col_heat, sums=Heat_NS, EFP_sum=heat_EFP)
-  Mass = reproducing_sum(col_mass, sums=Mass_NS, EFP_sum=mass_EFP)
-  Salt = reproducing_sum(col_salt, sums=Salt_NS, EFP_sum=salt_EFP)
 
-  salinity_NS(:) = 0.0
-  do hem=1,2
-    if (mass_NS(hem) > 0.0) salinity_NS(hem) = salt_NS(hem) / mass_NS(hem)
-  enddo
-
-
-! Calculate the maximum CFL numbers.
-  max_CFL = 0.0
-  dt_CFL = max(CS%dt, 0.)
-  if (IST%Cgrid_dyn) then
-    if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
-      if (IST%u_ice_C(I,j) < 0.0) then
-        CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
-      else
-        CFL_trans = (IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i,j))
-      endif
-      max_CFL = max(max_CFL, CFL_trans)
-    enddo ; enddo ; endif
-    if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
-      if (IST%v_ice_C(i,J) < 0.0) then
-        CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
-      else
-        CFL_trans = (IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j))
-      endif
-      max_CFL = max(max_CFL, CFL_trans)
-    enddo ; enddo ; endif
-  elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
-    do J=js-1,je ; do I=is-1,ie
-      CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
-      CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
-      max_CFL = max(max_CFL, CFL_u, CFL_v)
-    enddo ; enddo
-  endif
-
-  call sum_across_PEs(CS%ntrunc)
-  if (nTr_stocks > 0) call sum_across_PEs(Tr_stocks,nTr_stocks)
-  call max_across_PEs(max_CFL)
-
-  if (CS%previous_calls == 0) then
-    CS%mass_prev = Mass ; CS%fresh_water_input = 0.0
-    CS%salt_prev = Salt ; CS%net_salt_input = 0.0
-    CS%heat_prev = Heat ; CS%net_heat_input = 0.0
-
-    CS%mass_prev_EFP = mass_EFP ; CS%fresh_water_in_EFP = real_to_EFP(0.0)
-    CS%salt_prev_EFP = salt_EFP ; CS%net_salt_in_EFP = real_to_EFP(0.0)
-    CS%heat_prev_EFP = heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0)
-  else
+  if (CS%previous_calls > 0) then
     do j=js,je ; do i=is,ie
       area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       CS%water_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%water_in_col(i,j)
       CS%heat_in_col(i,j) = US%Q_to_J_kg*US%RZ_to_kg_m2*area_h * CS%heat_in_col(i,j)
       CS%salt_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%salt_in_col(i,j)
     enddo ; enddo
-
-    CS%fresh_water_input = reproducing_sum(CS%water_in_col, EFP_sum=CS%fresh_water_in_EFP)
-    CS%net_salt_input = reproducing_sum(CS%salt_in_col, EFP_sum=CS%net_salt_in_EFP)
-    CS%net_heat_input = reproducing_sum(CS%heat_in_col, EFP_sum=CS%net_heat_in_EFP)
   endif
 
-  Salt_chg_EFP = Salt_EFP - CS%salt_prev_EFP
-  Salt_anom_EFP = Salt_chg_EFP - CS%net_salt_in_EFP
-  Salt_chg = EFP_to_real(Salt_chg_EFP) ; Salt_anom = EFP_to_real(Salt_anom_EFP)
-  Heat_chg_EFP = Heat_EFP - CS%heat_prev_EFP
-  Heat_anom_EFP = Heat_chg_EFP - CS%net_heat_in_EFP
-  Heat_chg = EFP_to_real(Heat_chg_EFP) ; Heat_anom = EFP_to_real(Heat_anom_EFP)
+  ! Combining the sums adds code complexity, but avoids multiple blocking all-PE updates.
+  do hem=1,2
+    EFP_list(0+hem) = reproducing_sum_EFP(ice_area(:,:,hem), only_on_PE=.true.)
+    EFP_list(2+hem) = reproducing_sum_EFP(ice_extent(:,:,hem), only_on_PE=.true.)
+    EFP_list(4+hem) = reproducing_sum_EFP(col_heat(:,:,hem), only_on_PE=.true.)
+    EFP_list(6+hem) = reproducing_sum_EFP(col_mass(:,:,hem), only_on_PE=.true.)
+    EFP_list(8+hem) = reproducing_sum_EFP(col_salt(:,:,hem), only_on_PE=.true.)
+  enddo
+  EFP_list(11) = real_to_EFP(real(CS%ntrunc))
+  do m=1,nTr_stocks ; EFP_list(11+m) = real_to_EFP(Tr_stocks(11+m)) ; enddo
 
-  mass_chg_EFP = mass_EFP - CS%mass_prev_EFP
-  salin_mass_in = 0.0
-!  if (G%Boussinesq) then
-    mass_anom_EFP = mass_chg_EFP - CS%fresh_water_in_EFP
-!  else
-!    mass_anom_EFP = mass_chg_EFP - CS%fresh_water_in_EFP
-    ! net_salt_input needs to be converted from gSalt kg-1 m s-1 to kg m-2 s-1.
-!    salin_mass_in = 0.001*EFP_to_real(CS%net_salt_in_EFP)
-!  endif
-  mass_chg = EFP_to_real(mass_chg_EFP)
-  mass_anom = EFP_to_real(mass_anom_EFP) - salin_mass_in
+  if (CS%previous_calls > 0) then
+    EFP_list(12+nTr_stocks) = reproducing_sum_EFP(CS%water_in_col, only_on_PE=.true.)
+    EFP_list(13+nTr_stocks) = reproducing_sum_EFP(CS%salt_in_col, only_on_PE=.true.)
+    EFP_list(14+nTr_stocks) = reproducing_sum_EFP(CS%heat_in_col, only_on_PE=.true.)
+
+    call EFP_sum_across_PEs(EFP_list, 14+nTr_stocks)
+
+    fresh_water_in_EFP = EFP_list(12+nTr_stocks)
+    net_salt_in_EFP = EFP_list(13+nTr_stocks)
+    net_heat_in_EFP = EFP_list(14+nTr_stocks)
+  else
+    call EFP_sum_across_PEs(EFP_list, 11+nTr_stocks)
+  endif
+
+  ! Unpack the list of sums
+  do hem=1,2
+    Area_NS(hem) = EFP_to_real(EFP_list(0+hem))
+    Extent_NS(hem) = EFP_to_real(EFP_list(2+hem))
+    Heat_NS(hem) = EFP_to_real(EFP_list(4+hem))
+    mass_NS(hem) = EFP_to_real(EFP_list(6+hem))
+    salt_NS(hem) = EFP_to_real(EFP_list(8+hem))
+  enddo
+  heat_EFP = EFP_list(5) + EFP_list(6)  ; Heat = EFP_to_real(heat_EFP)
+  mass_EFP = EFP_list(7) + EFP_list(8)  ; Mass = EFP_to_real(mass_EFP)
+  salt_EFP = EFP_list(9) + EFP_list(10) ; Salt = EFP_to_real(salt_EFP)
+  CS%ntrunc = EFP_to_real(EFP_list(11))
+  do m=1,nTr_stocks ; Tr_stocks(11+m) = EFP_to_real(EFP_list(11+m)) ; enddo
+
+  ! Find the changes and anomalies for error analysis in salt, enthalpy and mass.
+  if (CS%previous_calls == 0) then
+    Salt_chg = 0.0 ; Salt_anom = 0.0
+    Heat_chg = 0.0 ; Heat_anom = 0.0
+    mass_chg = 0.0 ; mass_anom = 0.0
+  else
+    Salt_chg_EFP = Salt_EFP - CS%salt_prev_EFP
+    Salt_anom_EFP = Salt_chg_EFP - net_salt_in_EFP
+    Salt_chg = EFP_to_real(Salt_chg_EFP) ; Salt_anom = EFP_to_real(Salt_anom_EFP)
+    Heat_chg_EFP = Heat_EFP - CS%heat_prev_EFP
+    Heat_anom_EFP = Heat_chg_EFP - net_heat_in_EFP
+    Heat_chg = EFP_to_real(Heat_chg_EFP) ; Heat_anom = EFP_to_real(Heat_anom_EFP)
+
+    mass_chg_EFP = mass_EFP - CS%mass_prev_EFP
+    mass_anom_EFP = mass_chg_EFP - fresh_water_in_EFP
+    mass_chg = EFP_to_real(mass_chg_EFP) ; mass_anom = EFP_to_real(mass_anom_EFP)
+
+    ! net_salt_input needs to be converted from gSalt kg-1 m s-1 to kg m-2 s-1 if mass includes salt.
+    ! mass_anom = mass_anom - 0.001*EFP_to_real(CS%net_salt_in_EFP)
+  endif
 
   I_Mass = 0.0 ; if (Mass > 0.0) I_Mass = 1.0/Mass
-  salin = Salt * I_Mass ; salin_anom = Salt_anom * I_Mass
+  salinity_NS(:) = 0.0
+  do hem=1,2 ; if (mass_NS(hem) > 0.0) salinity_NS(hem) = salt_NS(hem) / mass_NS(hem) ; enddo
 
- ! salin_chg = Salt_chg / Mass
-!  temp = heat / (Mass* CI) ; temp_anom = Heat_anom / (Mass* CI)
+  ! All quantities have been calculated at this point.  Output messages are prepared next.
 
   call get_time(day, start_of_day, num_days)
   if (abs(CS%timeunit - 86400.0) < 1.0) then
@@ -665,8 +669,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     endif
   enddo ; enddo ; endif
 
-! var = real(CS%ntrunc)
-! call write_field(CS%statsfile_nc, CS%fields(1), var, reday)
+! call write_field(CS%statsfile_nc, CS%fields(1), real(CS%ntrunc), reday)
 ! call write_field(CS%statsfile_nc, CS%fields(2), toten, reday)
 ! call write_field(CS%statsfile_nc, CS%fields(3), PE, reday)
 ! call write_field(CS%statsfile_nc, CS%fields(4), KE, reday)
@@ -695,6 +698,8 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     call SIS_error(FATAL, "write_ice_statistics: Sea ice velocity has been "//&
                           "truncated too many times.")
   endif
+
+  ! Reset the cumulative fluxes and store the net properties.
   CS%ntrunc = 0
   CS%previous_calls = CS%previous_calls + 1
   if (CS%column_check) then ; do j=js,je ; do i=is,ie
@@ -702,17 +707,15 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     CS%heat_col_prev(i,j) = col_heat(i,j,1) + col_heat(i,j,2)
     CS%salt_col_prev(i,j) = col_salt(i,j,1) + col_salt(i,j,2)
   enddo ; enddo ; endif
-  CS%mass_prev = Mass ; CS%fresh_water_input = 0.0
-  CS%salt_prev = Salt ; CS%net_salt_input = 0.0
-  CS%heat_prev = Heat ; CS%net_heat_input = 0.0
 
   CS%water_in_col(:,:) = 0.0
   CS%heat_in_col(:,:) = 0.0
   CS%salt_in_col(:,:) = 0.0
 
-  CS%mass_prev_EFP = mass_EFP ; CS%fresh_water_in_EFP = real_to_EFP(0.0)
-  CS%salt_prev_EFP = Salt_EFP ; CS%net_salt_in_EFP = real_to_EFP(0.0)
-  CS%heat_prev_EFP = Heat_EFP ; CS%net_heat_in_EFP = real_to_EFP(0.0)
+  CS%mass_prev_EFP = mass_EFP
+  CS%salt_prev_EFP = Salt_EFP
+  CS%heat_prev_EFP = Heat_EFP
+
 end subroutine write_ice_statistics
 
 
