@@ -224,7 +224,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real, dimension(2) :: &
     Area_NS, &     ! The total sea-ice area in the two hemispheres [m2].
     Extent_NS, &   ! The total sea-ice extent in the two hemispheres [m2].
-    Heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
+    heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
     mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
     salt_NS, &     ! The total sea-ice salt in the two hemispheres [kg].
     salinity_NS    ! The average sea-ice salinity in the two hemispheres [gSalt kg-1].
@@ -289,7 +289,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: max_CFL      ! The maximum of the CFL numbers [nondim].
   logical :: check_col
   integer :: num_nc_fields  ! The number of fields that will actually go into the NetCDF file.
-  integer :: i, j, k, is, ie, js, je, L, m, nlay, ncat, hem
+  integer :: i, j, k, isc, iec, jsc, jec, isr, ier, jsr, jer, L, m, nlay, ncat, hem
   integer :: start_of_day, num_days
   integer :: iyear, imonth, iday, ihour, iminute, isecond, itick ! For call to get_date()
   real    :: reday     ! A real representation of the output time.
@@ -297,8 +297,6 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   character(len=300) :: mesg
   character(len=48)  :: msg_start
   character(len=32)  :: mesg_intro, time_units, day_str, n_str, trunc_str
-
-  integer :: isc, iec, jsc, jec
 
   real :: Tr_stocks(MAX_FIELDS_)
   character(len=40), dimension(MAX_FIELDS_) :: &
@@ -330,9 +328,8 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 ! vars(16) = vardesc("Heat_chg","Total Heat Change between Entries",'1','1','s',"Joules")
 ! vars(17) = vardesc("Heat_anom","Anomalous Total Heat Change",'1','1','s',"Joules")
 
-  is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
-!  Isq = G%IscB ; Ieq = G%IecB ; Jsq = G%JscB ; Jeq = G%JecB
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  isr = isc - (G%isd-1) ; ier = iec - (G%isd-1) ; jsr = jsc - (G%jsd-1) ; jer = jec - (G%jsd-1)
   ncat = IG%CatIce ; nlay = IG%NkIce
   check_col = .false. ; if (present(check_column) .and. CS%column_check) check_col = check_column
 
@@ -412,7 +409,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   max_CFL = 0.0
   dt_CFL = max(CS%dt, 0.)
   if (IST%Cgrid_dyn) then
-    if (allocated(IST%u_ice_C)) then ; do j=js,je ; do I=is-1,ie
+    if (allocated(IST%u_ice_C)) then ; do j=jsc,jec ; do I=isc-1,iec
       if (IST%u_ice_C(I,j) < 0.0) then
         CFL_trans = (-IST%u_ice_C(I,j) * dt_CFL) * (G%dy_Cu(I,j) * G%IareaT(i+1,j))
       else
@@ -420,7 +417,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       endif
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
-    if (allocated(IST%v_ice_C)) then ; do J=js-1,je ; do i=is,ie
+    if (allocated(IST%v_ice_C)) then ; do J=jsc-1,jec ; do i=isc,iec
       if (IST%v_ice_C(i,J) < 0.0) then
         CFL_trans = (-IST%v_ice_C(i,J) * dt_CFL) * (G%dx_Cv(i,J) * G%IareaT(i,j+1))
       else
@@ -429,7 +426,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       max_CFL = max(max_CFL, CFL_trans)
     enddo ; enddo ; endif
   elseif (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
-    do J=js-1,je ; do I=is-1,ie
+    do J=jsc-1,jec ; do I=isc-1,iec
       CFL_u = abs(IST%u_ice_B(I,J)) * dt_CFL * G%IdxBu(I,J)
       CFL_v = abs(IST%v_ice_B(I,J)) * dt_CFL * G%IdyBu(I,J)
       max_CFL = max(max_CFL, CFL_u, CFL_v)
@@ -446,7 +443,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   col_salt(:,:,:) = 0.0
 
   enth_liq_0 = enthalpy_liquid_freeze(0.0, IST%ITV)
-  do j=js,je ; do i=is,ie
+  do j=jsc,jec ; do i=isc,iec
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
       area_pt = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j) * IST%part_size(i,j,k)
@@ -477,7 +474,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   enddo ; enddo
 
   if (CS%previous_calls > 0) then
-    do j=js,je ; do i=is,ie
+    do j=jsc,jec ; do i=isc,iec
       area_h = US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)
       CS%water_in_col(i,j) = US%RZ_to_kg_m2*area_h * CS%water_in_col(i,j)
       CS%heat_in_col(i,j) = US%Q_to_J_kg*US%RZ_to_kg_m2*area_h * CS%heat_in_col(i,j)
@@ -487,19 +484,19 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 
   ! Combining the sums adds code complexity, but avoids multiple blocking all-PE updates.
   do hem=1,2
-    EFP_list(0+hem) = reproducing_sum_EFP(ice_area(:,:,hem), only_on_PE=.true.)
-    EFP_list(2+hem) = reproducing_sum_EFP(ice_extent(:,:,hem), only_on_PE=.true.)
-    EFP_list(4+hem) = reproducing_sum_EFP(col_heat(:,:,hem), only_on_PE=.true.)
-    EFP_list(6+hem) = reproducing_sum_EFP(col_mass(:,:,hem), only_on_PE=.true.)
-    EFP_list(8+hem) = reproducing_sum_EFP(col_salt(:,:,hem), only_on_PE=.true.)
+    EFP_list(0+hem) = reproducing_sum_EFP(ice_area(:,:,hem), isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(2+hem) = reproducing_sum_EFP(ice_extent(:,:,hem), isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(4+hem) = reproducing_sum_EFP(col_heat(:,:,hem), isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(6+hem) = reproducing_sum_EFP(col_mass(:,:,hem), isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(8+hem) = reproducing_sum_EFP(col_salt(:,:,hem), isr, ier, jsr, jer, only_on_PE=.true.)
   enddo
   EFP_list(11) = real_to_EFP(real(CS%ntrunc))
   do m=1,nTr_stocks ; EFP_list(11+m) = real_to_EFP(Tr_stocks(11+m)) ; enddo
 
   if (CS%previous_calls > 0) then
-    EFP_list(12+nTr_stocks) = reproducing_sum_EFP(CS%water_in_col, only_on_PE=.true.)
-    EFP_list(13+nTr_stocks) = reproducing_sum_EFP(CS%salt_in_col, only_on_PE=.true.)
-    EFP_list(14+nTr_stocks) = reproducing_sum_EFP(CS%heat_in_col, only_on_PE=.true.)
+    EFP_list(12+nTr_stocks) = reproducing_sum_EFP(CS%water_in_col, isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(13+nTr_stocks) = reproducing_sum_EFP(CS%salt_in_col, isr, ier, jsr, jer, only_on_PE=.true.)
+    EFP_list(14+nTr_stocks) = reproducing_sum_EFP(CS%heat_in_col, isr, ier, jsr, jer, only_on_PE=.true.)
 
     call EFP_sum_across_PEs(EFP_list, 14+nTr_stocks)
 
@@ -514,13 +511,13 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   do hem=1,2
     Area_NS(hem) = EFP_to_real(EFP_list(0+hem))
     Extent_NS(hem) = EFP_to_real(EFP_list(2+hem))
-    Heat_NS(hem) = EFP_to_real(EFP_list(4+hem))
+    heat_NS(hem) = EFP_to_real(EFP_list(4+hem))
     mass_NS(hem) = EFP_to_real(EFP_list(6+hem))
     salt_NS(hem) = EFP_to_real(EFP_list(8+hem))
   enddo
-  heat_EFP = EFP_list(5) + EFP_list(6)  ; Heat = EFP_to_real(heat_EFP)
-  mass_EFP = EFP_list(7) + EFP_list(8)  ; Mass = EFP_to_real(mass_EFP)
-  salt_EFP = EFP_list(9) + EFP_list(10) ; Salt = EFP_to_real(salt_EFP)
+  heat_EFP = EFP_list(5) + EFP_list(6)  ; Heat = heat_NS(1) + heat_NS(2)
+  mass_EFP = EFP_list(7) + EFP_list(8)  ; Mass = mass_NS(1) + mass_NS(2)
+  salt_EFP = EFP_list(9) + EFP_list(10) ; Salt = salt_NS(1) + salt_NS(2)
   CS%ntrunc = EFP_to_real(EFP_list(11))
   do m=1,nTr_stocks ; Tr_stocks(11+m) = EFP_to_real(EFP_list(11+m)) ; enddo
 
@@ -649,7 +646,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     endif ! write_stocks
   endif ! write_stdout
 
-  if (check_col .and. (CS%previous_calls > 0)) then ; do j=js,je ; do i=is,ie
+  if (check_col .and. (CS%previous_calls > 0)) then ; do j=jsc,jec ; do i=isc,iec
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     heat_imb = (col_heat(i,j,hem) - CS%heat_col_prev(i,j)) - CS%heat_in_col(i,j)
     mass_imb = (col_mass(i,j,hem) - CS%water_col_prev(i,j)) - CS%water_in_col(i,j)
@@ -702,7 +699,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   ! Reset the cumulative fluxes and store the net properties.
   CS%ntrunc = 0
   CS%previous_calls = CS%previous_calls + 1
-  if (CS%column_check) then ; do j=js,je ; do i=is,ie
+  if (CS%column_check) then ; do j=jsc,jec ; do i=isc,iec
     CS%water_col_prev(i,j) = col_mass(i,j,1) + col_mass(i,j,2)
     CS%heat_col_prev(i,j) = col_heat(i,j,1) + col_heat(i,j,2)
     CS%salt_col_prev(i,j) = col_salt(i,j,1) + col_salt(i,j,2)
