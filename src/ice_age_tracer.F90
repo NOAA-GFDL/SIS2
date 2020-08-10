@@ -6,13 +6,6 @@ module ice_age_tracer
 ! ashao: Get all the dependencies from other modules (check against
 !   ideal_age_example.F90)
 
-use SIS_diag_mediator, only     : register_SIS_diag_field, &
-                                  safe_alloc_ptr
-use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
-use SIS_hor_grid, only          : sis_hor_grid_type
-use SIS_utils, only             : post_avg
-
 use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
 use MOM_restart, only           : query_initialized, MOM_restart_CS
 use MOM_io, only                : vardesc, var_desc, query_vardesc, file_exists
@@ -22,11 +15,13 @@ use MOM_error_handler, only     : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_error_handler, only     : SIS_mesg=>MOM_mesg
 use MOM_string_functions, only  : slasher
 use MOM_unit_scaling, only      : unit_scale_type
-
-use fms_mod, only               : read_data
-use fms_io_mod, only            : register_restart_field, restore_state
-use fms_io_mod, only            : restart_file_type
-
+use SIS_diag_mediator, only     : register_SIS_diag_field, safe_alloc_ptr
+use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
+use SIS_framework, only         : register_restart_field, restore_state
+use SIS_framework, only         : restart_file_type
+use SIS_hor_grid, only          : SIS_hor_grid_type
+use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
+use SIS_utils, only             : post_avg
 use ice_grid, only              : ice_grid_type
 
 implicit none ; private

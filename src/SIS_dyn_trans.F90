@@ -16,22 +16,20 @@ module SIS_dyn_trans
 ! and lateral transport.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
-use MOM_cpu_clock, only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
+use MOM_cpu_clock,     only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
-use MOM_hor_index, only : hor_index_type
-use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
-use MOM_time_manager, only : operator(+), operator(-)
-use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
-use MOM_unit_scaling, only : unit_scale_type
-use MOM_EOS, only : EOS_type, calculate_density_derivs
+use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_hor_index,     only : hor_index_type
+use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
+use MOM_time_manager,  only : operator(+), operator(-)
+use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling,  only : unit_scale_type
+use MOM_EOS,           only : EOS_type, calculate_density_derivs
 
-use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
-use fms_io_mod, only : restart_file_type
-use mpp_domains_mod,  only  : domain2D
+use coupler_types_mod, only : coupler_type_initialized, coupler_type_send_data
 
 use SIS_continuity,    only : SIS_continuity_CS, summed_continuity, ice_cover_transport
 use SIS_debugging,     only : chksum, Bchksum, hchksum
@@ -40,29 +38,30 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl, safe_alloc_alloc
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_dyn_bgrid, only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
-use SIS_dyn_bgrid, only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
-use SIS_dyn_cgrid, only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
-use SIS_dyn_cgrid, only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use SIS_dyn_cgrid, only : SIS_C_dyn_read_alt_restarts
-use SIS_hor_grid,  only : SIS_hor_grid_type
-use SIS_ice_diags, only : ice_state_diags_type, register_ice_state_diagnostics
-use SIS_ice_diags, only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
-use SIS_sum_output, only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
+use SIS_dyn_bgrid,     only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
+use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
+use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
+use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
+use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts
+use SIS_framework,     only : restart_file_type, domain2D
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
+use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
+use SIS_sum_output,    only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
-use SIS_transport, only : SIS_transport_init, SIS_transport_end
-use SIS_transport, only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
-use SIS_transport, only : alloc_cell_average_state_type, dealloc_cell_average_state_type
-use SIS_transport, only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
-use SIS_transport, only : ice_cat_transport, finish_ice_transport
-use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_utils,     only : get_avg, post_avg, ice_line !, ice_grid_chksum
-use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,  only : enth_from_TS, Temp_from_En_S
-use slab_ice,      only : slab_ice_advect, slab_ice_dynamics
-use ice_bergs,     only : icebergs, icebergs_run, icebergs_init, icebergs_end
-use ice_grid,      only : ice_grid_type
+use SIS_transport,     only : SIS_transport_init, SIS_transport_end
+use SIS_transport,     only : SIS_transport_CS, adjust_ice_categories, cell_average_state_type
+use SIS_transport,     only : alloc_cell_average_state_type, dealloc_cell_average_state_type
+use SIS_transport,     only : cell_ave_state_to_ice_state, ice_state_to_cell_ave_state
+use SIS_transport,     only : ice_cat_transport, finish_ice_transport
+use SIS_types,         only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check
+use SIS_utils,         only : get_avg, post_avg, ice_line !, ice_grid_chksum
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
+use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S
+use slab_ice,          only : slab_ice_advect, slab_ice_dynamics
+use ice_bergs,         only : icebergs, icebergs_run, icebergs_init, icebergs_end
+use ice_grid,          only : ice_grid_type
 
 implicit none ; private
 

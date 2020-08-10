@@ -2,36 +2,30 @@
 !! types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_ctrl_types
 
-! use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe
-! use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
-use mpp_domains_mod,   only : domain2D, CORNER, EAST, NORTH
-! use mpp_parameter_mod, only : CGRID_NE, BGRID_NE, AGRID
 use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_initialized, coupler_type_set_diags
 
-use SIS_dyn_trans,   only : dyn_trans_CS
-use SIS_fast_thermo, only : fast_thermo_CS
-use SIS_slow_thermo, only : slow_thermo_CS
-use specified_ice,   only : specified_ice_CS
-
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
-use SIS_types, only : ice_state_type, ice_ocean_flux_type, ocean_sfc_state_type
-use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
-use SIS_types, only : total_sfc_flux_type
-use SIS_optics, only : SIS_optics_CS
-
-use MOM_coms,          only : PE_here
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
+use ice_grid,          only : ice_grid_type
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
-use SIS_sum_output, only : SIS_sum_out_CS
+use SIS_dyn_trans,     only : dyn_trans_CS
+use SIS_fast_thermo,   only : fast_thermo_CS
+use SIS_framework,     only : domain2D, CORNER, EAST, NORTH
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_optics,        only : SIS_optics_CS
+use SIS_slow_thermo,   only : slow_thermo_CS
+use SIS_sum_output,    only : SIS_sum_out_CS
 ! use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
+use SIS_types,         only : ice_state_type, ice_ocean_flux_type, ocean_sfc_state_type
+use SIS_types,         only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
+use SIS_types,         only : total_sfc_flux_type
+use specified_ice,     only : specified_ice_CS
 
 implicit none ; private
 

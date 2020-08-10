@@ -1,14 +1,15 @@
 !> sea ice and SST specified from data as per GFDL climate group
 module ice_spec_mod
 
-use fms_mod, only: open_namelist_file, check_nml_error, close_file, &
-                   stdlog, stdout, mpp_pe, mpp_root_pe, write_version_number
-use mpp_mod, only: input_nml_file
-use mpp_domains_mod, only : domain2d
-use MOM_hor_index,   only : hor_index_type
-
-use time_manager_mod, only: time_type, get_date, set_date
 use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
+use fms_mod, only : write_version_number
+use mpp_mod, only : input_nml_file
+
+use MOM_error_handler, only : stdlog, stdout
+use MOM_hor_index,     only : hor_index_type
+use MOM_io,            only : open_namelist_file, check_nml_error, close_file
+use MOM_time_manager,  only : time_type, get_date, set_date
+use SIS_framework,     only : domain2d
 
 implicit none ;  private
 

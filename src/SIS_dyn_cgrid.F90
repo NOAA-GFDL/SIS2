@@ -14,24 +14,25 @@ module SIS_dyn_cgrid
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
+use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_domains,       only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
+use MOM_domains,       only : MOM_domain_type, clone_MOM_domain
+use MOM_hor_index,     only : hor_index_type
+use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use MOM_time_manager,  only : time_type, real_to_time, operator(+), operator(-)
+use MOM_time_manager,  only : set_date, get_time, get_date
+use MOM_unit_scaling,  only : unit_scale_type
+
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
-use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_domains,      only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
-use MOM_domains,      only : MOM_domain_type, clone_MOM_domain
-use MOM_hor_index,    only : hor_index_type
-use MOM_io,           only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
-use MOM_time_manager, only : time_type, real_to_time, operator(+), operator(-)
-use MOM_time_manager, only : set_date, get_time, get_date
-use MOM_unit_scaling, only : unit_scale_type
-use SIS_hor_grid,     only : SIS_hor_grid_type
-use fms_io_mod,       only : register_restart_field, restart_file_type
-use fms_io_mod,       only : restore_state, query_initialized
-use mpp_domains_mod,  only : domain2D
+use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_framework,     only : restore_state, query_initialized
+use SIS_framework,     only : domain2D
+use SIS_hor_grid,      only : SIS_hor_grid_type
 
 implicit none ; private
 
