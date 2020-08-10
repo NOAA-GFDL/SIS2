@@ -17,6 +17,7 @@ use MOM_io,            only : file_exists, close_file, slasher, ensembler
 use MOM_io,            only : open_namelist_file, check_nml_error
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager,  only : operator(+), operator(-), operator(>)
+use SIS_framework,     only : domain2D, get_layout, get_compute_domain
 
 use ice_model_mod,     only : ice_data_type, ice_model_end
 use ice_model_mod,     only : update_ice_slow_thermo, update_ice_dynamics_trans
@@ -26,7 +27,6 @@ use ocean_model_mod,   only : ocean_public_type, ocean_state_type, ice_ocean_bou
 use coupler_types_mod, only : coupler_type_send_data, coupler_type_data_override
 use coupler_types_mod, only : coupler_type_copy_data
 use data_override_mod, only : data_override
-use mpp_domains_mod,   only : domain2D, mpp_get_layout, mpp_get_compute_domain
 
 implicit none ; private
 
@@ -253,12 +253,12 @@ function same_domain(a, b)
 
   ! This does a limited number of checks for consistent domain sizes.
 
-  call mpp_get_layout(a, layout_a)
-  call mpp_get_layout(b, layout_b)
+  call get_layout(a, layout_a)
+  call get_layout(b, layout_b)
   same_domain = ((layout_a(1) == layout_b(1)) .and. (layout_a(2) == layout_b(2)))
 
-  call mpp_get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
-  call mpp_get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
+  call get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
+  call get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
 
   same_domain = same_domain .and. ((layout_a(1) == layout_b(1)) .and. &
                                    (layout_a(2) == layout_b(2)))
