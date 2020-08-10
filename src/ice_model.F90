@@ -45,9 +45,6 @@ use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
-use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
-use fms_io_mod, only : register_restart_field, restart_file_type
-use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
@@ -80,6 +77,8 @@ use SIS_fast_thermo,   only : accumulate_deposition_fluxes, convert_frost_to_sno
 use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
 use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
+use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
+use SIS_framework,     only : restart_file_type, restore_state, query_initialized, register_restart_field
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
@@ -2665,10 +2664,10 @@ subroutine share_ice_domains(Ice)
   else
     allocate(Ice%fast_domain)
   endif
-  call mpp_broadcast_domain(Ice%Domain)
-  call mpp_broadcast_domain(Ice%slow_domain_NH)
-  call mpp_broadcast_domain(Ice%slow_domain)
-  call mpp_broadcast_domain(Ice%fast_domain)
+  call broadcast_domain(Ice%Domain)
+  call broadcast_domain(Ice%slow_domain_NH)
+  call broadcast_domain(Ice%slow_domain)
+  call broadcast_domain(Ice%fast_domain)
 
   if (Ice%shared_slow_fast_PEs) then
     ice_clock_exchange = cpu_clock_id('Ice Fast/Slow Exchange', grain=CLOCK_SUBCOMPONENT )
