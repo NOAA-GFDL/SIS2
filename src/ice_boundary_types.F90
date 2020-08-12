@@ -10,9 +10,9 @@ module ice_boundary_types
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
-use fms_mod,           only : stdout
-use mpp_mod,           only : mpp_chksum
-use mpp_parameter_mod, only : CGRID_NE, BGRID_NE, AGRID
+use MOM_error_handler, only : stdout
+use MOM_domains,       only : CGRID_NE, BGRID_NE, AGRID
+use SIS_framework,     only : SIS_chksum
 
 implicit none ; private
 
@@ -125,13 +125,13 @@ subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
 
   outunit = stdout()
   write(outunit,*) 'BEGIN CHECKSUM(ocean_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'ocn_ice_bnd_type%u        ',mpp_chksum(bnd_type%u        )
-  write(outunit,100) 'ocn_ice_bnd_type%v        ',mpp_chksum(bnd_type%v        )
-  write(outunit,100) 'ocn_ice_bnd_type%t        ',mpp_chksum(bnd_type%t        )
-  write(outunit,100) 'ocn_ice_bnd_type%s        ',mpp_chksum(bnd_type%s        )
-  write(outunit,100) 'ocn_ice_bnd_type%frazil   ',mpp_chksum(bnd_type%frazil   )
-  write(outunit,100) 'ocn_ice_bnd_type%sea_level',mpp_chksum(bnd_type%sea_level)
-  !    write(outunit,100) 'ocn_ice_bnd_type%data     ',mpp_chksum(bnd_type%data     )
+  write(outunit,100) 'ocn_ice_bnd_type%u        ', SIS_chksum(bnd_type%u        )
+  write(outunit,100) 'ocn_ice_bnd_type%v        ', SIS_chksum(bnd_type%v        )
+  write(outunit,100) 'ocn_ice_bnd_type%t        ', SIS_chksum(bnd_type%t        )
+  write(outunit,100) 'ocn_ice_bnd_type%s        ', SIS_chksum(bnd_type%s        )
+  write(outunit,100) 'ocn_ice_bnd_type%frazil   ', SIS_chksum(bnd_type%frazil   )
+  write(outunit,100) 'ocn_ice_bnd_type%sea_level', SIS_chksum(bnd_type%sea_level)
+  !    write(outunit,100) 'ocn_ice_bnd_type%data     ', SIS_chksum(bnd_type%data     )
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 
   call coupler_type_write_chksums(bnd_type%fields, outunit, 'oibt%')
@@ -147,32 +147,32 @@ subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
 
   outunit = stdout()
   write(outunit,*) 'BEGIN CHECKSUM(atmos_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'atm_ice_bnd_type%u_flux          ',mpp_chksum(bnd_type%u_flux)
-  write(outunit,100) 'atm_ice_bnd_type%v_flux          ',mpp_chksum(bnd_type%v_flux)
-  write(outunit,100) 'atm_ice_bnd_type%u_star          ',mpp_chksum(bnd_type%u_star)
-  write(outunit,100) 'atm_ice_bnd_type%t_flux          ',mpp_chksum(bnd_type%t_flux)
-  write(outunit,100) 'atm_ice_bnd_type%q_flux          ',mpp_chksum(bnd_type%q_flux)
-  write(outunit,100) 'atm_ice_bnd_type%lw_flux         ',mpp_chksum(bnd_type%lw_flux)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ',mpp_chksum(bnd_type%sw_flux_vis_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ',mpp_chksum(bnd_type%sw_flux_vis_dif)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ',mpp_chksum(bnd_type%sw_flux_nir_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ',mpp_chksum(bnd_type%sw_flux_nir_dif)
+  write(outunit,100) 'atm_ice_bnd_type%u_flux          ', SIS_chksum(bnd_type%u_flux)
+  write(outunit,100) 'atm_ice_bnd_type%v_flux          ', SIS_chksum(bnd_type%v_flux)
+  write(outunit,100) 'atm_ice_bnd_type%u_star          ', SIS_chksum(bnd_type%u_star)
+  write(outunit,100) 'atm_ice_bnd_type%t_flux          ', SIS_chksum(bnd_type%t_flux)
+  write(outunit,100) 'atm_ice_bnd_type%q_flux          ', SIS_chksum(bnd_type%q_flux)
+  write(outunit,100) 'atm_ice_bnd_type%lw_flux         ', SIS_chksum(bnd_type%lw_flux)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ', SIS_chksum(bnd_type%sw_flux_vis_dir)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ', SIS_chksum(bnd_type%sw_flux_vis_dif)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ', SIS_chksum(bnd_type%sw_flux_nir_dir)
+  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ', SIS_chksum(bnd_type%sw_flux_nir_dif)
   if (associated(bnd_type%sw_down_vis_dir)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dir ',mpp_chksum(bnd_type%sw_down_vis_dir)
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dir ', SIS_chksum(bnd_type%sw_down_vis_dir)
   if (associated(bnd_type%sw_down_vis_dif)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dif ',mpp_chksum(bnd_type%sw_down_vis_dif)
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dif ', SIS_chksum(bnd_type%sw_down_vis_dif)
   if (associated(bnd_type%sw_down_nir_dir)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dir ',mpp_chksum(bnd_type%sw_down_nir_dir)
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dir ', SIS_chksum(bnd_type%sw_down_nir_dir)
   if (associated(bnd_type%sw_down_nir_dif)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dif ',mpp_chksum(bnd_type%sw_down_nir_dif)
-  write(outunit,100) 'atm_ice_bnd_type%lprec           ',mpp_chksum(bnd_type%lprec)
-  write(outunit,100) 'atm_ice_bnd_type%fprec           ',mpp_chksum(bnd_type%fprec)
-  write(outunit,100) 'atm_ice_bnd_type%dhdt            ',mpp_chksum(bnd_type%dhdt)
-  write(outunit,100) 'atm_ice_bnd_type%dedt            ',mpp_chksum(bnd_type%dedt)
-  write(outunit,100) 'atm_ice_bnd_type%drdt            ',mpp_chksum(bnd_type%drdt)
-  write(outunit,100) 'atm_ice_bnd_type%coszen          ',mpp_chksum(bnd_type%coszen)
-  write(outunit,100) 'atm_ice_bnd_type%p               ',mpp_chksum(bnd_type%p)
-!    write(outunit,100) 'atm_ice_bnd_type%data            ',mpp_chksum(bnd_type%data)
+    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dif ', SIS_chksum(bnd_type%sw_down_nir_dif)
+  write(outunit,100) 'atm_ice_bnd_type%lprec           ', SIS_chksum(bnd_type%lprec)
+  write(outunit,100) 'atm_ice_bnd_type%fprec           ', SIS_chksum(bnd_type%fprec)
+  write(outunit,100) 'atm_ice_bnd_type%dhdt            ', SIS_chksum(bnd_type%dhdt)
+  write(outunit,100) 'atm_ice_bnd_type%dedt            ', SIS_chksum(bnd_type%dedt)
+  write(outunit,100) 'atm_ice_bnd_type%drdt            ', SIS_chksum(bnd_type%drdt)
+  write(outunit,100) 'atm_ice_bnd_type%coszen          ', SIS_chksum(bnd_type%coszen)
+  write(outunit,100) 'atm_ice_bnd_type%p               ', SIS_chksum(bnd_type%p)
+!    write(outunit,100) 'atm_ice_bnd_type%data            ', SIS_chksum(bnd_type%data)
 100 FORMAT("CHECKSUM::",A32," = ",Z20)
 
 end subroutine atm_ice_bnd_type_chksum
@@ -186,11 +186,11 @@ subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
 
   outunit = stdout()
   write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'lnd_ice_bnd_type%runoff  ',mpp_chksum(bnd_type%runoff)
-  write(outunit,100) 'lnd_ice_bnd_type%calving ',mpp_chksum(bnd_type%calving)
-  write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ',mpp_chksum(bnd_type%runoff_hflx)
-  write(outunit,100) 'lnd_ice_bnd_type%calving_hflx',mpp_chksum(bnd_type%calving_hflx)
-  !    write(outunit,100) 'lnd_ice_bnd_type%data    ',mpp_chksum(bnd_type%data)
+  write(outunit,100) 'lnd_ice_bnd_type%runoff  ', SIS_chksum(bnd_type%runoff)
+  write(outunit,100) 'lnd_ice_bnd_type%calving ', SIS_chksum(bnd_type%calving)
+  write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ', SIS_chksum(bnd_type%runoff_hflx)
+  write(outunit,100) 'lnd_ice_bnd_type%calving_hflx', SIS_chksum(bnd_type%calving_hflx)
+  !    write(outunit,100) 'lnd_ice_bnd_type%data    ', SIS_chksum(bnd_type%data)
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 end subroutine lnd_ice_bnd_type_chksum
 

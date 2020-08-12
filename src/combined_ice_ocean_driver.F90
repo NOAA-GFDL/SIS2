@@ -6,28 +6,27 @@ module combined_ice_ocean_driver
 
 !-----------------------------------------------------------------------
 !
-! This module provides a common interface for jointly stepping SIS2 and
-! MOM6, and will evolve as a platform for tightly integrating the ocean
-! and sea ice models.
+! This module provides a common interface for jointly stepping SIS2 and MOM6, and
+! will evolve as a platform for tightly integrating the ocean and sea ice models.
 
-use MOM_error_handler, only : MOM_error, FATAL, WARNING, is_root_pe
-use MOM_error_handler, only : callTree_enter, callTree_leave
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_COMPONENT
+use MOM_error_handler, only : MOM_error, FATAL, WARNING, callTree_enter, callTree_leave
 use MOM_file_parser,   only : param_file_type, open_param_file, close_param_file
 use MOM_file_parser,   only : read_param, get_param, log_param, log_version
 use MOM_io,            only : file_exists, close_file, slasher, ensembler
 use MOM_io,            only : open_namelist_file, check_nml_error
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager,  only : operator(+), operator(-), operator(>)
+use SIS_framework,     only : domain2D, get_layout, get_compute_domain
 
-use ice_model_mod,   only : ice_data_type, ice_model_end
-use ice_model_mod,   only : update_ice_slow_thermo, update_ice_dynamics_trans
-use ocean_model_mod, only : update_ocean_model, ocean_model_end
-use ocean_model_mod, only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
+use ice_model_mod,     only : ice_data_type, ice_model_end
+use ice_model_mod,     only : update_ice_slow_thermo, update_ice_dynamics_trans
+use ocean_model_mod,   only : update_ocean_model, ocean_model_end
+use ocean_model_mod,   only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 
 use coupler_types_mod, only : coupler_type_send_data, coupler_type_data_override
 use coupler_types_mod, only : coupler_type_copy_data
 use data_override_mod, only : data_override
-use mpp_domains_mod,   only : domain2D, mpp_get_layout, mpp_get_compute_domain
 
 implicit none ; private
 
@@ -47,6 +46,10 @@ type, public :: ice_ocean_driver_type ; private
                               !! INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.
                               !! The default is -1.
 end type ice_ocean_driver_type
+
+!>@{ CPU time clock IDs
+integer :: fluxIceOceanClock
+!!@}
 
 contains
 
@@ -128,6 +131,8 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
   call close_param_file(param_file, component="CIOD")
   CS%CS_is_initialized = .true.
 
+  fluxIceOceanClock = cpu_clock_id('Direct Ice Ocean Exchange', grain=CLOCK_COMPONENT )
+
   call callTree_leave("ice_ocean_driver_init(")
 end subroutine ice_ocean_driver_init
 
@@ -183,7 +188,6 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
     call MOM_error(FATAL, "update_slow_ice_and_ocean can only be used if the "//&
         "ocean and slow ice layouts and domain sizes are identical.")
 
-  !### Add clocks of the various calls.
   if (CS%intersperse_ice_ocn) then
     ! First step the ice, then ocean thermodynamics.
     call update_ice_slow_thermo(Ice)
@@ -221,15 +225,11 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
 
     call update_ice_dynamics_trans(Ice)
 
-!    call mpp_clock_begin(fluxIceOceanClock)
     call direct_flux_ice_to_IOB(time_start_update, Ice, IOB)
-!    call mpp_clock_end(fluxIceOceanClock)
 
     if (CS%single_MOM_call) then
       call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step )
     else
-    !### This line could be a temporary measure to avoid using newer arguments to update_ocean_model.
-    ! call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step )
       call update_ocean_model(IOB, Ocn, Ocean_sfc, time_start_update, coupling_time_step, &
                               update_dyn=.true., update_thermo=.false., &
                               start_cycle=.true., end_cycle=.false., cycle_length=dt_coupling)
@@ -253,12 +253,12 @@ function same_domain(a, b)
 
   ! This does a limited number of checks for consistent domain sizes.
 
-  call mpp_get_layout(a, layout_a)
-  call mpp_get_layout(b, layout_b)
+  call get_layout(a, layout_a)
+  call get_layout(b, layout_b)
   same_domain = ((layout_a(1) == layout_b(1)) .and. (layout_a(2) == layout_b(2)))
 
-  call mpp_get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
-  call mpp_get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
+  call get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
+  call get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
 
   same_domain = same_domain .and. ((layout_a(1) == layout_b(1)) .and. &
                                    (layout_a(2) == layout_b(2)))
@@ -278,6 +278,8 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
 
   integer :: i, j, is, ie, js, je, i_off, j_off, n, m
   logical :: used, do_therm
+
+  call cpu_clock_begin(fluxIceOceanClock)
 
   do_therm = .true. ; if (present(do_thermo)) do_therm = do_thermo
 
@@ -336,7 +338,6 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
   call data_override('OCN', 'mi',        IOB%mi       , Time)
   if (ASSOCIATED(IOB%stress_mag) ) &
     call data_override('OCN', 'stress_mag', IOB%stress_mag, Time )
-  !Are these if statements needed, or does data_override routine check if variable is associated?
   if (ASSOCIATED(IOB%ustar_berg)) &
     call data_override('OCN', 'ustar_berg', IOB%ustar_berg, Time)
   if (ASSOCIATED(IOB%area_berg) ) &
@@ -350,6 +351,8 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
     ! Offer the extra fluxes for diagnostics.  (###Why is this here, unlike other fluxes?)
     call coupler_type_send_data(IOB%fluxes, Time )
   endif
+
+  call cpu_clock_end(fluxIceOceanClock)
 
 end subroutine direct_flux_ice_to_IOB
 

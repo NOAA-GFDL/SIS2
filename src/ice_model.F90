@@ -22,106 +22,100 @@ module ice_model_mod
 ! Niki Zadeh.                                                                  !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
-use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
-use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
-use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
-! use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
-! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_get_input, only : Get_SIS_input, directories
-use SIS_sum_output, only : SIS_sum_output_init,  write_ice_statistics
-use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
-
-use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
-use MOM_cpu_clock, only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
+use MOM_cpu_clock,     only : CLOCK_COMPONENT, CLOCK_SUBCOMPONENT
 use MOM_domains,       only : MOM_domain_type
 use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
-use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
+use MOM_dyn_horgrid,   only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, log_param, log_version, read_param, param_file_type
-use MOM_file_parser, only : open_param_file, close_param_file
-use MOM_hor_index, only : hor_index_type, hor_index_init
-use MOM_io, only : file_exists
+use MOM_file_parser,   only : get_param, log_param, log_version, read_param, param_file_type
+use MOM_file_parser,   only : open_param_file, close_param_file
+use MOM_hor_index,     only : hor_index_type, hor_index_init
+use MOM_io,            only : file_exists
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use MOM_string_functions, only : uppercase
-use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
-use MOM_time_manager, only : operator(+), operator(-)
-use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
-use MOM_unit_scaling, only : unit_scale_type, unit_scaling_init
-use MOM_unit_scaling, only : unit_scaling_end, fix_restart_unit_scaling
+use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
+use MOM_time_manager,  only : operator(+), operator(-)
+use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init
+use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
 
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
-use fms_io_mod, only : set_domain, nullify_domain, restore_state, query_initialized
-use fms_io_mod, only : register_restart_field, restart_file_type
-use mpp_domains_mod, only : mpp_broadcast_domain
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
 use ocean_rough_mod,  only : compute_ocean_roughness         ! properties over water
 
-use ice_type_mod, only : ice_data_type, dealloc_ice_arrays
-use ice_type_mod, only : ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
-use ice_type_mod, only : Ice_public_type_chksum, Ice_public_type_bounds_check
-use ice_type_mod, only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
+use ice_bergs,          only : icebergs, icebergs_run, icebergs_init, icebergs_end
 use ice_boundary_types, only : ocean_ice_boundary_type, atmos_ice_boundary_type, land_ice_boundary_type
 use ice_boundary_types, only : ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 use ice_boundary_types, only : lnd_ice_bnd_type_chksum
-use SIS_ctrl_types, only : SIS_slow_CS, SIS_fast_CS
-use SIS_ctrl_types, only : ice_diagnostics_init, ice_diags_fast_init
-use SIS_types, only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
-use SIS_types, only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state, OSS_chksum
-use SIS_types, only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
-use SIS_types, only : total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
-use SIS_types, only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, alloc_ice_rad
-use SIS_types, only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
-use SIS_types, only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
-use SIS_types, only : IST_chksum, IST_bounds_check, ice_state_register_restarts
-use SIS_types, only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
-use SIS_types, only : register_unit_conversion_restarts
-use SIS_types, only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
-use SIS_types, only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
-use SIS_types, only : copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
-use SIS_types, only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
-use SIS_types, only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
-use SIS_types, only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
-use SIS_utils, only : post_avg, ice_grid_chksum
-use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
+use ice_grid,           only : set_ice_grid, ice_grid_end, ice_grid_type
+use ice_spec_mod,       only : get_sea_surface
+use ice_type_mod,       only : ice_data_type, dealloc_ice_arrays
+use ice_type_mod,       only : ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
+use ice_type_mod,       only : Ice_public_type_chksum, Ice_public_type_bounds_check
+use ice_type_mod,       only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
+
+use SIS_ctrl_types,    only : SIS_slow_CS, SIS_fast_CS
+use SIS_ctrl_types,    only : ice_diagnostics_init, ice_diags_fast_init
+use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
+use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
+use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
+use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
+use SIS_dyn_trans,     only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
+use SIS_dyn_trans,     only : slab_ice_dyn_trans
+use SIS_dyn_trans,     only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
+use SIS_dyn_trans,     only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
+use SIS_dyn_trans,     only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
+use SIS_fast_thermo,   only : accumulate_deposition_fluxes, convert_frost_to_snow
+use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
+use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
+use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
+use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
+use SIS_framework,     only : restart_file_type, restore_state, query_initialized, register_restart_field
 use SIS_fixed_initialization, only : SIS_initialize_fixed
-
-use ice_grid, only : set_ice_grid, ice_grid_end, ice_grid_type
-use ice_spec_mod, only : get_sea_surface
-
-use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
-use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
-
+use SIS_get_input,     only : Get_SIS_input, directories
+use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
+use SIS_optics,        only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
+use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+use SIS_slow_thermo,   only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
+use SIS_slow_thermo,   only : SIS_slow_thermo_set_ptrs
 use SIS_state_initialization, only : read_archaic_thermo_restarts, initialize_ice_categories
 use SIS_state_initialization, only : ice_state_mass_init, ice_state_thermo_init
-use SIS_dyn_trans,   only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
-use SIS_dyn_trans,   only : slab_ice_dyn_trans
-use SIS_dyn_trans,   only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
-use SIS_dyn_trans,   only : SIS_dyn_trans_read_alt_restarts, stresses_to_stress_mag
-use SIS_dyn_trans,   only : SIS_dyn_trans_transport_CS, SIS_dyn_trans_sum_output_CS
-use SIS_transport,   only : adjust_ice_categories
-use SIS_slow_thermo, only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
-use SIS_slow_thermo, only : SIS_slow_thermo_set_ptrs
-use SIS_fast_thermo, only : accumulate_deposition_fluxes, convert_frost_to_snow
-use SIS_fast_thermo, only : do_update_ice_model_fast, avg_top_quantities, total_top_quantities
-use SIS_fast_thermo, only : redo_update_ice_model_fast, find_excess_fluxes
-use SIS_fast_thermo, only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
-use SIS_optics,      only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
-use SIS_optics,      only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
-use SIS2_ice_thm,    only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,    only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
-use SIS2_ice_thm,    only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
-use specified_ice,   only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
-use specified_ice,   only : specified_ice_end, specified_ice_sum_output_CS
-use ice_bergs,       only : icebergs, icebergs_run, icebergs_init, icebergs_end
+use SIS_sum_output,    only : SIS_sum_output_init,  write_ice_statistics
+use SIS_tracer_flow_control, only : SIS_call_tracer_register, SIS_tracer_flow_control_init
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_end
+use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
+use SIS_transcribe_grid, only : copy_dyngrid_to_SIS_horgrid, copy_SIS_horgrid_to_dyngrid
+use SIS_transport,     only : adjust_ice_categories
+use SIS_types,         only : ice_ocean_flux_type, alloc_ice_ocean_flux, dealloc_ice_ocean_flux
+use SIS_types,         only : ocean_sfc_state_type, alloc_ocean_sfc_state, dealloc_ocean_sfc_state, OSS_chksum
+use SIS_types,         only : fast_ice_avg_type, alloc_fast_ice_avg, dealloc_fast_ice_avg
+use SIS_types,         only : total_sfc_flux_type, alloc_total_sfc_flux, dealloc_total_sfc_flux
+use SIS_types,         only : ice_rad_type, ice_rad_register_restarts, dealloc_ice_rad, alloc_ice_rad
+use SIS_types,         only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_OSS
+use SIS_types,         only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
+use SIS_types,         only : IST_chksum, IST_bounds_check, ice_state_register_restarts
+use SIS_types,         only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
+use SIS_types,         only : register_unit_conversion_restarts
+use SIS_types,         only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
+use SIS_types,         only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
+use SIS_types,         only : copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
+use SIS_types,         only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
+use SIS_types,         only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
+use SIS_types,         only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
+use SIS_utils,         only : post_avg, ice_grid_chksum
+use SIS2_ice_thm,      only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,      only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
+use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
+use specified_ice,     only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
+use specified_ice,     only : specified_ice_end, specified_ice_sum_output_CS
 
 implicit none ; private
 
@@ -998,14 +992,13 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_fast_CS),          intent(inout) :: fCS !< The fast ice thermodynamics control structure
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot
-  real, dimension(IG%NkIce) :: sw_abs_lay
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: m_ice_tot !< The total mass of ice in a cell [R Z ~> kg m-2]
+  real, dimension(IG%NkIce) :: sw_abs_lay ! The fraction of the absorbed shortwave that is
+                                          ! absorbed in each of the ice layers, <=1, [nondim].
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos        ! The albedos for the various wavelenth and direction bands
                    ! for the current partition, non-dimensional and 0 to 1.
-  real :: u, v
-  real :: area_pt
-  type(time_type) :: dt_r   ! A temporary radiation timestep.
+  real :: u, v     ! Ice velocity components [m s-1]
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
@@ -1048,12 +1041,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   ! Ice%albedo_vis_dir(:,:,:) = 0.0 ; Ice%albedo_vis_dif(:,:,:) = 0.0
   ! Ice%albedo_nir_dir(:,:,:) = 0.0 ; Ice%albedo_nir_dif(:,:,:) = 0.0
 
-  ! Set the initial ocean albedos, either using coszen_nextrad or a
-  ! synthetic sun angle.
-  dT_r = fCS%Time_step_slow
-  if (Rad%frequent_albedo_update) dT_r = fCS%Time_step_fast
-  call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, fCS%Time, &
-                        fCS%Time + dT_r, Rad%coszen_nextrad)
+  ! Set the initial ocean albedos, either using coszen_nextrad or a synthetic sun angle.
+  if (Rad%do_sun_angle_for_alb) then
+    call set_ocean_albedo_from_astronomy(Ice, G, fCS%Time, fCS%Time + fCS%Time_step_fast)
+  else
+    call set_ocean_albedo_from_coszen(Ice, G, Rad%coszen_nextrad)
+  endif
 
   !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay,albedos)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
@@ -1199,7 +1192,8 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, US, IG, optics_CS
                                                 !! reflection and transmission of shortwave radiation.
   type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
 
-  real, dimension(IG%NkIce) :: sw_abs_lay
+  real, dimension(IG%NkIce) :: sw_abs_lay ! The fraction of the absorbed shortwave that is
+                                          ! absorbed in each of the ice layers, <=1, [nondim].
   real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
@@ -1288,6 +1282,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(time_type),               intent(in)    :: Time_end   !< The end of the timee covered by this call
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  logical :: coszen_changed
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
 
@@ -1301,11 +1296,13 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
                                 Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! Update publicly visible ice_data_type variables..
+  coszen_changed = .false.
   !$OMP parallel do default(shared) private(i3,j3)
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
     FIA%p_atm_surf(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Atmos_boundary%p(i3,j3,1)
+    if (Rad%coszen_nextrad(i,j) /= Rad%coszen_lastrad(i,j)) coszen_changed = .true.
   enddo ; enddo
 
   !$OMP parallel do default(shared) private(i2,j2,k2)
@@ -1317,25 +1314,22 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
   ! if the coupled model's radiation timestep is shorter than the slow coupling
   ! timestep.  However, it is safe (if wasteful) to call it more frequently.
-  if (Rad%frequent_albedo_update) then
-    call set_ocean_albedo(Ice, Rad%do_sun_angle_for_alb, G, Time_start, &
-                          Time_end, Rad%coszen_nextrad)
+  if (Rad%do_sun_angle_for_alb) then
+    call set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
+  elseif (coszen_changed) then
+    call set_ocean_albedo_from_coszen(Ice, G, Rad%coszen_nextrad)
   endif
 
 end subroutine set_fast_ocean_sfc_properties
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> set_ocean_albedo uses either the time or the input cosine of solar zenith
-!! angle to calculate the ocean albedo.
-subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, coszen)
+!> set_ocean_albedo uses the time and astronomical calculates to set the solar
+!! zenith angle and calculate the ocean albedo.
+subroutine set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
-  logical,                 intent(in)    :: recalc_sun_angle !< If true, recalcuate the solar
-                                                !! zenith angle internally instead of using coszen
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(time_type),         intent(in)    :: Time_start !< The start of the time covered by this call
   type(time_type),         intent(in)    :: Time_end   !< The end of the timee covered by this call
-  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen !< Cosine of the solar zenith angle for this step
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
@@ -1350,22 +1344,41 @@ subroutine set_ocean_albedo(Ice, recalc_sun_angle, G, Time_start, Time_end, cosz
   rad = acos(-1.)/180.
   dT_ice = Time_end - Time_start
 
-  if (recalc_sun_angle) then
-    call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
-                 Time_start, cosz=cosz_alb, fracday=dummy, rrsun=rrsun_dt_ice, &
-                 dt_time=dT_ice)
-  else
-    do j=jsc,jec ; do i=isc,iec ; cosz_alb(i,j) = coszen(i,j) ; enddo ; enddo
-  endif
+  call diurnal_solar(G%geoLatT(isc:iec,jsc:jec)*rad, G%geoLonT(isc:iec,jsc:jec)*rad, &
+               Time_start, cosz=cosz_alb, fracday=dummy, rrsun=rrsun_dt_ice, &
+               dt_time=dT_ice)
+
   call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                             Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
                             Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
 
-end subroutine set_ocean_albedo
+end subroutine set_ocean_albedo_from_astronomy
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> set_ocean_albedo uses either the input cosine of the solar zenith
+!! angle to calculate the ocean albedo.
+subroutine set_ocean_albedo_from_coszen(Ice, G, coszen)
+  type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
+  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
+  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
+                           intent(in)    :: coszen !< Cosine of the solar zenith angle for this step
+
+  real :: rad
+  integer :: i, j, isc, iec, jsc, jec
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  rad = acos(-1.)/180.
+
+  call compute_ocean_albedo(Ice%ocean_pt, coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
+                            Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
+                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+
+end subroutine set_ocean_albedo_from_coszen
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> fast_radiation_diagnostics offers diagnostics of the rapidly changing shortwave
-!! radiative and other properties of the ice
+!! radiative and other properties of the ice, and it accumulates the shortwave radiation.
 subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
                                       Time_start, Time_end)
   type(atmos_ice_boundary_type), &
@@ -2244,10 +2257,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                    Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
     Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
     Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
-    Ice%fCS%Rad%frequent_albedo_update = .true.
-    !### Instead perhaps this could be
-    !###   Ice%fCS%Rad%frequent_albedo_update = Ice%fCS%Rad%do_sun_angle_for_alb .or. (Time_step_slow > dT_Rad)
-    !### However this changes answers in coupled models.  I don't understand why. -RWH
 
     if (Concurrent) then
       call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
@@ -2655,10 +2664,10 @@ subroutine share_ice_domains(Ice)
   else
     allocate(Ice%fast_domain)
   endif
-  call mpp_broadcast_domain(Ice%Domain)
-  call mpp_broadcast_domain(Ice%slow_domain_NH)
-  call mpp_broadcast_domain(Ice%slow_domain)
-  call mpp_broadcast_domain(Ice%fast_domain)
+  call broadcast_domain(Ice%Domain)
+  call broadcast_domain(Ice%slow_domain_NH)
+  call broadcast_domain(Ice%slow_domain)
+  call broadcast_domain(Ice%fast_domain)
 
   if (Ice%shared_slow_fast_PEs) then
     ice_clock_exchange = cpu_clock_id('Ice Fast/Slow Exchange', grain=CLOCK_SUBCOMPONENT )

@@ -9,26 +9,24 @@ module SIS_state_initialization
 ! routines have options that just read and log their input parameters.         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
+use ice_grid,          only : ice_grid_type
+use ice_type_mod,      only : ice_data_type, dealloc_ice_arrays
+use ice_type_mod,      only : ice_type_slow_reg_restarts
 use MOM_domains,       only : MOM_domain_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, log_param, log_version, read_param, param_file_type
-use MOM_hor_index, only : hor_index_type, hor_index_init
-use MOM_io, only : file_exists, MOM_read_data, slasher
-use MOM_time_manager, only : time_type, time_type_to_real, real_to_time
-use MOM_unit_scaling, only : unit_scale_type
-
-use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
-use fms_io_mod, only : restore_state, query_initialized
-use fms_io_mod, only : register_restart_field, restart_file_type
-
-use ice_grid, only : ice_grid_type
-use ice_type_mod, only : ice_data_type, dealloc_ice_arrays
-use ice_type_mod, only : ice_type_slow_reg_restarts
-use SIS_get_input, only : directories
-use SIS_types, only : ice_state_type
-use SIS_hor_grid, only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
-use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
+use MOM_file_parser,   only : get_param, log_param, log_version, read_param, param_file_type
+use MOM_hor_index,     only : hor_index_type, hor_index_init
+use MOM_io,            only : file_exists, MOM_read_data, slasher
+use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
+use MOM_unit_scaling,  only : unit_scale_type
+use SIS_framework,     only : restore_state, query_initialized
+use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_get_input,     only : directories
+use SIS_types,         only : ice_state_type
+use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
 
 implicit none ; private
 
