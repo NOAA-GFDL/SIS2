@@ -3,22 +3,15 @@
 !! these types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_types
 
-use mpp_domains_mod,  only : domain2D, CORNER, EAST, NORTH, mpp_redistribute
-use fms_io_mod,       only : register_restart_field, restart_file_type
-use fms_io_mod,       only : restore_state, query_initialized
 use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
 use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
 use coupler_types_mod, only : coupler_type_register_restarts
-use SIS_hor_grid,      only : SIS_hor_grid_type
+
 use ice_grid,          only : ice_grid_type
-
-use SIS2_ice_thm, only : ice_thermo_type, SIS2_ice_thm_CS, enth_from_TS, energy_melt_EnthS
-use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-
-use MOM_coms,          only : PE_here, max_across_PEs
+use MOM_coms,          only : PE_here
 use MOM_domains,       only : MOM_domain_type, pass_vector, BGRID_NE, CGRID_NE, clone_MOM_domain
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
@@ -27,7 +20,13 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,     only : chksum, Bchksum, Bchksum_pair, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
+use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, redistribute_data
+use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_framework,     only : restore_state, query_initialized
+use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
+use SIS2_ice_thm,      only : ice_thermo_type, SIS2_ice_thm_CS, get_SIS2_thermo_coefs
+use SIS2_ice_thm,      only : enth_from_TS, energy_melt_EnthS, temp_from_En_S
 
 implicit none ; private
 
@@ -332,10 +331,6 @@ type ice_rad_type
                                   !! the shortwave radiation.
   logical :: do_sun_angle_for_alb !< If true, find the sun angle for calculating
                                   !! the ocean albedo in the frame of the ice model.
-  logical :: frequent_albedo_update !< If true, update the ice and ocean albedos
-                                  !! within the fast ice model update.  Otherwise,
-                                  !! the albedos are only updated within
-                                  !! set_ice_surface_state.
 
   !!@{ Diagnostic IDs
   integer, allocatable, dimension(:)   :: id_sw_abs_ice
@@ -1277,70 +1272,70 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
 
   ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
-    call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
-                          IST_out%part_size, complete=.true.)
+    call redistribute_data(domain_in, IST_in%part_size, domain_out, &
+                           IST_out%part_size, complete=.true.)
 
     if (allocated(IST_out%t_surf) .or. allocated(IST_in%t_surf)) then
-      call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                            IST_out%t_surf, complete=.false.)
+      call redistribute_data(domain_in, IST_in%t_surf, domain_out, &
+                             IST_out%t_surf, complete=.false.)
     endif
-    call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
-                          IST_out%mH_pond, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%mH_snow, domain_out, &
-                          IST_out%mH_snow, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%mH_ice, domain_out, &
-                          IST_out%mH_ice, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%enth_snow, domain_out, &
-                          IST_out%enth_snow, complete=.true.)
+    call redistribute_data(domain_in, IST_in%mH_pond, domain_out, &
+                           IST_out%mH_pond, complete=.false.)
+    call redistribute_data(domain_in, IST_in%mH_snow, domain_out, &
+                           IST_out%mH_snow, complete=.false.)
+    call redistribute_data(domain_in, IST_in%mH_ice, domain_out, &
+                           IST_out%mH_ice, complete=.false.)
+    call redistribute_data(domain_in, IST_in%enth_snow, domain_out, &
+                           IST_out%enth_snow, complete=.true.)
 
-    call mpp_redistribute(domain_in, IST_in%enth_ice, domain_out, &
-                          IST_out%enth_ice, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%sal_ice, domain_out, &
-                          IST_out%sal_ice, complete=.true.)
+    call redistribute_data(domain_in, IST_in%enth_ice, domain_out, &
+                           IST_out%enth_ice, complete=.false.)
+    call redistribute_data(domain_in, IST_in%sal_ice, domain_out, &
+                           IST_out%sal_ice, complete=.true.)
   elseif (associated(IST_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%part_size, complete=.true.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           IST_out%part_size, complete=.true.)
 
     if (allocated(IST_out%t_surf)) then
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            IST_out%t_surf, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             IST_out%t_surf, complete=.false.)
     endif
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%mH_pond, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%mH_snow, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          IST_out%mH_ice, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
-                          IST_out%enth_snow, complete=.true.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           IST_out%mH_pond, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           IST_out%mH_snow, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           IST_out%mH_ice, complete=.false.)
+    call redistribute_data(domain_in, null_ptr4D, domain_out, &
+                           IST_out%enth_snow, complete=.true.)
 
-    call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
-                          IST_out%enth_ice, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr4D, domain_out, &
-                          IST_out%sal_ice, complete=.true.)
+    call redistribute_data(domain_in, null_ptr4D, domain_out, &
+                           IST_out%enth_ice, complete=.false.)
+    call redistribute_data(domain_in, null_ptr4D, domain_out, &
+                           IST_out%sal_ice, complete=.true.)
   elseif (associated(IST_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
-    call mpp_redistribute(domain_in, IST_in%part_size, domain_out, &
-                          null_ptr3D, complete=.true.)
+    call redistribute_data(domain_in, IST_in%part_size, domain_out, &
+                           null_ptr3D, complete=.true.)
 
     if (allocated(IST_in%t_surf)) then
-      call mpp_redistribute(domain_in, IST_in%t_surf, domain_out, &
-                            null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, IST_in%t_surf, domain_out, &
+                             null_ptr3D, complete=.false.)
     endif
-    call mpp_redistribute(domain_in, IST_in%mH_pond, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%mH_snow, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%mH_ice, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%enth_snow, domain_out, &
-                          null_ptr4D, complete=.true.)
+    call redistribute_data(domain_in, IST_in%mH_pond, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, IST_in%mH_snow, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, IST_in%mH_ice, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, IST_in%enth_snow, domain_out, &
+                           null_ptr4D, complete=.true.)
 
-    call mpp_redistribute(domain_in, IST_in%enth_ice, domain_out, &
-                          null_ptr4D, complete=.false.)
-    call mpp_redistribute(domain_in, IST_in%sal_ice, domain_out, &
-                          null_ptr4D, complete=.true.)
+    call redistribute_data(domain_in, IST_in%enth_ice, domain_out, &
+                           null_ptr4D, complete=.false.)
+    call redistribute_data(domain_in, IST_in%sal_ice, domain_out, &
+                           null_ptr4D, complete=.true.)
 
   else
     call SIS_error(FATAL, "redistribute_IST_to_IST called with "//&
@@ -1468,63 +1463,63 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
     ! This could have complete set to .false. if the halo sizes matched.
     call coupler_type_redistribute_data(OSS_in%tr_fields, domain_in, &
                           OSS_out%tr_fields, domain_out, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
-                          OSS_out%SST_C, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
-                          OSS_out%s_surf, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
-                          OSS_out%T_fr_ocn, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
-                          OSS_out%bheat, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%u_ocn_A, domain_out, &
-                          OSS_out%u_ocn_A, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%v_ocn_A, domain_out, &
-                          OSS_out%v_ocn_A, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%u_ice_A, domain_out, &
-                          OSS_out%u_ice_A, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%v_ice_A, domain_out, &
-                          OSS_out%v_ice_A, complete=.true.)
+    call redistribute_data(domain_in, OSS_in%SST_C, domain_out, &
+                           OSS_out%SST_C, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%s_surf, domain_out, &
+                           OSS_out%s_surf, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%T_fr_ocn, domain_out, &
+                           OSS_out%T_fr_ocn, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%bheat, domain_out, &
+                           OSS_out%bheat, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%u_ocn_A, domain_out, &
+                           OSS_out%u_ocn_A, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%v_ocn_A, domain_out, &
+                           OSS_out%v_ocn_A, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%u_ice_A, domain_out, &
+                           OSS_out%u_ice_A, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%v_ice_A, domain_out, &
+                           OSS_out%v_ice_A, complete=.true.)
   elseif (associated(OSS_out)) then
     ! Use the null pointer in place of the unneeded input arrays.
 
     call coupler_type_redistribute_data(null_bc, domain_in, &
                           OSS_out%tr_fields, domain_out, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%SST_C, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%s_surf, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%T_fr_ocn, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%bheat, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%u_ocn_A, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%v_ocn_A, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%u_ice_A, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr, domain_out, &
-                          OSS_out%v_ice_A, complete=.true.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%SST_C, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%s_surf, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%T_fr_ocn, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%bheat, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%u_ocn_A, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%v_ocn_A, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%u_ice_A, complete=.false.)
+    call redistribute_data(domain_in, null_ptr, domain_out, &
+                           OSS_out%v_ice_A, complete=.true.)
   elseif (associated(OSS_in)) then
     ! Use the null pointer in place of the unneeded output arrays.
     call coupler_type_redistribute_data(OSS_in%tr_fields, domain_in, &
                           null_bc, domain_out, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%SST_C, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%s_surf, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%T_fr_ocn, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%bheat, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%u_ocn_A, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%v_ocn_A, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%u_ice_A, domain_out, &
-                          null_ptr, complete=.false.)
-    call mpp_redistribute(domain_in, OSS_in%v_ice_A, domain_out, &
-                          null_ptr, complete=.true.)
+    call redistribute_data(domain_in, OSS_in%SST_C, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%s_surf, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%T_fr_ocn, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%bheat, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%u_ocn_A, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%v_ocn_A, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%u_ice_A, domain_out, &
+                           null_ptr, complete=.false.)
+    call redistribute_data(domain_in, OSS_in%v_ice_A, domain_out, &
+                           null_ptr, complete=.true.)
   else
     call SIS_error(FATAL, "redistribute_sOSS_to_sOSS called with "//&
                           "neither OSS_in nor OSS_out associated.")
@@ -1661,73 +1656,73 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call coupler_type_redistribute_data(FIA_in%tr_flux, domain_in, &
                           FIA_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(FIA_in%flux_sw_top,4)
-      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
-                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                             FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
+    call  redistribute_data(domain_in, FIA_in%flux_sh_top, domain_out, &
                           FIA_out%flux_sh_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
-                          FIA_out%evap_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_lw_top, domain_out, &
-                          FIA_out%flux_lw_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_lh_top, domain_out, &
-                          FIA_out%flux_lh_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%lprec_top, domain_out, &
-                          FIA_out%lprec_top, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%fprec_top, domain_out, &
-                          FIA_out%fprec_top, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%evap_top, domain_out, &
+                           FIA_out%evap_top, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%flux_lw_top, domain_out, &
+                           FIA_out%flux_lw_top, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%flux_lh_top, domain_out, &
+                           FIA_out%flux_lh_top, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%lprec_top, domain_out, &
+                           FIA_out%lprec_top, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%fprec_top, domain_out, &
+                           FIA_out%fprec_top, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%tmelt, domain_out, &
-                          FIA_out%tmelt, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%bmelt, domain_out, &
-                          FIA_out%bmelt, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%sw_abs_ocn, domain_out, &
-                          FIA_out%sw_abs_ocn, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%tmelt, domain_out, &
+                           FIA_out%tmelt, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%bmelt, domain_out, &
+                           FIA_out%bmelt, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%sw_abs_ocn, domain_out, &
+                           FIA_out%sw_abs_ocn, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%WindStr_x, domain_out, &
-                          FIA_out%WindStr_x, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_y, domain_out, &
-                          FIA_out%WindStr_y, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_x, domain_out, &
-                          FIA_out%WindStr_ocn_x, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_y, domain_out, &
-                          FIA_out%WindStr_ocn_y, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%p_atm_surf, domain_out, &
-                          FIA_out%p_atm_surf, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%runoff, domain_out, &
-                          FIA_out%runoff, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%calving, domain_out, &
-                          FIA_out%calving, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%runoff_hflx, domain_out, &
-                          FIA_out%runoff_hflx, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%calving_hflx, domain_out, &
-                          FIA_out%calving_hflx, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%Tskin_avg, domain_out, &
-                          FIA_out%Tskin_avg, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_x, domain_out, &
+                           FIA_out%WindStr_x, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_y, domain_out, &
+                           FIA_out%WindStr_y, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_ocn_x, domain_out, &
+                           FIA_out%WindStr_ocn_x, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_ocn_y, domain_out, &
+                           FIA_out%WindStr_ocn_y, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%p_atm_surf, domain_out, &
+                           FIA_out%p_atm_surf, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
+                           FIA_out%runoff, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%calving, domain_out, &
+                           FIA_out%calving, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff_hflx, domain_out, &
+                           FIA_out%runoff_hflx, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%calving_hflx, domain_out, &
+                           FIA_out%calving_hflx, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%Tskin_avg, domain_out, &
+                           FIA_out%Tskin_avg, complete=.false.)
     do b=1,size(FIA_in%flux_sw_dn,3)
-      call mpp_redistribute(domain_in, FIA_in%flux_sw_dn(:,:,b), domain_out, &
-                            FIA_out%flux_sw_dn(:,:,b), complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_sw_dn(:,:,b), domain_out, &
+                             FIA_out%flux_sw_dn(:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, FIA_in%ice_free, domain_out, &
-                          FIA_out%ice_free, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%ice_cover, domain_out, &
-                          FIA_out%ice_cover, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%ice_free, domain_out, &
+                           FIA_out%ice_free, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%ice_cover, domain_out, &
+                           FIA_out%ice_cover, complete=.true.)
 
     if (allocated(FIA_in%flux_sh0)) then
-      call mpp_redistribute(domain_in, FIA_in%flux_sh0, domain_out, &
-                            FIA_out%flux_sh0, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%evap0, domain_out, &
-                            FIA_out%evap0, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%flux_lw0, domain_out, &
-                            FIA_out%flux_lw0, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%dshdt, domain_out, &
-                            FIA_out%dshdt, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%devapdt, domain_out, &
-                            FIA_out%devapdt, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
-                            FIA_out%dlwdt, complete=.true.)
-      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
-                            FIA_out%Tskin_cat, complete=.true.)
+      call redistribute_data(domain_in, FIA_in%flux_sh0, domain_out, &
+                             FIA_out%flux_sh0, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%evap0, domain_out, &
+                             FIA_out%evap0, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_lw0, domain_out, &
+                             FIA_out%flux_lw0, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%dshdt, domain_out, &
+                             FIA_out%dshdt, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%devapdt, domain_out, &
+                             FIA_out%devapdt, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%dlwdt, domain_out, &
+                             FIA_out%dlwdt, complete=.true.)
+      call redistribute_data(domain_in, FIA_in%Tskin_cat, domain_out, &
+                             FIA_out%Tskin_cat, complete=.true.)
     endif
 
   elseif (associated(FIA_out)) then
@@ -1735,73 +1730,73 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call coupler_type_redistribute_data(null_bc, domain_in, &
                           FIA_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(FIA_out%flux_sw_top,4)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%flux_sw_top(:,:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_sh_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%evap_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_lw_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%flux_lh_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%lprec_top, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%fprec_top, complete=.true.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%flux_sh_top, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%evap_top, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%flux_lw_top, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%flux_lh_top, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%lprec_top, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%fprec_top, complete=.true.)
 
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%tmelt, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%bmelt, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          FIA_out%sw_abs_ocn, complete=.true.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%tmelt, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%bmelt, complete=.false.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           FIA_out%sw_abs_ocn, complete=.true.)
 
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%WindStr_x, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%WindStr_y, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%WindStr_ocn_x, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%WindStr_ocn_y, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%p_atm_surf, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%runoff, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%calving, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%runoff_hflx, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%calving_hflx, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%Tskin_avg, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%WindStr_x, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%WindStr_y, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%WindStr_ocn_x, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%WindStr_ocn_y, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%p_atm_surf, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%runoff, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%calving, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%runoff_hflx, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%calving_hflx, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%Tskin_avg, complete=.false.)
     do b=1,size(FIA_out%flux_sw_dn,3)
-      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                            FIA_out%flux_sw_dn(:,:,b), complete=.false.)
+      call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                             FIA_out%flux_sw_dn(:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%ice_free, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          FIA_out%ice_cover, complete=.true.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%ice_free, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%ice_cover, complete=.true.)
 
     if (allocated(FIA_out%flux_sh0)) then
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%flux_sh0, complete=.false.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%evap0, complete=.false.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%flux_lw0, complete=.false.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%dshdt, complete=.false.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%devapdt, complete=.false.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%dlwdt, complete=.true.)
-      call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                            FIA_out%Tskin_cat, complete=.true.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%flux_sh0, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%evap0, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%flux_lw0, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%dshdt, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%devapdt, complete=.false.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%dlwdt, complete=.true.)
+      call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                             FIA_out%Tskin_cat, complete=.true.)
     endif
 
 
@@ -1810,73 +1805,73 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call coupler_type_redistribute_data(FIA_in%tr_flux, domain_in, &
                           null_bc, domain_out, complete=.false.)
     do b=1,size(FIA_in%flux_sw_top,4)
-      call mpp_redistribute(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
-                            null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_sw_top(:,:,:,b), domain_out, &
+                             null_ptr3D, complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, FIA_in%flux_sh_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%evap_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_lw_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%flux_lh_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%lprec_top, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%fprec_top, domain_out, &
-                          null_ptr3D, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%flux_sh_top, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%evap_top, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%flux_lw_top, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%flux_lh_top, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%lprec_top, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%fprec_top, domain_out, &
+                           null_ptr3D, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%tmelt, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%bmelt, domain_out, &
-                          null_ptr3D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%sw_abs_ocn, domain_out, &
-                          null_ptr3D, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%tmelt, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%bmelt, domain_out, &
+                           null_ptr3D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%sw_abs_ocn, domain_out, &
+                           null_ptr3D, complete=.true.)
 
-    call mpp_redistribute(domain_in, FIA_in%WindStr_x, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_y, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_x, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%WindStr_ocn_y, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%p_atm_surf, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%runoff, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%calving, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%runoff_hflx, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%calving_hflx, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%Tskin_avg, domain_out, &
-                          null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_x, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_y, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_ocn_x, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%WindStr_ocn_y, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%p_atm_surf, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%calving, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff_hflx, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%calving_hflx, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%Tskin_avg, domain_out, &
+                           null_ptr2D, complete=.false.)
     do b=1,size(FIA_in%flux_sw_dn,3)
-      call mpp_redistribute(domain_in, FIA_in%flux_sw_dn(:,:,b), domain_out, &
-                            null_ptr2D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_sw_dn(:,:,b), domain_out, &
+                             null_ptr2D, complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, FIA_in%ice_free, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, FIA_in%ice_cover, domain_out, &
-                          null_ptr2D, complete=.true.)
+    call redistribute_data(domain_in, FIA_in%ice_free, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%ice_cover, domain_out, &
+                           null_ptr2D, complete=.true.)
 
     if (allocated(FIA_in%flux_sh0)) then
-      call mpp_redistribute(domain_in, FIA_in%flux_sh0, domain_out, &
-                            null_ptr3D, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%evap0, domain_out, &
-                            null_ptr3D, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%flux_lw0, domain_out, &
-                            null_ptr3D, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%dshdt, domain_out, &
-                            null_ptr3D, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%devapdt, domain_out, &
-                            null_ptr3D, complete=.false.)
-      call mpp_redistribute(domain_in, FIA_in%dlwdt, domain_out, &
-                            null_ptr3D, complete=.true.)
-      call mpp_redistribute(domain_in, FIA_in%Tskin_cat, domain_out, &
-                            null_ptr3D, complete=.true.)
+      call redistribute_data(domain_in, FIA_in%flux_sh0, domain_out, &
+                             null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%evap0, domain_out, &
+                             null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%flux_lw0, domain_out, &
+                             null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%dshdt, domain_out, &
+                             null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%devapdt, domain_out, &
+                             null_ptr3D, complete=.false.)
+      call redistribute_data(domain_in, FIA_in%dlwdt, domain_out, &
+                             null_ptr3D, complete=.true.)
+      call redistribute_data(domain_in, FIA_in%Tskin_cat, domain_out, &
+                             null_ptr3D, complete=.true.)
     endif
 
   else
@@ -1965,61 +1960,61 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
     call coupler_type_redistribute_data(TSF_in%tr_flux, domain_in, &
                           TSF_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(TSF_in%flux_sw,3)
-      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
-                          TSF_out%flux_sw(:,:,b), complete=.false.)
+      call redistribute_data(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                             TSF_out%flux_sw(:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
-                          TSF_out%flux_sh, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
-                          TSF_out%flux_lw, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
-                          TSF_out%flux_lh, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
-                          TSF_out%evap, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
-                          TSF_out%lprec, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
-                          TSF_out%fprec, complete=.true.)
+    call redistribute_data(domain_in, TSF_in%flux_sh, domain_out, &
+                           TSF_out%flux_sh, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%flux_lw, domain_out, &
+                           TSF_out%flux_lw, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%flux_lh, domain_out, &
+                           TSF_out%flux_lh, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%evap, domain_out, &
+                           TSF_out%evap, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%lprec, domain_out, &
+                           TSF_out%lprec, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%fprec, domain_out, &
+                           TSF_out%fprec, complete=.true.)
   elseif (associated(TSF_out)) then
     ! Use the null pointer in place of the unneeded input arrays.
     call coupler_type_redistribute_data(null_bc, domain_in, &
                           TSF_out%tr_flux, domain_out, complete=.false.)
     do b=1,size(TSF_out%flux_sw,3)
-      call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%flux_sw(:,:,b), complete=.false.)
+      call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                             TSF_out%flux_sw(:,:,b), complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%flux_sh, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%flux_lw, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%flux_lh, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%evap, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%lprec, complete=.false.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          TSF_out%fprec, complete=.true.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%flux_sh, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%flux_lw, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%flux_lh, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%evap, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%lprec, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           TSF_out%fprec, complete=.true.)
   elseif (associated(TSF_in)) then
     ! Use the null pointer in place of the unneeded output arrays.
     call coupler_type_redistribute_data(TSF_in%tr_flux, domain_in, &
                           null_bc, domain_out, complete=.false.)
     do b=1,size(TSF_in%flux_sw,3)
-      call mpp_redistribute(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
-                            null_ptr2D, complete=.false.)
+      call redistribute_data(domain_in, TSF_in%flux_sw(:,:,b), domain_out, &
+                             null_ptr2D, complete=.false.)
     enddo
-    call mpp_redistribute(domain_in, TSF_in%flux_sh, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%flux_lw, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%flux_lh, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%evap, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%lprec, domain_out, &
-                          null_ptr2D, complete=.false.)
-    call mpp_redistribute(domain_in, TSF_in%fprec, domain_out, &
-                          null_ptr2D, complete=.true.)
+    call redistribute_data(domain_in, TSF_in%flux_sh, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%flux_lw, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%flux_lh, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%evap, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%lprec, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, TSF_in%fprec, domain_out, &
+                           null_ptr2D, complete=.true.)
   else
     call SIS_error(FATAL, "redistribute_TSF_to_TSF called with "//&
                           "neither TSF_in nor TSF_out associated.")
@@ -2082,22 +2077,22 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   integer :: m
 
   if (associated(Rad_out) .and. associated(Rad_in)) then
-    call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
-                          Rad_out%tskin_rad, complete=.true.)
-    call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
-                          Rad_out%coszen_lastrad, complete=.true.)
+    call redistribute_data(domain_in, Rad_in%tskin_rad, domain_out, &
+                           Rad_out%tskin_rad, complete=.true.)
+    call redistribute_data(domain_in, Rad_in%coszen_lastrad, domain_out, &
+                           Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_out)) then
     ! Use the null pointers in place of the unneeded input arrays.
-    call mpp_redistribute(domain_in, null_ptr3D, domain_out, &
-                          Rad_out%tskin_rad, complete=.true.)
-    call mpp_redistribute(domain_in, null_ptr2D, domain_out, &
-                          Rad_out%coszen_lastrad, complete=.true.)
+    call redistribute_data(domain_in, null_ptr3D, domain_out, &
+                           Rad_out%tskin_rad, complete=.true.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           Rad_out%coszen_lastrad, complete=.true.)
   elseif (associated(Rad_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
-    call mpp_redistribute(domain_in, Rad_in%tskin_rad, domain_out, &
-                          null_ptr3D, complete=.true.)
-    call mpp_redistribute(domain_in, Rad_in%coszen_lastrad, domain_out, &
-                          null_ptr2D, complete=.true.)
+    call redistribute_data(domain_in, Rad_in%tskin_rad, domain_out, &
+                           null_ptr3D, complete=.true.)
+    call redistribute_data(domain_in, Rad_in%coszen_lastrad, domain_out, &
+                           null_ptr2D, complete=.true.)
   else
     call SIS_error(FATAL, "redistribute_Rad_to_Rad called with "//&
                           "neither Rad_in nor Rad_out associated.")

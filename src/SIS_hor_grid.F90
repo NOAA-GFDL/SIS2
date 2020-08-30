@@ -8,9 +8,6 @@ module SIS_hor_grid
 !   metric terms in a way that is very similar to MOM6. - Robert Hallberg      !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use mpp_domains_mod, only : mpp_get_compute_domain, mpp_get_data_domain
-use mpp_domains_mod, only : mpp_get_global_domain
-
 use MOM_hor_index, only : hor_index_type, hor_index_init
 use MOM_domains, only : MOM_domain_type, get_domain_extent, compute_block_extent
 use MOM_domains, only : MOM_domains_init, clone_MOM_domain

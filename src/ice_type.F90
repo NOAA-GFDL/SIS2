@@ -1,33 +1,28 @@
 !> maintains the sea ice data, reads/writes restarts, reads the namelist and initializes diagnostics.
 module ice_type_mod
 
-use mpp_mod,          only: mpp_sum, stdout, input_nml_file, PE_here => mpp_pe, mpp_chksum
-use mpp_domains_mod,  only: domain2D, mpp_get_compute_domain, CORNER, EAST, NORTH
-use mpp_parameter_mod, only: CGRID_NE, BGRID_NE, AGRID
-use fms_mod,          only: open_namelist_file, check_nml_error, close_file, stdout
-use fms_io_mod,       only: save_restart, restore_state, query_initialized
-use fms_io_mod,       only: register_restart_field, restart_file_type
-use coupler_types_mod,only: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod,only: coupler_type_spawn, coupler_type_write_chksums
-
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
-
-use SIS2_ice_thm, only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
-use SIS2_ice_thm, only : get_SIS2_thermo_coefs, temp_from_En_S
-use ice_bergs, only : icebergs, icebergs_stock_pe, icebergs_save_restart
-
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_write_chksums
+use ice_bergs,         only : icebergs, icebergs_stock_pe, icebergs_save_restart
+use ice_grid,          only : ice_grid_type
+use MOM_coms,          only : PE_here
+use MOM_domains,       only : CGRID_NE, BGRID_NE, AGRID
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, stdout
 use MOM_file_parser,   only : param_file_type
 use MOM_hor_index,     only : hor_index_type
 use MOM_time_manager,  only : time_type, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
+use SIS_ctrl_types,    only : SIS_fast_CS, SIS_slow_CS
 use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field
-
-use SIS_types, only : ice_state_type, fast_ice_avg_type
-use SIS_ctrl_types, only : SIS_fast_CS, SIS_slow_CS
+use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, SIS_chksum, get_compute_domain
+use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_framework,     only : save_restart, restore_state, query_initialized
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_types,         only : ice_state_type, fast_ice_avg_type
+use SIS2_ice_thm,      only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, temp_from_En_S
 
 implicit none ; private
 
@@ -183,7 +178,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   ! registers the appopriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
-  call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
+  call get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
   ! The fields t_surf, s_surf, and part_size are only available on fast PEs.
@@ -286,7 +281,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   ! registers the appopriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
-  call mpp_get_compute_domain(domain, isc, iec, jsc, jec )
+  call get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
   allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
@@ -629,61 +624,68 @@ end subroutine ice_stock_pe
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Write chksums of fields in the ice data type, using interfaces that shared
 !! with older sea ice models
-subroutine ice_data_type_chksum(mesg, timestep, Ice)
-  character(len=*), intent(in) :: mesg  !< An identifying message
-  integer         , intent(in) :: timestep !< The timestep number
-  type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
+subroutine ice_data_type_chksum(mesg, timestep, Ice, init_call)
+  character(len=*),    intent(in) :: mesg      !< An identifying message
+  integer         ,    intent(in) :: timestep  !< The timestep number
+  type(ice_data_type), intent(in) :: Ice       !< The publicly visible ice data type.
+  logical, optional,   intent(in) :: init_call !< If true omit checksums that do not make sense
+                                               !! to output during initialization.
 
   ! Local variables
-  integer ::   n, m, outunit
+  logical :: init    ! If true, omit checksums that do not make sense to output
+                     ! during initialization.
+  integer :: outunit ! The output unit to write to.
 
   outunit = stdout()
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", mesg, timestep
 
-
   if (Ice%fast_ice_PE) then
     ! These fields are only valid on fast ice PEs.
-    write(outunit,100) 'ice_data_type%part_size          ',mpp_chksum(Ice%part_size       )
-    write(outunit,100) 'ice_data_type%t_surf             ',mpp_chksum(Ice%t_surf          )
-    write(outunit,100) 'ice_data_type%s_surf             ',mpp_chksum(Ice%s_surf          )
-    write(outunit,100) 'ice_data_type%albedo             ',mpp_chksum(Ice%albedo          )
-    write(outunit,100) 'ice_data_type%albedo_vis_dir     ',mpp_chksum(Ice%albedo_vis_dir  )
-    write(outunit,100) 'ice_data_type%albedo_nir_dir     ',mpp_chksum(Ice%albedo_nir_dir  )
-    write(outunit,100) 'ice_data_type%albedo_vis_dif     ',mpp_chksum(Ice%albedo_vis_dif  )
-    write(outunit,100) 'ice_data_type%albedo_nir_dif     ',mpp_chksum(Ice%albedo_nir_dif  )
-    write(outunit,100) 'ice_data_type%rough_mom          ',mpp_chksum(Ice%rough_mom       )
-    write(outunit,100) 'ice_data_type%rough_heat         ',mpp_chksum(Ice%rough_heat      )
-    write(outunit,100) 'ice_data_type%rough_moist        ',mpp_chksum(Ice%rough_moist     )
+    if (.not.init) then
+      write(outunit,100) 'ice_data_type%part_size          ', SIS_chksum(Ice%part_size       )
+      write(outunit,100) 'ice_data_type%t_surf             ', SIS_chksum(Ice%t_surf          )
+      write(outunit,100) 'ice_data_type%s_surf             ', SIS_chksum(Ice%s_surf          )
+      write(outunit,100) 'ice_data_type%albedo             ', SIS_chksum(Ice%albedo          )
+      write(outunit,100) 'ice_data_type%albedo_vis_dir     ', SIS_chksum(Ice%albedo_vis_dir  )
+      write(outunit,100) 'ice_data_type%albedo_nir_dir     ', SIS_chksum(Ice%albedo_nir_dir  )
+      write(outunit,100) 'ice_data_type%albedo_vis_dif     ', SIS_chksum(Ice%albedo_vis_dif  )
+      write(outunit,100) 'ice_data_type%albedo_nir_dif     ', SIS_chksum(Ice%albedo_nir_dif  )
+    endif
+    write(outunit,100)   'ice_data_type%rough_mom          ', SIS_chksum(Ice%rough_mom       )
+    write(outunit,100)   'ice_data_type%rough_heat         ', SIS_chksum(Ice%rough_heat      )
+    write(outunit,100)   'ice_data_type%rough_moist        ', SIS_chksum(Ice%rough_moist     )
 
-    write(outunit,100) 'ice_data_type%u_surf             ',mpp_chksum(Ice%u_surf          )
-    write(outunit,100) 'ice_data_type%v_surf             ',mpp_chksum(Ice%v_surf          )
+    if (.not.init) then
+      write(outunit,100) 'ice_data_type%u_surf             ', SIS_chksum(Ice%u_surf          )
+      write(outunit,100) 'ice_data_type%v_surf             ', SIS_chksum(Ice%v_surf          )
+    endif
 
     call coupler_type_write_chksums(Ice%ocean_fields, outunit, 'ice%')
   endif
 
   if (Ice%slow_ice_PE) then
     ! These fields are only valid on slow ice PEs.
-    write(outunit,100) 'ice_data_type%flux_u             ',mpp_chksum(Ice%flux_u          )
-    write(outunit,100) 'ice_data_type%flux_v             ',mpp_chksum(Ice%flux_v          )
-    write(outunit,100) 'ice_data_type%flux_t             ',mpp_chksum(Ice%flux_t          )
-    write(outunit,100) 'ice_data_type%flux_q             ',mpp_chksum(Ice%flux_q          )
-    write(outunit,100) 'ice_data_type%flux_lw            ',mpp_chksum(Ice%flux_lw         )
-    write(outunit,100) 'ice_data_type%flux_sw_vis_dir    ',mpp_chksum(Ice%flux_sw_vis_dir )
-    write(outunit,100) 'ice_data_type%flux_sw_vis_dif    ',mpp_chksum(Ice%flux_sw_vis_dif )
-    write(outunit,100) 'ice_data_type%flux_sw_nir_dir    ',mpp_chksum(Ice%flux_sw_nir_dir )
-    write(outunit,100) 'ice_data_type%flux_sw_nir_dif    ',mpp_chksum(Ice%flux_sw_nir_dif )
-    write(outunit,100) 'ice_data_type%flux_lh            ',mpp_chksum(Ice%flux_lh         )
-    write(outunit,100) 'ice_data_type%lprec              ',mpp_chksum(Ice%lprec           )
-    write(outunit,100) 'ice_data_type%fprec              ',mpp_chksum(Ice%fprec           )
-    write(outunit,100) 'ice_data_type%p_surf             ',mpp_chksum(Ice%p_surf          )
-    write(outunit,100) 'ice_data_type%runoff             ',mpp_chksum(Ice%runoff          )
-    write(outunit,100) 'ice_data_type%calving            ',mpp_chksum(Ice%calving         )
-    write(outunit,100) 'ice_data_type%flux_salt          ',mpp_chksum(Ice%flux_salt       )
+    write(outunit,100) 'ice_data_type%flux_u             ', SIS_chksum(Ice%flux_u          )
+    write(outunit,100) 'ice_data_type%flux_v             ', SIS_chksum(Ice%flux_v          )
+    write(outunit,100) 'ice_data_type%flux_t             ', SIS_chksum(Ice%flux_t          )
+    write(outunit,100) 'ice_data_type%flux_q             ', SIS_chksum(Ice%flux_q          )
+    write(outunit,100) 'ice_data_type%flux_lw            ', SIS_chksum(Ice%flux_lw         )
+    write(outunit,100) 'ice_data_type%flux_sw_vis_dir    ', SIS_chksum(Ice%flux_sw_vis_dir )
+    write(outunit,100) 'ice_data_type%flux_sw_vis_dif    ', SIS_chksum(Ice%flux_sw_vis_dif )
+    write(outunit,100) 'ice_data_type%flux_sw_nir_dir    ', SIS_chksum(Ice%flux_sw_nir_dir )
+    write(outunit,100) 'ice_data_type%flux_sw_nir_dif    ', SIS_chksum(Ice%flux_sw_nir_dif )
+    write(outunit,100) 'ice_data_type%flux_lh            ', SIS_chksum(Ice%flux_lh         )
+    write(outunit,100) 'ice_data_type%lprec              ', SIS_chksum(Ice%lprec           )
+    write(outunit,100) 'ice_data_type%fprec              ', SIS_chksum(Ice%fprec           )
+    write(outunit,100) 'ice_data_type%p_surf             ', SIS_chksum(Ice%p_surf          )
+    write(outunit,100) 'ice_data_type%runoff             ', SIS_chksum(Ice%runoff          )
+    write(outunit,100) 'ice_data_type%calving            ', SIS_chksum(Ice%calving         )
+    write(outunit,100) 'ice_data_type%flux_salt          ', SIS_chksum(Ice%flux_salt       )
 
     if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_iceberg_area_to_ocean) then
-      write(outunit,100) 'ice_data_type%ustar_berg         ',mpp_chksum(Ice%ustar_berg    )
-      write(outunit,100) 'ice_data_type%area_berg          ',mpp_chksum(Ice%area_berg     )
-      write(outunit,100) 'ice_data_type%mass_berg          ',mpp_chksum(Ice%mass_berg     )
+      write(outunit,100) 'ice_data_type%ustar_berg         ', SIS_chksum(Ice%ustar_berg    )
+      write(outunit,100) 'ice_data_type%area_berg          ', SIS_chksum(Ice%area_berg     )
+      write(outunit,100) 'ice_data_type%mass_berg          ', SIS_chksum(Ice%mass_berg     )
     endif ; endif
 
   endif
