@@ -637,6 +637,7 @@ subroutine ice_data_type_chksum(mesg, timestep, Ice, init_call)
   integer :: outunit ! The output unit to write to.
 
   outunit = stdout()
+  init = .false. ; if (present(init_call)) init = init_call
   write(outunit,*) "BEGIN CHECKSUM(ice_data_type):: ", mesg, timestep
 
   if (Ice%fast_ice_PE) then
