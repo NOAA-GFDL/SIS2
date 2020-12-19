@@ -3,30 +3,29 @@ module SIS_transport
 
 ! This file is a part of SIS2.  See LICENSE.md for the licnese.
 
-use MOM_coms, only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
-use MOM_domains,     only : pass_var, pass_vector, BGRID_NE, CGRID_NE
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
-use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
-use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
-use MOM_hor_index,   only : hor_index_type
+use MOM_coms,          only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
+use MOM_domains,       only : pass_var, pass_vector, BGRID_NE, CGRID_NE
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg, is_root_pe
+use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
+use MOM_hor_index,     only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
-use MOM_unit_scaling, only : unit_scale_type
-use SIS_continuity, only : SIS_continuity_init, SIS_continuity_end
-use SIS_continuity, only : continuity=>ice_continuity, SIS_continuity_CS
-use SIS_continuity, only : summed_continuity, proportionate_continuity
+use MOM_unit_scaling,  only : unit_scale_type
+use SIS_continuity,    only : SIS_continuity_init, SIS_continuity_end
+use SIS_continuity,    only : continuity=>ice_continuity, SIS_continuity_CS
+use SIS_continuity,    only : summed_continuity, proportionate_continuity
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-use SIS_diag_mediator, only : safe_alloc_alloc
-use SIS_hor_grid, only : SIS_hor_grid_type
+use SIS_framework,     only : safe_alloc
+use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
 use SIS_tracer_advect, only : advect_SIS_tracers, SIS_tracer_advect_init, SIS_tracer_advect_end
 use SIS_tracer_advect, only : advect_scalar
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
-use SIS_types, only : ice_state_type
-use ice_grid, only : ice_grid_type
-use ice_ridging_mod, only : ice_ridging
+use SIS_types,         only : ice_state_type
+use ice_grid,          only : ice_grid_type
+use ice_ridging_mod,   only : ice_ridging
 
 implicit none ; private
 
@@ -1247,18 +1246,18 @@ subroutine alloc_cell_average_state_type(CAS, HI, IG, CS)
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nCat = IG%CatIce
 
   if (.not.associated(CAS)) allocate(CAS)
-  call safe_alloc_alloc(CAS%m_ice, isd, ied, jsd, jed, ncat)
-  call safe_alloc_alloc(CAS%m_snow, isd, ied, jsd, jed, ncat)
-  call safe_alloc_alloc(CAS%m_pond, isd, ied, jsd, jed, ncat)
-  call safe_alloc_alloc(CAS%mH_ice, isd, ied, jsd, jed, ncat)
+  call safe_alloc(CAS%m_ice, isd, ied, jsd, jed, ncat)
+  call safe_alloc(CAS%m_snow, isd, ied, jsd, jed, ncat)
+  call safe_alloc(CAS%m_pond, isd, ied, jsd, jed, ncat)
+  call safe_alloc(CAS%mH_ice, isd, ied, jsd, jed, ncat)
 
   if (present(CS)) then
     if (CS%id_xprt>0) &
-      call safe_alloc_alloc(CAS%mass0, isd, ied, jsd, jed)
+      call safe_alloc(CAS%mass0, isd, ied, jsd, jed)
     if (CS%id_ix_trans>0) &
-      call safe_alloc_alloc(CAS%uh_sum, HI%IsdB, HI%IedB, jsd, jed)
+      call safe_alloc(CAS%uh_sum, HI%IsdB, HI%IedB, jsd, jed)
     if (CS%id_iy_trans>0) &
-      call safe_alloc_alloc(CAS%vh_sum, isd, ied, HI%JsdB, HI%JedB)
+      call safe_alloc(CAS%vh_sum, isd, ied, HI%JsdB, HI%JedB)
   endif
 end subroutine alloc_cell_average_state_type
 

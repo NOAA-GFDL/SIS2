@@ -150,7 +150,7 @@ subroutine ice_state_mass_init(IST, Ice, G, IG, US, PF, init_Time, just_read_par
   endif
 
   if (any_data_override) then
-    call data_override_init()      
+    call data_override_init()
     call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
     call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
   endif
@@ -312,7 +312,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
                         (trim(enth_snow_config)=="data_override")) .and. .not.just_read)
 
   if (any_data_override) then
-    call data_override_init()      
+    call data_override_init()
     call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
     call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
   endif

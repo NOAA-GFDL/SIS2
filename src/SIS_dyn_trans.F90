@@ -36,14 +36,14 @@ use SIS_debugging,     only : chksum, Bchksum, hchksum
 use SIS_debugging,     only : hchksum_pair, Bchksum_pair, uvchksum
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl, safe_alloc_alloc
+use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_dyn_bgrid,     only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts
-use SIS_framework,     only : restart_file_type, domain2D
+use SIS_framework,     only : restart_file_type, domain2D, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
 use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
@@ -2291,22 +2291,22 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
 
     if (.not.associated(CS%DS2d)) allocate(CS%DS2d)
     CS%DS2d%ridge_rate_count = 0.
-    if (CS%do_ridging) call safe_alloc_alloc(CS%DS2d%avg_ridge_rate, G%isd, G%ied, G%jsd, G%jed)
+    if (CS%do_ridging) call safe_alloc(CS%DS2d%avg_ridge_rate, G%isd, G%ied, G%jsd, G%jed)
 
     if (CS%merged_cont) then
       CS%DS2d%nts = 0 ; CS%DS2d%max_nts = 0
-      call safe_alloc_alloc(CS%DS2d%mi_sum, G%isd, G%ied, G%jsd, G%jed)
-      call safe_alloc_alloc(CS%DS2d%ice_cover, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%mi_sum, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%ice_cover, G%isd, G%ied, G%jsd, G%jed)
       max_nts = CS%adv_substeps
       if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_advect > CS%dt_ice_dyn)) &
         max_nts = CS%adv_substeps * max(CEILING(CS%dt_advect/CS%dt_ice_dyn - 1e-6), 1)
       call increase_max_tracer_step_memory(CS%DS2d, G, max_nts)
 
-      call safe_alloc_alloc(CS%DS2d%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
-      call safe_alloc_alloc(CS%DS2d%v_ice_C, G%isd, G%ied, G%JsdB, G%JedB)
+      call safe_alloc(CS%DS2d%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%v_ice_C, G%isd, G%ied, G%JsdB, G%JedB)
       if (.not.CS%Cgrid_dyn) then
-        call safe_alloc_alloc(CS%DS2d%u_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
-        call safe_alloc_alloc(CS%DS2d%v_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
+        call safe_alloc(CS%DS2d%u_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
+        call safe_alloc(CS%DS2d%v_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
       endif
     endif
 
@@ -2375,8 +2375,8 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
     deallocate(tmp_array)
   else
     allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts)) ; DS2d%mca_step(:,:,:) = 0.0
-  !  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
-  !      call safe_alloc_alloc(DS2d%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, DS2d%max_nts)
+  !  This is the equivalent for when the 6 argument version of safe_alloc is available.
+  !      call safe_alloc(DS2d%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, DS2d%max_nts)
   endif
 
   if (allocated(DS2d%uh_step)) then
@@ -2385,13 +2385,13 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
       if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%uh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%uh_step)
-    call safe_alloc_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
+    call safe_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
     if (nts_prev > 0) then ! Copy over the data that had been set before.
       DS2d%uh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
       deallocate(tmp_array)
     endif
   else
-    call safe_alloc_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
+    call safe_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
   endif
 
   if (allocated(DS2d%vh_step)) then
@@ -2400,13 +2400,13 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
       if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%vh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%vh_step)
-    call safe_alloc_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
+    call safe_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
     if (nts_prev > 0) then ! Copy over the data that had been set before.
       DS2d%vh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
       deallocate(tmp_array)
     endif
   else
-    call safe_alloc_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
+    call safe_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
   endif
 
 end subroutine increase_max_tracer_step_memory

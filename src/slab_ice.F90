@@ -13,7 +13,6 @@ use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use MOM_unit_scaling,   only : unit_scale_type
 ! use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-! use SIS_diag_mediator, only : safe_alloc_alloc
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 

@@ -2085,6 +2085,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call set_domain(sGD%mpp_domain)
     if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
+        !### call SIS_restart_init(Ice%Ice_restart, restart_file, sGD%mpp_domain)
 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart, restart_file)
@@ -2229,6 +2230,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
     if (split_restart_files) then
       if (.not.associated(Ice%Ice_fast_restart)) allocate(Ice%Ice_fast_restart)
+        !### call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD%mpp_domain)
     else
       Ice%Ice_fast_restart => Ice%Ice_restart
     endif
@@ -2316,8 +2318,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
                                        restart_file, dirs%restart_input_dir)
 
-
       call rescale_ice_state_restart_fields(sIST, sG, US, sIG, H_to_kg_m2_tmp, Rho_ice, Rho_snow)
+
       sIG%H_to_kg_m2 = H_to_kg_m2_tmp
 
       if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &

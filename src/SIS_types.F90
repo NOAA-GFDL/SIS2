@@ -23,6 +23,7 @@ use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, redistribute_data
 use SIS_framework,     only : register_restart_field, restart_file_type
 use SIS_framework,     only : restore_state, query_initialized
+use SIS_framework,     only : safe_alloc, safe_alloc_ptr
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS2_ice_thm,      only : ice_thermo_type, SIS2_ice_thm_CS, get_SIS2_thermo_coefs
@@ -1023,17 +1024,19 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
-  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
-  allocate(Rad%Tskin_rad(isd:ied, jsd:jed, CatIce)) ; Rad%Tskin_rad(:,:,:) = 0.0
+  call safe_alloc(Rad%t_skin, isd, ied, jsd, jed, CatIce)
+  call safe_alloc(Rad%Tskin_rad, isd, ied, jsd, jed, CatIce)
 
-  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
-  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
-  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
-  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
-  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
+  call safe_alloc(Rad%sw_abs_sfc, isd, ied, jsd, jed, CatIce)
+  call safe_alloc(Rad%sw_abs_snow, isd, ied, jsd, jed, CatIce)
+  if (.not. allocated(Rad%sw_abs_ice)) then
+    allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
+  endif
+  call safe_alloc(Rad%sw_abs_ocn, isd, ied, jsd, jed, CatIce)
+  call safe_alloc(Rad%sw_abs_int, isd, ied, jsd, jed, CatIce)
 
-  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
-  allocate(Rad%coszen_lastrad(isd:ied, jsd:jed)) ; Rad%coszen_lastrad(:,:) = 0.0
+  call safe_alloc(Rad%coszen_nextrad, isd, ied, jsd, jed)
+  call safe_alloc(Rad%coszen_lastrad, isd, ied, jsd, jed)
 
   idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
                                domain=mpp_domain, mandatory=.false.)

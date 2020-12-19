@@ -19,6 +19,7 @@ use SIS_diag_mediator, only : register_SIS_diag_field
 use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, SIS_chksum, get_compute_domain
 use SIS_framework,     only : register_restart_field, restart_file_type
 use SIS_framework,     only : save_restart, restore_state, query_initialized
+use SIS_framework,     only : safe_alloc, safe_alloc_ptr
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
@@ -149,7 +150,7 @@ type ice_data_type !  ice_public_type
           !< A pointer to the SIS slow ice update control structure
   type(unit_scale_type), pointer :: US => NULL()
           !< structure containing various unit conversion factors
-   type(restart_file_type), pointer :: Ice_restart => NULL()
+  type(restart_file_type), pointer :: Ice_restart => NULL()
           !< A pointer to the slow ice restart control structure
   type(restart_file_type), pointer :: Ice_fast_restart => NULL()
           !< A pointer to the fast ice restart control structure
@@ -183,37 +184,37 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
 
   ! The fields t_surf, s_surf, and part_size are only available on fast PEs.
 
-  allocate(Ice%flux_u(isc:iec, jsc:jec)) ; Ice%flux_u(:,:) = 0.0
-  allocate(Ice%flux_v(isc:iec, jsc:jec)) ; Ice%flux_v(:,:) = 0.0
-  allocate(Ice%flux_t(isc:iec, jsc:jec)) ; Ice%flux_t(:,:) = 0.0
-  allocate(Ice%flux_q(isc:iec, jsc:jec)) ; Ice%flux_q(:,:) = 0.0
-  allocate(Ice%flux_sw_vis_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dir(:,:) = 0.0
-  allocate(Ice%flux_sw_vis_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_vis_dif(:,:) = 0.0
-  allocate(Ice%flux_sw_nir_dir(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dir(:,:) = 0.0
-  allocate(Ice%flux_sw_nir_dif(isc:iec, jsc:jec)) ; Ice%flux_sw_nir_dif(:,:) = 0.0
-  allocate(Ice%flux_lw(isc:iec, jsc:jec)) ; Ice%flux_lw(:,:) = 0.0
-  allocate(Ice%flux_lh(isc:iec, jsc:jec)) ; Ice%flux_lh(:,:) = 0.0 !NI
-  allocate(Ice%lprec(isc:iec, jsc:jec)) ; Ice%lprec(:,:) = 0.0
-  allocate(Ice%fprec(isc:iec, jsc:jec)) ; Ice%fprec(:,:) = 0.0
-  allocate(Ice%p_surf(isc:iec, jsc:jec)) ; Ice%p_surf(:,:) = 0.0
-  allocate(Ice%runoff(isc:iec, jsc:jec)) ; Ice%runoff(:,:) = 0.0
-  allocate(Ice%calving(isc:iec, jsc:jec)) ; Ice%calving(:,:) = 0.0
-  allocate(Ice%runoff_hflx(isc:iec, jsc:jec)) ; Ice%runoff_hflx(:,:) = 0.0
-  allocate(Ice%calving_hflx(isc:iec, jsc:jec)) ; Ice%calving_hflx(:,:) = 0.0
-  allocate(Ice%flux_salt(isc:iec, jsc:jec)) ; Ice%flux_salt(:,:) = 0.0
+  call safe_alloc_ptr(Ice%flux_u, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_v, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_t, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_q, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_sw_vis_dir, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_sw_vis_dif, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_sw_nir_dir, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_sw_nir_dif, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_lw, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_lh, isc, iec, jsc, jec)  !NI
+  call safe_alloc_ptr(Ice%lprec, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%fprec, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%p_surf, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%runoff, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%calving, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%runoff_hflx, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%calving_hflx, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%flux_salt, isc, iec, jsc, jec)
 
-  allocate(Ice%SST_C(isc:iec, jsc:jec)) ; Ice%SST_C(:,:) = 0.0
-  allocate(Ice%area(isc:iec, jsc:jec)) ; Ice%area(:,:) = 0.0
-  allocate(Ice%mi(isc:iec, jsc:jec)) ; Ice%mi(:,:) = 0.0 !NR
+  call safe_alloc_ptr(Ice%SST_C, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%area, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%mi, isc, iec, jsc, jec)  !NR
 
   if (Ice%sCS%pass_stress_mag) then
-    allocate(Ice%stress_mag(isc:iec, jsc:jec)) ; Ice%stress_mag(:,:) = 0.0
+    call safe_alloc_ptr(Ice%stress_mag, isc, iec, jsc, jec)
   endif
 
   if (Ice%sCS%pass_iceberg_area_to_ocean) then
-    allocate(Ice%ustar_berg(isc:iec, jsc:jec)) ; Ice%ustar_berg(:,:) = 0.0
-    allocate(Ice%area_berg(isc:iec, jsc:jec)) ; Ice%area_berg(:,:) = 0.0
-    allocate(Ice%mass_berg(isc:iec, jsc:jec)) ; Ice%mass_berg(:,:) = 0.0
+    call safe_alloc_ptr(Ice%ustar_berg, isc, iec, jsc, jec)
+    call safe_alloc_ptr(Ice%area_berg, isc, iec, jsc, jec)
+    call safe_alloc_ptr(Ice%mass_berg, isc, iec, jsc, jec)
   endif
 
   if (present(gas_fluxes)) &
@@ -284,23 +285,25 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   call get_compute_domain(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
-  allocate(Ice%t_surf(isc:iec, jsc:jec, km)) ; Ice%t_surf(:,:,:) = 0.0
-  allocate(Ice%s_surf(isc:iec, jsc:jec)) ; Ice%s_surf(:,:) = 0.0
-  allocate(Ice%part_size(isc:iec, jsc:jec, km)) ; Ice%part_size(:,:,:) = 0.0
+  call safe_alloc_ptr(Ice%t_surf, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%s_surf, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%part_size, isc, iec, jsc, jec, km)
 
-  allocate(Ice%u_surf(isc:iec, jsc:jec, km)) ; Ice%u_surf(:,:,:) = 0.0
-  allocate(Ice%v_surf(isc:iec, jsc:jec, km)) ; Ice%v_surf(:,:,:) = 0.0
-  allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+  call safe_alloc_ptr(Ice%u_surf, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%v_surf, isc, iec, jsc, jec, km)
+  if (.not.associated(Ice%ocean_pt)) then
+    allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+  endif
 
-  allocate(Ice%rough_mom(isc:iec, jsc:jec, km)) ; Ice%rough_mom(:,:,:) = 0.0
-  allocate(Ice%rough_heat(isc:iec, jsc:jec, km)) ; Ice%rough_heat(:,:,:) = 0.0
-  allocate(Ice%rough_moist(isc:iec, jsc:jec, km)) ; Ice%rough_moist(:,:,:) = 0.0
+  call safe_alloc_ptr(Ice%rough_mom, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%rough_heat, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%rough_moist, isc, iec, jsc, jec, km)
 
-  allocate(Ice%albedo(isc:iec, jsc:jec, km)) ; Ice%albedo(:,:,:) = 0.0  ! Derived?
-  allocate(Ice%albedo_vis_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dir(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dir(:,:,:) = 0.0
-  allocate(Ice%albedo_vis_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_vis_dif(:,:,:) = 0.0
-  allocate(Ice%albedo_nir_dif(isc:iec, jsc:jec, km)) ; Ice%albedo_nir_dif(:,:,:) = 0.0
+  call safe_alloc_ptr(Ice%albedo, isc, iec, jsc, jec, km)  ! Derived?
+  call safe_alloc_ptr(Ice%albedo_vis_dir, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%albedo_nir_dir, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%albedo_vis_dif, isc, iec, jsc, jec, km)
+  call safe_alloc_ptr(Ice%albedo_nir_dif, isc, iec, jsc, jec, km)
 
   if (present(gas_fields_ocn)) &
     call coupler_type_spawn(gas_fields_ocn, Ice%ocean_fields, (/isc,isc,iec,iec/), &

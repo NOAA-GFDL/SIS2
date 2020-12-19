@@ -7,6 +7,7 @@ module SIS_framework
 use fms_io_mod,        only : set_domain, nullify_domain
 use fms_io_mod,        only : restart_file_type, register_restart_field
 use fms_io_mod,        only : save_restart, restore_state, query_initialized
+! use fms2_io_mod,       only : query_initialized=>is_registered_to_restart
 use mpp_mod,           only : SIS_chksum=>mpp_chksum
 use mpp_domains_mod,   only : domain2D, CORNER, EAST, NORTH
 use mpp_domains_mod,   only : get_layout=>mpp_get_layout, get_compute_domain=>mpp_get_compute_domain
@@ -14,6 +15,7 @@ use mpp_domains_mod,   only : redistribute_data=>mpp_redistribute
 use mpp_domains_mod,   only : broadcast_domain=>mpp_broadcast_domain
 
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
+use MOM_safe_alloc,    only : safe_alloc=>safe_alloc_alloc, safe_alloc_ptr
 use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
 
 implicit none ; private
@@ -21,7 +23,7 @@ implicit none ; private
 public :: SIS_chksum, redistribute_data, domain2D, CORNER, EAST, NORTH
 public :: set_domain, nullify_domain, get_layout, get_compute_domain, broadcast_domain
 public :: restart_file_type, register_restart_field, save_restart, restore_state, query_initialized
-public :: SIS_initialize_framework
+public :: SIS_initialize_framework, safe_alloc, safe_alloc_ptr
 
 contains
 

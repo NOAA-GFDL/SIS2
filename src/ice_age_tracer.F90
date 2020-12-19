@@ -17,7 +17,7 @@ use MOM_string_functions, only  : slasher
 use MOM_unit_scaling, only      : unit_scale_type
 use SIS_diag_mediator, only     : register_SIS_diag_field, safe_alloc_ptr
 use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_framework, only         : register_restart_field, restore_state
+use SIS_framework, only         : register_restart_field
 use SIS_framework, only         : restart_file_type
 use SIS_hor_grid, only          : SIS_hor_grid_type
 use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
