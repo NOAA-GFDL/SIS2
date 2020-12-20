@@ -19,7 +19,7 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
 use SIS_debugging,     only : Bchksum_pair
-use SIS_framework,     only : register_restart_field, SIS_restart_CS, domain2D
+use SIS_framework,     only : register_restart_field, SIS_restart_CS
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use ice_ridging_mod,   only : ridge_rate
 
@@ -700,14 +700,12 @@ end function sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dyn_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
-subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_restart, restart_file)
-  type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
+subroutine SIS_B_dyn_register_restarts(HI, param_file, CS, Ice_restart)
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
   type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 !   This subroutine registers the restart variables associated with the
 ! the ice dynamics.

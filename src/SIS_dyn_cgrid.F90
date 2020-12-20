@@ -29,7 +29,7 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
-use SIS_framework,     only : domain2D, restore_SIS_state, register_restart_field, SIS_restart_CS
+use SIS_framework,     only : restore_SIS_state, register_restart_field, SIS_restart_CS
 use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts
 use SIS_hor_grid,      only : SIS_hor_grid_type
 
@@ -1577,14 +1577,11 @@ end subroutine find_sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_register_restarts allocates and registers any variables for the
 !!   SIS C-grid dynamics module that need to be included in the restart files.
-subroutine SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, CS, &
-                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
+subroutine SIS_C_dyn_register_restarts(HI, param_file, CS, Ice_restart)
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_restart_CS),    pointer    :: Ice_restart  !< The control structure for the ice restarts
-  character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 !   This subroutine registers the restart variables associated with the
 ! the ice dynamics.
@@ -1619,12 +1616,11 @@ end subroutine SIS_C_dyn_register_restarts
 !!   and non-symmetric memory restart files.  It also handles any changes in dimensional rescaling
 !!   of these variables between what is stored in the restart file and what is done for the current
 !!   run segment.
-subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_file, restart_dir)
+subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   ! These are temporary variables that will be used only here for reading and

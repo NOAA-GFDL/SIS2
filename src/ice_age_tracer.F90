@@ -92,8 +92,7 @@ end type ice_age_tracer_CS
 contains
 
 !> Register tracers from the ice age package
-logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
-                                         Ice_restart, restart_file)
+logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice_restart)
   type(sis_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -102,7 +101,6 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
   type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
 

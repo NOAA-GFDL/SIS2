@@ -478,12 +478,11 @@ end subroutine alloc_IST_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be includedin the restart files.
-subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
+subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   ! Now register some of these arrays to be read from the restart files.
   if (associated(Ice_restart)) then
@@ -545,10 +544,9 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
 
 end subroutine ice_state_register_restarts
 
-subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file)
+subroutine register_unit_conversion_restarts(US, Ice_restart)
   type(unit_scale_type),   intent(inout) :: US    !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   ! Register scalar unit conversion factors.
   call register_restart_field(Ice_restart, "m_to_Z", US%m_to_Z_restart, &
@@ -572,13 +570,11 @@ end subroutine register_unit_conversion_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_read_alt_restarts reads in alternative variables that might have been in the restart
 !! file, specifically dealing with changing between symmetric and non-symmetric memory restart files.
-subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
-                                       restart_file, restart_dir)
+subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
   character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
   ! These are temporary variables that will be used only here for reading and then discarded.
@@ -981,16 +977,13 @@ end subroutine alloc_total_sfc_flux
 !> ice_rad_register_restarts allocates the arrays in the ice_rad_type
 !!     and registers any variables in the ice rad type that need to be included
 !!     in the restart files.
-subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
-                                       Ice_restart, restart_file)
-  type(domain2d),          intent(in)    :: mpp_domain !< The mpp domain describing the ice decomposition
+subroutine ice_rad_register_restarts(HI, IG, param_file, Rad, Ice_restart)
   type(hor_index_type),    intent(in)    :: HI  !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
                                                 !! reflection and transmission of shortwave radiation.
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
 

@@ -81,8 +81,7 @@ contains
 ! tracers and apply vertical column processes to tracers.
 
 !> Call the routines that register all of tracers in the tracer packages
-subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-                                    Ice_restart, restart_file)
+subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, Ice_restart)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -91,10 +90,9 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
   type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This include declares and sets the variable "version".
-#include "version_variable.h"
+# include "version_variable.h"
   character(len=40)  :: mdl = "SIS_tracer_flow_control" ! This module's name.
 
   if (associated(CS)) then
@@ -114,7 +112,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   !  for some reason.  This then overrides the run-time selection from above.
   if (CS%use_ice_age) then
     CS%use_ice_age = register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-        diag, TrReg, Ice_restart, restart_file)
+                         diag, TrReg, Ice_restart)
   endif
 
 

@@ -163,13 +163,12 @@ contains
 !! predominantly associated with the slow processors, and register any variables
 !! in the ice data type that need to be included in the slow ice restart files.
 subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
-                                      Ice_restart, restart_file, gas_fluxes)
+                                      Ice_restart, gas_fluxes)
   type(domain2d),          intent(in)    :: domain   !< The ice models' FMS domain type
   integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
-  type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ice_data_type),     intent(inout) :: Ice      !< The publicly visible ice data type.
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   type(coupler_1d_bc_type), &
                  optional, intent(in)    :: gas_fluxes !< If present, this type describes the
                                               !! additional gas or other tracer fluxes between the
@@ -255,13 +254,12 @@ end subroutine ice_type_slow_reg_restarts
 !! predominantly associated with the fast processors, and registers any variables
 !! in the ice data type that need to be included in the fast ice restart files.
 subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
-                                      Ice_restart, restart_file, gas_fields_ocn)
+                                      Ice_restart, gas_fields_ocn)
   type(domain2d),          intent(in)    :: domain   !< The ice models' FMS domain type
   integer,                 intent(in)    :: CatIce   !< The number of ice thickness categories
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
-  character(len=*),        intent(in)    :: restart_file !< The ice restart file name
   type(coupler_1d_bc_type), &
                  optional, intent(in)    :: gas_fields_ocn !< If present, this type describes the
                                               !! ocean and surface-ice fields that will participate

@@ -80,10 +80,10 @@ end subroutine SIS_initialize_framework
 
 
 !> Initialize and set up a restart control structure.
-subroutine SIS_restart_init(CS, filename, mpp_domain)
+subroutine SIS_restart_init(CS, filename, domain)
   type(SIS_restart_CS),  pointer    :: CS !< A pointer to a MOM_restart_CS object that is allocated here
   character(len=*),      intent(in) :: filename !< The path to the restart file.
-  type(domain2d),        pointer    :: mpp_domain !< The mpp domain descriptor
+  type(MOM_domain_type), intent(in) :: domain    !< The MOM domain descriptor being used
 
   if (associated(CS)) then
     call SIS_error(WARNING, "SIS_restart_init called with an associated control structure.")
@@ -93,7 +93,7 @@ subroutine SIS_restart_init(CS, filename, mpp_domain)
 
   allocate(CS%fms_restart)
   CS%restart_file = trim(filename)
-  CS%mpp_domain => mpp_domain
+  CS%mpp_domain => domain%mpp_domain
 
 end subroutine SIS_restart_init
 
@@ -261,7 +261,7 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, position, directory, doma
     idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
                                 domain=CS%mpp_domain, mandatory=.false., position=position)
   endif
-  call restore_SIS_state(CS, idr, directory=directory)
+  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
   if (present(success)) success = query_initialized(CS, name)
 
@@ -290,7 +290,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, position, directory, doma
     idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
                                 domain=CS%mpp_domain, mandatory=.false., position=position)
   endif
-  call restore_SIS_state(CS, idr, directory=directory)
+  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
   if (present(success)) success = query_initialized(CS, name)
 
@@ -319,7 +319,7 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
     idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
                                 domain=CS%mpp_domain, mandatory=.false., position=position)
   endif
-  call restore_SIS_state(CS, idr, directory=directory)
+  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
   if (present(success)) success = query_initialized(CS, name)
 
@@ -371,16 +371,11 @@ subroutine save_restart(CS, time_stamp)
 end subroutine save_restart
 
 !> Restore the entire state of the sea ice or a single varable using a SIS_restart control structure.
-subroutine restore_SIS_state(CS, id, directory)
+subroutine restore_SIS_state(CS, directory)
   type(SIS_restart_CS),       pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
-  integer,          optional, intent(in) :: id !< The ID of a field given by a call to register_restart_field
   character(len=*), optional, intent(in) :: directory !< The directory in which to seek restart files.
 
-  if (present(id)) then
-    call FMS1_restore_state(CS%fms_restart, id, directory=directory)
-  else
-    call FMS1_restore_state(CS%fms_restart, directory=directory)
-  endif
+  call FMS1_restore_state(CS%fms_restart, directory=directory)
 
 end subroutine restore_SIS_state
 
