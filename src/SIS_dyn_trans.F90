@@ -43,7 +43,7 @@ use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts
-use SIS_framework,     only : restart_file_type, domain2D, safe_alloc
+use SIS_framework,     only : SIS_restart_CS, domain2D, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
 use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
@@ -2102,7 +2102,7 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 !   This subroutine registers the restart variables associated with the
@@ -2137,7 +2137,7 @@ subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 

@@ -78,7 +78,7 @@ use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, tota
 use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
-use SIS_framework,     only : restart_file_type, restore_state, query_initialized, register_restart_field
+use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
@@ -2084,8 +2084,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     call set_domain(sGD%mpp_domain)
-    if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
-        !### call SIS_restart_init(Ice%Ice_restart, restart_file, sGD%mpp_domain)
+    if (.not.associated(Ice%Ice_restart)) &
+      call SIS_restart_init(Ice%Ice_restart, restart_file, sGD%mpp_domain)
 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart, restart_file)
@@ -2229,8 +2229,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
     if (split_restart_files) then
-      if (.not.associated(Ice%Ice_fast_restart)) allocate(Ice%Ice_fast_restart)
-        !### call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD%mpp_domain)
+      if (.not.associated(Ice%Ice_fast_restart)) &
+        call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD%mpp_domain)
     else
       Ice%Ice_fast_restart => Ice%Ice_restart
     endif
@@ -2308,7 +2308,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       is_restart = .true.
       recategorize_ice = .false. ! Assume that the ice is already in the right thickness categories.
 
-      call restore_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
+      call restore_SIS_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
@@ -2539,7 +2539,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Read the fast restart file, if it exists.
       fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
       if (file_exists(fast_rest_path)) then
-        call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
+        call restore_SIS_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
         init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
@@ -2610,7 +2610,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call fix_restart_unit_scaling(US)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
-  !but it should be called after restore_state() otherwise it causes a restart mismatch
+  !but it should be called after restore_SIS_state() otherwise it causes a restart mismatch
   call nullify_domain()
 
   ! Close the parameter file, supplying information for logging the default values.

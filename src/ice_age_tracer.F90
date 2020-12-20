@@ -17,8 +17,7 @@ use MOM_string_functions, only  : slasher
 use MOM_unit_scaling, only      : unit_scale_type
 use SIS_diag_mediator, only     : register_SIS_diag_field, safe_alloc_ptr
 use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_framework, only         : register_restart_field
-use SIS_framework, only         : restart_file_type
+use SIS_framework, only         : register_restart_field, SIS_restart_CS
 use SIS_hor_grid, only          : SIS_hor_grid_type
 use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
 use SIS_utils, only             : post_avg
@@ -102,7 +101,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
                                                       !! structure for the ice age tracer
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
+  type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
@@ -179,9 +178,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
         caller="register_ice_age_tracer")
 
     ! Register the tracer for the restart file.
-    CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
-        CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
-        mandatory=.false.)
+    call register_restart_field(Ice_restart, var_name, CS%tr(:,:,:,1,m), mandatory=.false.)
 
     ocean_BC_ptr => CS%ocean_BC(:,:,:,m)
     snow_BC_ptr  => CS%snow_BC(:,:,:,m)

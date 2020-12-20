@@ -19,8 +19,7 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
 use SIS_debugging,     only : Bchksum_pair
-use SIS_framework,     only : register_restart_field, restart_file_type
-use SIS_framework,     only : domain2D
+use SIS_framework,     only : register_restart_field, SIS_restart_CS, domain2D
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use ice_ridging_mod,   only : ridge_rate
 
@@ -707,7 +706,7 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
+  type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in) :: restart_file !< The ice restart file name
 
 !   This subroutine registers the restart variables associated with the
@@ -727,12 +726,9 @@ subroutine SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, CS, Ice_resta
   allocate(CS%sig12(isd:ied, jsd:jed)) ; CS%sig12(:,:) = 0.0
   allocate(CS%sig22(isd:ied, jsd:jed)) ; CS%sig22(:,:) = 0.0
   if (associated(Ice_restart)) then
-    id = register_restart_field(Ice_restart, restart_file, 'sig11', CS%sig11, &
-                                domain=mpp_domain, mandatory=.false.)
-    id = register_restart_field(Ice_restart, restart_file, 'sig22', CS%sig22, &
-                                domain=mpp_domain, mandatory=.false.)
-    id = register_restart_field(Ice_restart, restart_file, 'sig12', CS%sig12, &
-                                domain=mpp_domain, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'sig11', CS%sig11, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'sig22', CS%sig22, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'sig12', CS%sig12, mandatory=.false.)
   endif
 end subroutine SIS_B_dyn_register_restarts
 

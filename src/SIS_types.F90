@@ -21,8 +21,8 @@ use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,     only : chksum, Bchksum, Bchksum_pair, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, redistribute_data
-use SIS_framework,     only : register_restart_field, restart_file_type
-use SIS_framework,     only : restore_state, query_initialized
+use SIS_framework,     only : register_restart_field, SIS_restart_CS, restore_SIS_state
+use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts
 use SIS_framework,     only : safe_alloc, safe_alloc_ptr
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
@@ -482,67 +482,63 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart, restart_file)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
-
-  integer :: idr
-  type(domain2d), pointer :: mpp_domain => NULL()
-  mpp_domain => G%Domain%mpp_domain
 
   ! Now register some of these arrays to be read from the restart files.
   if (associated(Ice_restart)) then
-    idr = register_restart_field(Ice_restart, restart_file, 'part_size', IST%part_size, domain=mpp_domain)
+    call register_restart_field(Ice_restart, 'part_size', IST%part_size)
     if (allocated(IST%t_surf)) then
-      idr = register_restart_field(Ice_restart, restart_file, 't_surf_ice', IST%t_surf, &
-                                 domain=mpp_domain, mandatory=.false., units="deg K")
+      call register_restart_field(Ice_restart, 't_surf_ice', IST%t_surf, &
+                                  mandatory=.false., units="deg K")
     endif
-    idr = register_restart_field(Ice_restart, restart_file, 'h_pond', IST%mH_pond, & ! mw/new
-                                 domain=mpp_domain, mandatory=.false., units="H_to_kg_m2 kg m-2")
-    idr = register_restart_field(Ice_restart, restart_file, 'h_snow', IST%mH_snow, &
-                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-    idr = register_restart_field(Ice_restart, restart_file, 'enth_snow', IST%enth_snow, &
-                                 domain=mpp_domain, mandatory=.false.)
-    idr = register_restart_field(Ice_restart, restart_file, 'h_ice',  IST%mH_ice, &
-                                 domain=mpp_domain, mandatory=.true., units="H_to_kg_m2 kg m-2")
-    idr = register_restart_field(Ice_restart, restart_file, 'H_to_kg_m2', IG%H_to_kg_m2, &
-                                 longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
-                                 no_domain=.true., mandatory=.false.)
+    call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, & ! mw/new
+                                mandatory=.false., units="H_to_kg_m2 kg m-2")
+    call register_restart_field(Ice_restart, 'h_snow', IST%mH_snow, &
+                                mandatory=.true., units="H_to_kg_m2 kg m-2")
+    call register_restart_field(Ice_restart, 'enth_snow', IST%enth_snow, &
+                                mandatory=.false.)
+    call register_restart_field(Ice_restart, 'h_ice', IST%mH_ice, &
+                                mandatory=.true., units="H_to_kg_m2 kg m-2")
+    call register_restart_field(Ice_restart, 'H_to_kg_m2', IG%H_to_kg_m2, &
+                                longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
+                                mandatory=.false.)
 
-    idr = register_restart_field(Ice_restart, restart_file, 'enth_ice', IST%enth_ice, &
-                                 domain=mpp_domain, mandatory=.false., units="J kg-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'sal_ice', IST%sal_ice, &
-                                 domain=mpp_domain, mandatory=.false., units="kg/kg")
+    call register_restart_field(Ice_restart, 'enth_ice', IST%enth_ice, &
+                                mandatory=.false., units="J kg-1")
+    call register_restart_field(Ice_restart, 'sal_ice', IST%sal_ice, &
+                                mandatory=.false., units="kg/kg")
 
     if (allocated(IST%snow_to_ocn)) then
-      idr = register_restart_field(Ice_restart, restart_file, 'snow_to_ocn', IST%snow_to_ocn, &
-                                   domain=mpp_domain, mandatory=.false., units="kg m-2")
-      idr = register_restart_field(Ice_restart, restart_file, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
-                                   domain=mpp_domain, mandatory=.false., units="J kg-1")
+      call register_restart_field(Ice_restart, 'snow_to_ocn', IST%snow_to_ocn, &
+                                  mandatory=.false., units="kg m-2")
+      call register_restart_field(Ice_restart, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
+                                  mandatory=.false., units="J kg-1")
     endif
 
     if (IST%Cgrid_dyn) then
       if (G%symmetric) then
-        idr = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_C', IST%u_ice_C, &
-                                     domain=mpp_domain, position=EAST, mandatory=.false.)
-        idr = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_C', IST%v_ice_C, &
-                                     domain=mpp_domain, position=NORTH, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_u_ice_C', IST%u_ice_C, &
+                                    position=EAST, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_v_ice_C', IST%v_ice_C, &
+                                    position=NORTH, mandatory=.false.)
       else
-        idr = register_restart_field(Ice_restart, restart_file, 'u_ice_C', IST%u_ice_C, &
-                                     domain=mpp_domain, position=EAST, mandatory=.false.)
-        idr = register_restart_field(Ice_restart, restart_file, 'v_ice_C', IST%v_ice_C, &
-                                     domain=mpp_domain, position=NORTH, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'u_ice_C', IST%u_ice_C, &
+                                    position=EAST, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'v_ice_C', IST%v_ice_C, &
+                                    position=NORTH, mandatory=.false.)
       endif
     else
       if (G%symmetric) then
-        idr = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_B',   IST%u_ice_B, &
-                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
-        idr = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_B',   IST%v_ice_B, &
-                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_u_ice_B', IST%u_ice_B, &
+                                    position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_v_ice_B', IST%v_ice_B, &
+                                    position=CORNER, mandatory=.false.)
       else
-        idr = register_restart_field(Ice_restart, restart_file, 'u_ice',   IST%u_ice_B, &
-                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
-        idr = register_restart_field(Ice_restart, restart_file, 'v_ice',   IST%v_ice_B, &
-                                     domain=mpp_domain, position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'u_ice', IST%u_ice_B, &
+                                    position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'v_ice', IST%v_ice_B, &
+                                    position=CORNER, mandatory=.false.)
       endif
     endif
   endif
@@ -551,27 +547,25 @@ end subroutine ice_state_register_restarts
 
 subroutine register_unit_conversion_restarts(US, Ice_restart, restart_file)
   type(unit_scale_type),   intent(inout) :: US    !< A structure with unit conversion factors
-  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
-  integer :: idr
-
   ! Register scalar unit conversion factors.
-  idr = register_restart_field(Ice_restart, restart_file, "m_to_Z", US%m_to_Z_restart, &
+  call register_restart_field(Ice_restart, "m_to_Z", US%m_to_Z_restart, &
                                  longname="The conversion factor from m to SIS2 height units.", &
-                                 units= "Z meter-1", no_domain=.true., mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, "m_to_L", US%m_to_L_restart, &
+                                 units="Z meter-1", mandatory=.false.)
+  call register_restart_field(Ice_restart, "m_to_L", US%m_to_L_restart, &
                                  longname="The conversion factor from m to SIS2 length units.", &
-                                 units="L meter-1", no_domain=.true., mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, "s_to_T", US%s_to_T_restart, &
+                                 units="L meter-1", mandatory=.false.)
+  call register_restart_field(Ice_restart, "s_to_T", US%s_to_T_restart, &
                                  longname="The conversion factor from s to SIS2 time units.", &
-                                 units="T second-1", no_domain=.true., mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, "kg_m3_to_R", US%kg_m3_to_R_restart, &
+                                 units="T second-1", mandatory=.false.)
+  call register_restart_field(Ice_restart, "kg_m3_to_R", US%kg_m3_to_R_restart, &
                                  longname="The conversion factor from kg m-3 to SIS2 density units.", &
-                                 units="R m3 kg-1", no_domain=.true., mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, "J_kg_to_Q", US%J_kg_to_Q_restart, &
+                                 units="R m3 kg-1", mandatory=.false.)
+  call register_restart_field(Ice_restart, "J_kg_to_Q", US%J_kg_to_Q_restart, &
                                  longname="The conversion factor from J kg-1 to SIS2 enthalpy units.", &
-                                 units="Q kg J-1", no_domain=.true., mandatory=.false.)
+                                 units="Q kg J-1", mandatory=.false.)
 
 end subroutine register_unit_conversion_restarts
 
@@ -583,15 +577,15 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  type(restart_file_type), pointer       :: Ice_restart !< A pointer to the restart type for the ice
+  type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
   character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
   ! These are temporary variables that will be used only here for reading and then discarded.
   real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
-  logical :: u_set, v_set
-  integer :: i, j, id_u, id_v
+  logical :: u_set, v_set, read_u, read_v
+  integer :: i, j
 
   if (.not.associated(Ice_restart)) return
 
@@ -613,18 +607,13 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
                           domain_name="ice temporary domain")
 
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
-      allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
-      allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
-      id_u = register_restart_field(Ice_restart, restart_file, 'u_ice_C', u_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=EAST, &
-                                 mandatory=.false., read_only=.true.)
-      id_v = register_restart_field(Ice_restart, restart_file, 'v_ice_C', v_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=NORTH, &
-                                 mandatory=.false., read_only=.true.)
-      call restore_state(Ice_restart, id_u, directory=restart_dir)
-      call restore_state(Ice_restart, id_v, directory=restart_dir)
-      if (query_initialized(Ice_restart, 'u_ice_C') .and. &
-          query_initialized(Ice_restart, 'v_ice_C')) then
+      call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
+      call only_read_from_restarts(Ice_restart, 'u_ice_C', u_tmp, position=EAST, &
+                   directory=restart_dir, domain=domain_tmp, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'v_ice_C', v_tmp, position=NORTH, &
+                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      if (read_u .and. read_v) then
         ! The non-symmetric variant of this vector has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=CGRID_NE)
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
@@ -636,18 +625,13 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
       endif
     endif
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
-      allocate(u_tmp(G%isd:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
-      allocate(v_tmp(G%isd:G%ied, G%jsd:G%jed)) ; v_tmp(:,:) = 0.0
-      id_u = register_restart_field(Ice_restart, restart_file, 'u_ice', u_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=CORNER, &
-                                 mandatory=.false., read_only=.true.)
-      id_v = register_restart_field(Ice_restart, restart_file, 'v_ice', v_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=CORNER, &
-                                 mandatory=.false., read_only=.true.)
-      call restore_state(Ice_restart, id_u, directory=restart_dir)
-      call restore_state(Ice_restart, id_v, directory=restart_dir)
-      if (query_initialized(Ice_restart, 'u_ice') .and. &
-          query_initialized(Ice_restart, 'v_ice')) then
+      call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
+      call only_read_from_restarts(Ice_restart, 'u_ice', u_tmp, position=CORNER, &
+                   directory=restart_dir, domain=domain_tmp, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'v_ice', v_tmp, position=CORNER, &
+                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      if (read_u .and. read_v) then
         ! The non-symmetric variant of this variable has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=BGRID_NE)
         do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
@@ -674,18 +658,13 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
                           domain_name="ice temporary sym")
 
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
-      allocate(u_tmp(G%isd-1:G%ied, G%jsd:G%jed)) ; u_tmp(:,:) = 0.0
-      allocate(v_tmp(G%isd:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
-      id_u = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_C', u_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=EAST, &
-                                 mandatory=.false., read_only=.true.)
-      id_v = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_C', v_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=NORTH, &
-                                 mandatory=.false., read_only=.true.)
-      call restore_state(Ice_restart, id_u, directory=restart_dir)
-      call restore_state(Ice_restart, id_v, directory=restart_dir)
-      if (query_initialized(Ice_restart, 'sym_u_ice_C') .and. &
-          query_initialized(Ice_restart, 'sym_v_ice_C')) then
+      call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd, G%jed)
+      call safe_alloc(v_tmp, G%isd, G%ied, G%jsd-1, G%jed)
+      call only_read_from_restarts(Ice_restart, 'sym_u_ice_C', u_tmp, position=EAST, &
+                   directory=restart_dir, domain=domain_tmp, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'sym_v_ice_C', v_tmp, position=NORTH, &
+                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      if (read_u .and. read_v) then
         ! The symmetric variant of this vector has been successfully read.
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_C(I,j) = u_tmp(I,j)
@@ -696,18 +675,13 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, &
       endif
     endif
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
-      allocate(u_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; u_tmp(:,:) = 0.0
-      allocate(v_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; v_tmp(:,:) = 0.0
-      id_u = register_restart_field(Ice_restart, restart_file, 'sym_u_ice_B', u_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=CORNER, &
-                                 mandatory=.false., read_only=.true.)
-      id_v = register_restart_field(Ice_restart, restart_file, 'sym_v_ice_B', v_tmp(:,:), &
-                                 domain=domain_tmp%mpp_domain, position=CORNER, &
-                                 mandatory=.false., read_only=.true.)
-      call restore_state(Ice_restart, id_u, directory=restart_dir)
-      call restore_state(Ice_restart, id_v, directory=restart_dir)
-      if (query_initialized(Ice_restart, 'sym_u_ice_B') .and. &
-          query_initialized(Ice_restart, 'sym_v_ice_B')) then
+      call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
+      call safe_alloc(v_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
+      call only_read_from_restarts(Ice_restart, 'sym_u_ice_B', u_tmp, position=CORNER, &
+                   directory=restart_dir, domain=domain_tmp, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'sym_v_ice_B', v_tmp, position=CORNER, &
+                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      if (read_u .and. read_v) then
         ! The symmetric variant of this variable has been successfully read.
         do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
           IST%u_ice_B(I,J) = u_tmp(I,J)
@@ -1015,7 +989,7 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
                                                 !! reflection and transmission of shortwave radiation.
-  type(restart_file_type), intent(inout) :: Ice_restart !< A pointer to the restart type for the ice
+  type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in)    :: restart_file !< The name of the ice restart file
 
   integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
@@ -1038,10 +1012,8 @@ subroutine ice_rad_register_restarts(mpp_domain, HI, IG, param_file, Rad, &
   call safe_alloc(Rad%coszen_nextrad, isd, ied, jsd, jed)
   call safe_alloc(Rad%coszen_lastrad, isd, ied, jsd, jed)
 
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen', Rad%coszen_nextrad, &
-                               domain=mpp_domain, mandatory=.false.)
-  idr = register_restart_field(Ice_restart, restart_file, 'T_skin', Rad%t_skin, &
-                               domain=mpp_domain, mandatory=.false.)
+  call register_restart_field(Ice_restart, 'coszen', Rad%coszen_nextrad, mandatory=.false.)
+  call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, mandatory=.false.)
 
 end subroutine ice_rad_register_restarts
 
@@ -2114,7 +2086,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
-  type(restart_file_type),   pointer     :: Ice_restart !< The restart_file_type for these restarts
+  type(SIS_restart_CS),      pointer     :: Ice_restart !< The control structure for these restarts
   character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
 
   integer :: idr
@@ -2122,96 +2094,96 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
 ! These fields are needed because the open-water fluxes are not recalculated.  It might be
 ! possible to make the fast-to-slow restart file smaller by breaking out the open-ocean
 ! category.
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sh_top', FIA%flux_sh_top, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'evap_top', FIA%evap_top, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_lw_top', FIA%flux_lw_top, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_lh_top', FIA%flux_lh_top, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'flux_sh_top', FIA%flux_sh_top, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'evap_top', FIA%evap_top, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'flux_lw_top', FIA%flux_lw_top, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'flux_lh_top', FIA%flux_lh_top, &
+                              mandatory=.false., units="W m-2")
 
-  idr = register_restart_field(Ice_restart, restart_file, 'lprec_top', FIA%lprec_top, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'fprec_top', FIA%fprec_top, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_top', FIA%flux_sw_top, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'lprec_top', FIA%lprec_top, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'fprec_top', FIA%fprec_top, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, &
+                              mandatory=.false., units="W m-2")
 
-  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_x', FIA%WindStr_x, &
-                               domain=mpp_domain, mandatory=.false., units="Pa")
-  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_y', FIA%WindStr_y, &
-                               domain=mpp_domain, mandatory=.false., units="Pa")
-  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_ocn_x', FIA%WindStr_ocn_x, &
-                               domain=mpp_domain, mandatory=.false., units="Pa")
-  idr = register_restart_field(Ice_restart, restart_file, 'WindStr_ocn_y', FIA%WindStr_ocn_y, &
-                               domain=mpp_domain, mandatory=.false., units="Pa")
-  idr = register_restart_field(Ice_restart, restart_file, 'p_atm_surf', FIA%p_atm_surf, &
-                               domain=mpp_domain, mandatory=.false., units="Pa")
-  idr = register_restart_field(Ice_restart, restart_file, 'runoff', FIA%runoff, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'calving', FIA%calving, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'runoff_hflx', FIA%runoff_hflx, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'calving_hflx', FIA%calving_hflx, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'Tskin_avg', FIA%Tskin_avg, &
-                               domain=mpp_domain, mandatory=.false., units="degC")
-  idr = register_restart_field(Ice_restart, restart_file, 'ice_free', FIA%ice_free, &
-                               domain=mpp_domain, mandatory=.false., units="nondim")
-  idr = register_restart_field(Ice_restart, restart_file, 'ice_cover', FIA%ice_cover, &
-                               domain=mpp_domain, mandatory=.false., units="nondim")
-  idr = register_restart_field(Ice_restart, restart_file, 'flux_sw_dn', FIA%flux_sw_dn, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'WindStr_x', FIA%WindStr_x, &
+                              mandatory=.false., units="Pa")
+  call register_restart_field(Ice_restart, 'WindStr_y', FIA%WindStr_y, &
+                              mandatory=.false., units="Pa")
+  call register_restart_field(Ice_restart, 'WindStr_ocn_x', FIA%WindStr_ocn_x, &
+                              mandatory=.false., units="Pa")
+  call register_restart_field(Ice_restart, 'WindStr_ocn_y', FIA%WindStr_ocn_y, &
+                              mandatory=.false., units="Pa")
+  call register_restart_field(Ice_restart, 'p_atm_surf', FIA%p_atm_surf, &
+                              mandatory=.false., units="Pa")
+  call register_restart_field(Ice_restart, 'runoff', FIA%runoff, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'calving', FIA%calving, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'runoff_hflx', FIA%runoff_hflx, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'calving_hflx', FIA%calving_hflx, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'Tskin_avg', FIA%Tskin_avg, &
+                              mandatory=.false., units="degC")
+  call register_restart_field(Ice_restart, 'ice_free', FIA%ice_free, &
+                              mandatory=.false., units="nondim")
+  call register_restart_field(Ice_restart, 'ice_cover', FIA%ice_cover, &
+                              mandatory=.false., units="nondim")
+  call register_restart_field(Ice_restart, 'flux_sw_dn', FIA%flux_sw_dn, &
+                              mandatory=.false., units="W m-2")
 
 
   if (allocated(FIA%flux_sh0)) then
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_sh_T0', FIA%flux_sh0, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-    idr = register_restart_field(Ice_restart, restart_file, 'flux_lw_T0', FIA%flux_lw0, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-    idr = register_restart_field(Ice_restart, restart_file, 'evap_T0', FIA%evap0, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'dsh_dT', FIA%dshdt, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'dsh_dT', FIA%dshdt, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'dlw_dT', FIA%dlwdt, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2 degC-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'devap_dT', FIA%devapdt, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1 degC-1")
-    idr = register_restart_field(Ice_restart, restart_file, 'Tskin_can', FIA%Tskin_cat, &
-                               domain=mpp_domain, mandatory=.false., units="degC")
+    call register_restart_field(Ice_restart, 'flux_sh_T0', FIA%flux_sh0, &
+                                mandatory=.false., units="W m-2")
+    call register_restart_field(Ice_restart, 'flux_lw_T0', FIA%flux_lw0, &
+                                mandatory=.false., units="W m-2")
+    call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, &
+                                mandatory=.false., units="kg m-2 s-1")
+    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, &
+                                mandatory=.false., units="W m-2 degC-1")
+    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, &
+                                mandatory=.false., units="W m-2 degC-1")
+    call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, &
+                                mandatory=.false., units="W m-2 degC-1")
+    call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, &
+                                mandatory=.false., units="kg m-2 s-1 degC-1")
+    call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, &
+                                mandatory=.false., units="degC")
   endif
 
-  idr = register_restart_field(Ice_restart, restart_file, 'tskin_rad', Rad%tskin_rad, &
-                               domain=mpp_domain, mandatory=.false., units="degC")
-  idr = register_restart_field(Ice_restart, restart_file, 'coszen_rad', Rad%coszen_lastrad, &
-                               domain=mpp_domain, mandatory=.false., units="nondim")
+  call register_restart_field(Ice_restart, 'tskin_rad', Rad%tskin_rad, &
+                              mandatory=.false., units="degC")
+  call register_restart_field(Ice_restart, 'coszen_rad', Rad%coszen_lastrad, &
+                              mandatory=.false., units="nondim")
 
-  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_sh', TSF%flux_sh, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_lw', TSF%flux_lw, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_lh', TSF%flux_lh, &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_evap', TSF%evap, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_lprec', TSF%lprec, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_fprec', TSF%fprec, &
-                               domain=mpp_domain, mandatory=.false., units="kg m-2 s-1")
-  idr = register_restart_field(Ice_restart, restart_file, 'total_flux_sw', TSF%flux_sw, &
-                               longname="Total shortwave flux by frequency and angular band", &
-                               domain=mpp_domain, mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'total_flux_sh', TSF%flux_sh, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'total_flux_lw', TSF%flux_lw, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'total_flux_lh', TSF%flux_lh, &
+                              mandatory=.false., units="W m-2")
+  call register_restart_field(Ice_restart, 'total_evap', TSF%evap, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'total_lprec', TSF%lprec, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'total_fprec', TSF%fprec, &
+                              mandatory=.false., units="kg m-2 s-1")
+  call register_restart_field(Ice_restart, 'total_flux_sw', TSF%flux_sw, &
+                              longname="Total shortwave flux by frequency and angular band", &
+                              mandatory=.false., units="W m-2")
 
   if (coupler_type_initialized(TSF%tr_flux) .and. &
       coupler_type_initialized(FIA%tr_flux)) then
     call coupler_type_register_restarts(TSF%tr_flux, restart_file, &
-                                        Ice_restart, mpp_domain, "TSF_")
+                                        Ice_restart%fms_restart, mpp_domain, "TSF_")
     call coupler_type_register_restarts(FIA%tr_flux, restart_file, &
-                                        Ice_restart, mpp_domain, "FIA_")
+                                        Ice_restart%fms_restart, mpp_domain, "FIA_")
   endif
 
 end subroutine register_fast_to_slow_restarts

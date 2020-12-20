@@ -49,7 +49,7 @@ use ice_grid,            only : ice_grid_type
 use MOM_error_handler,   only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_file_parser,     only : get_param, log_version, param_file_type
 use SIS_diag_mediator,   only : time_type, SIS_diag_ctrl
-use SIS_framework,       only : restart_file_type
+use SIS_framework,       only : SIS_restart_CS
 use SIS_hor_grid,        only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
@@ -90,7 +90,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
                                                       !! control structure for the tracer flow control
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
+  type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
 
   ! This include declares and sets the variable "version".

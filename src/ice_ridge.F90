@@ -11,7 +11,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_hor_grid,      only : SIS_hor_grid_type
-use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_framework,     only : register_restart_field
 
 implicit none ; private
 
