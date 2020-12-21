@@ -10,7 +10,7 @@ use fms_io_mod,        only : save_restart_FMS1=>save_restart, FMS1_restore_stat
 use fms_io_mod,        only : FMS1_query_initialized=>query_initialized
 ! use fms2_io_mod,       only : query_initialized=>is_registered_to_restart
 use mpp_mod,           only : SIS_chksum=>mpp_chksum
-use mpp_domains_mod,   only : domain2D, CORNER, EAST, NORTH
+use mpp_domains_mod,   only : domain2D, CENTER, CORNER, EAST, NORTH
 use mpp_domains_mod,   only : get_layout=>mpp_get_layout, get_compute_domain=>mpp_get_compute_domain
 use mpp_domains_mod,   only : redistribute_data=>mpp_redistribute
 use mpp_domains_mod,   only : broadcast_domain=>mpp_broadcast_domain
@@ -23,7 +23,7 @@ use MOM_file_parser,   only : get_param, read_param, log_param, log_version, par
 
 implicit none ; private
 
-public :: SIS_chksum, redistribute_data, domain2D, CORNER, EAST, NORTH
+public :: SIS_chksum, redistribute_data, domain2D, CENTER, CORNER, EAST, NORTH, axis_names_from_pos
 public :: set_domain, nullify_domain, get_layout, get_compute_domain, broadcast_domain
 public :: restart_file_type, restore_SIS_state, register_restart_field, save_restart, query_inited
 public :: query_initialized, SIS_restart_init, SIS_restart_end, only_read_from_restarts
@@ -34,6 +34,7 @@ type, public :: SIS_restart_CS ! ; private
   type(restart_file_type), pointer :: fms_restart => NULL() !< The FMS restart file type to use
   type(domain2d), pointer :: mpp_domain => NULL() !< The mpp domain to use for read of decomposed fields.
   character(len=240) :: restart_file !< The name or name root for MOM restart files.
+  logical :: use_FMS2 = .false.      !< If true use the FMS2 interfaces for restarts.
 end type SIS_restart_CS
 
 !> Register fields for restarts
@@ -80,10 +81,11 @@ end subroutine SIS_initialize_framework
 
 
 !> Initialize and set up a restart control structure.
-subroutine SIS_restart_init(CS, filename, domain)
+subroutine SIS_restart_init(CS, filename, domain, use_FMS2)
   type(SIS_restart_CS),  pointer    :: CS !< A pointer to a MOM_restart_CS object that is allocated here
   character(len=*),      intent(in) :: filename !< The path to the restart file.
-  type(MOM_domain_type), intent(in) :: domain    !< The MOM domain descriptor being used
+  type(MOM_domain_type), intent(in) :: domain   !< The MOM domain descriptor being used
+  logical,     optional, intent(in) :: use_FMS2 !< If true use the FMS2 variant of calls.
 
   if (associated(CS)) then
     call SIS_error(WARNING, "SIS_restart_init called with an associated control structure.")
@@ -94,6 +96,7 @@ subroutine SIS_restart_init(CS, filename, domain)
   allocate(CS%fms_restart)
   CS%restart_file = trim(filename)
   CS%mpp_domain => domain%mpp_domain
+  CS%use_FMS2 = .false. ; if (present(use_FMS2)) CS%use_FMS2 = use_FMS2
 
 end subroutine SIS_restart_init
 
@@ -101,7 +104,7 @@ end subroutine SIS_restart_init
 
 !> Register a 4-d field for restarts, providing the metadata as individual arguments
 subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position, dim_3, dim_4, &
-                                     mandatory, read_only, id)
+                                     mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:,:), &
@@ -114,24 +117,36 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position,
   character(len=*), optional, intent(in) :: dim_4     !< The name of the 4th dimension axis
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
-  logical,          optional, intent(in) :: read_only !< If true, this variable is read but not written.
-  integer,         optional, intent(out) :: id        !< The restart ID foonly_read_from_restartsr this variable
 
+  ! Local variables
+  character(len=24), dimension(5) :: dim_names ! Dimension names to use with FMS2.
+  logical :: is_optional
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_field_4d: "//&
       "Restart_CS must be initialized before it is used to register "//trim(name))
 
-  idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
-                              units=units, mandatory=mandatory, read_only=read_only, &
-                              domain=CS%mpp_domain, position=position)
-  if (present(id)) id = idr
-
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+                                units=units, mandatory=mandatory, &
+                                domain=CS%mpp_domain, position=position)
+  else
+    ! This is the FMS2 variant of this call.
+    dim_names(1:5) = (/ "ih  ", "jh  ", "cat ", "zl  ", "Time" /)
+    if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
+    if (present(dim_3)) dim_names(3) = trim(dim_3)
+    if (present(dim_4)) dim_names(4) = trim(dim_4)
+    is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
+    ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
+    ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
+    ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
+    call SIS_error(FATAL, "register_restart_field_4d: The SIS_framework code does not work with FMS2 yet.")
+  endif
 end subroutine register_restart_field_4d
 
 !> Register a 3-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position, dim_3, &
-                                     mandatory, read_only, id)
+subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position, dim_3, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:), &
@@ -143,24 +158,36 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position,
   character(len=*), optional, intent(in) :: dim_3     !< The name of the 3rd dimension axis
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
-  logical,          optional, intent(in) :: read_only !< If true, this variable is read but not written.
-  integer,         optional, intent(out) :: id        !< The restart ID for this variable
 
+  ! Local variables
+  character(len=24), dimension(4) :: dim_names ! Dimension names to use with FMS2.
+  logical :: is_optional
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_field_3d: "//&
       "Restart_CS must be initialized before it is used to register "//trim(name))
 
-  idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
-                              units=units, mandatory=mandatory, read_only=read_only, &
-                              domain=CS%mpp_domain, position=position)
-  if (present(id)) id = idr
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+                                units=units, mandatory=mandatory, &
+                                domain=CS%mpp_domain, position=position)
+  else
+    ! This is the FMS2 variant of this call.
+    dim_names(1:4) = (/ "ih  ", "jh  ", "cat ", "Time" /)
+    if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
+    if (present(dim_3)) dim_names(3) = trim(dim_3)
+    is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
+    ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
+    ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
+    ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
+    call SIS_error(FATAL, "register_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
+  endif
 
 end subroutine register_restart_field_3d
 
 !> Register a 2-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position, &
-                                     mandatory, read_only, id)
+subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:), &
@@ -171,49 +198,71 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
                                                       !! position of this variable
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
-  logical,          optional, intent(in) :: read_only !< If true, this variable is read but not written.
-  integer,         optional, intent(out) :: id        !< The restart ID for this variable
 
+  ! Local variables
+  character(len=24), dimension(3) :: dim_names ! Dimension names to use with FMS2.
+  logical :: is_optional
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_field_2d: "//&
       "Restart_CS must be initialized before it is used to register "//trim(name))
 
-  idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
-                              units=units, mandatory=mandatory, read_only=read_only, &
-                              domain=CS%mpp_domain, position=position)
-  if (present(id)) id = idr
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+                                units=units, mandatory=mandatory, &
+                                domain=CS%mpp_domain, position=position)
+
+  else
+    ! This is the FMS2 variant of this call.
+    dim_names(1:3) = (/ "ih  ", "jh  ", "Time" /)
+    if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
+    is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
+    ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
+    ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
+    ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
+    call SIS_error(FATAL, "register_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
+  endif
 
 end subroutine register_restart_field_2d
 
 !> Register a 1-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_3, &
-                                     mandatory, read_only, id)
+subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:), target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
-  character(len=*), optional, intent(in) :: dim_3     !< The name of the axis
+  character(len=*), optional, intent(in) :: dim_name  !< The name of the axis
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
-  logical,          optional, intent(in) :: read_only !< If true, this variable is read but not written.
-  integer,         optional, intent(out) :: id        !< The restart ID for this variable
 
+  ! Local variables
+  character(len=24), dimension(1) :: dim_names ! Dimension names to use with FMS2.
+  logical :: is_optional
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_field_1d: "//&
       "Restart_CS must be initialized before it is used to register "//trim(name))
 
-  idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
-                              units=units, mandatory=mandatory, read_only=read_only, &
-                              no_domain=.true.)
-  if (present(id)) id = idr
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+                                units=units, mandatory=mandatory, no_domain=.true.)
+  else
+    ! This is the FMS2 variant of this call.
+    dim_names(1) = "cat" ; if (present(dim_name)) dim_names(1) = dim_name
+    is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
+    ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
+    ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
+    ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
+    call SIS_error(FATAL, "register_restart_field_1d: The SIS_framework code does not work with FMS2 yet.")
+  endif
 
 end subroutine register_restart_field_1d
 
 !> Register a 0-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory, read_only, id)
+subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real,               target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
@@ -221,18 +270,26 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory
   character(len=*), optional, intent(in) :: units     !< variable units
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
-  logical,          optional, intent(in) :: read_only !< If true, this variable is read but not written.
-  integer,         optional, intent(out) :: id        !< The restart ID for this variable
 
+  ! Local variables
+  logical :: is_optional
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_field_0d: "//&
       "Restart_CS must be initialized before it is used to register "//trim(name))
 
-  idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
-                              units=units, mandatory=mandatory, read_only=read_only, &
-                              no_domain=.true.)
-  if (present(id)) id = idr
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+                                units=units, mandatory=mandatory, no_domain=.true.)
+  else
+    ! This is the FMS2 variant of this call.
+    is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
+    ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
+    ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
+    ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
+    call SIS_error(FATAL, "register_restart_field_0d: The SIS_framework code does not work with FMS2 yet.")
+  endif
 
 end subroutine register_restart_field_0d
 
@@ -325,7 +382,6 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
 
 end subroutine only_read_restart_field_2d
 
-
 !> query_initialized_name determines whether a named field has been successfully
 !! read from a restart file yet.
 function query_initialized(CS, name) result(query_init)
@@ -360,6 +416,29 @@ function query_inited(CS, name) result(query_initialized)
   query_initialized = FMS1_query_initialized(CS%fms_restart, name)
 
 end function query_inited
+
+!> This subroutine sets standard horizontal axis names from a coded position integer
+subroutine axis_names_from_pos(dim_names, position, varname)
+  character(len=*), dimension(2), intent(out) :: dim_names !< The names of the i- and j-dimensions
+  integer,                        intent(in)  :: position  !< A coded integer indicating the horizontal
+                                                           !! position of this variable
+  character(len=*), optional,     intent(in)  :: varname   !< The variable name to be used in the restart file
+
+  if (position == CENTER) then
+    dim_names(1:2) = (/ "ih", "jh" /)
+  elseif (position == CORNER) then
+    dim_names(1:2) = (/ "iq", "jq" /)
+  elseif (position == NORTH) then
+    dim_names(1:2) = (/ "iq", "jq" /)
+  elseif (position == EAST) then
+    dim_names(1:2) = (/ "iq", "jq" /)
+  elseif (present(varname)) then
+    call SIS_error(FATAL, "set_axis_names_from_pos: Unrecognized position setting for "//trim(varname))
+  else
+    call SIS_error(FATAL, "set_axis_names_from_pos: Unrecognized position setting")
+  endif
+end subroutine axis_names_from_pos
+
 
 !> save_restart saves all registered variables to restart files.
 subroutine save_restart(CS, time_stamp)
