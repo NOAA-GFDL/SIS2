@@ -300,9 +300,9 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   ! Now register some of these arrays to be read from the restart files.
   ! These are used by the atmospheric model, and need to be in the fast PE restarts.
   if (associated(Ice_restart)) then
-    call register_restart_field(Ice_restart, 'rough_mom',   Ice%rough_mom)
-    call register_restart_field(Ice_restart, 'rough_heat',  Ice%rough_heat)
-    call register_restart_field(Ice_restart, 'rough_moist', Ice%rough_moist)
+    call register_restart_field(Ice_restart, 'rough_mom',   Ice%rough_mom, dim_3="cat0")
+    call register_restart_field(Ice_restart, 'rough_heat',  Ice%rough_heat, dim_3="cat0")
+    call register_restart_field(Ice_restart, 'rough_moist', Ice%rough_moist, dim_3="cat0")
   endif
 
 end subroutine ice_type_fast_reg_restarts

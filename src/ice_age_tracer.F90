@@ -114,10 +114,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (associated(CS)) then
-      call SIS_error(WARNING, "register_ice_age_tracer called with an "// &
-          "associated control structure.")
-      register_ice_age_tracer = .false.
-      return
+    call SIS_error(WARNING, "register_ice_age_tracer called with an "// &
+        "associated control structure.")
+    register_ice_age_tracer = .false.
+    return
   endif
   allocate(CS)
 
@@ -172,8 +172,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice
 
   do m=1,CS%ntr
 
-    call query_vardesc(CS%tr_desc(m), name=var_name, &
-        caller="register_ice_age_tracer")
+    call query_vardesc(CS%tr_desc(m), name=var_name, caller="register_ice_age_tracer")
 
     ! Register the tracer for the restart file.
     call register_restart_field(Ice_restart, var_name, CS%tr(:,:,:,1,m), mandatory=.false.)

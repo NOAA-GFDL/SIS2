@@ -30,7 +30,7 @@ use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_framework,     only : restore_SIS_state, register_restart_field, SIS_restart_CS
-use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts
+use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 
 implicit none ; private
@@ -1596,9 +1596,10 @@ subroutine SIS_C_dyn_register_restarts(HI, param_file, CS, Ice_restart)
   endif
   allocate(CS)
 
-  allocate(CS%str_d(isd:ied, jsd:jed)) ; CS%str_d(:,:) = 0.0
-  allocate(CS%str_t(isd:ied, jsd:jed)) ; CS%str_t(:,:) = 0.0
-  allocate(CS%str_s(HI%IsdB:HI%IedB, HI%JsdB:HI%JedB)) ; CS%str_s(:,:) = 0.0
+  call safe_alloc(CS%str_d, isd, ied, jsd, jed)
+  call safe_alloc(CS%str_t, isd, ied, jsd, jed)
+  call safe_alloc(CS%str_s, HI%IsdB, HI%IedB, HI%JsdB, HI%JedB)
+
   if (associated(Ice_restart)) then
     call register_restart_field(Ice_restart, 'str_d', CS%str_d, mandatory=.false.)
     call register_restart_field(Ice_restart, 'str_t', CS%str_t, mandatory=.false.)

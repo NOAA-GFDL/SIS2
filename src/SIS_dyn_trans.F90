@@ -2119,8 +2119,7 @@ subroutine SIS_dyn_trans_register_restarts(HI, IG, param_file, CS, Ice_restart)
   else
     call SIS_B_dyn_register_restarts(HI, param_file, CS%SIS_B_dyn_CSp, Ice_restart)
   endif
-!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
-!                                       Ice_restart, restart_file)
+!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, Ice_restart)
 
 end subroutine SIS_dyn_trans_register_restarts
 

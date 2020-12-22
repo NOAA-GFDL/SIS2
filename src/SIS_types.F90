@@ -433,7 +433,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   logical,    optional, intent(in)    :: do_ridging !< If true, allocate arrays related to ridging
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-  integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
+  integer :: isd, ied, jsd, jed, CatIce, NkIce
   logical :: do_vel, do_Tsurf
 
   do_vel = .true. ; if (present(omit_velocities)) do_vel = .not.omit_velocities
@@ -486,16 +486,16 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
 
   ! Now register some of these arrays to be read from the restart files.
   if (associated(Ice_restart)) then
-    call register_restart_field(Ice_restart, 'part_size', IST%part_size)
+    call register_restart_field(Ice_restart, 'part_size', IST%part_size, dim_3='cat0')
     if (allocated(IST%t_surf)) then
       call register_restart_field(Ice_restart, 't_surf_ice', IST%t_surf, &
                                   mandatory=.false., units="deg K")
     endif
-    call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, & ! mw/new
+    call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, &
                                 mandatory=.false., units="H_to_kg_m2 kg m-2")
     call register_restart_field(Ice_restart, 'h_snow', IST%mH_snow, &
                                 mandatory=.true., units="H_to_kg_m2 kg m-2")
-    call register_restart_field(Ice_restart, 'enth_snow', IST%enth_snow, &
+    call register_restart_field(Ice_restart, 'enth_snow', IST%enth_snow, dim_4='z_snow', &
                                 mandatory=.false.)
     call register_restart_field(Ice_restart, 'h_ice', IST%mH_ice, &
                                 mandatory=.true., units="H_to_kg_m2 kg m-2")
@@ -985,7 +985,7 @@ subroutine ice_rad_register_restarts(HI, IG, param_file, Rad, Ice_restart)
                                                 !! reflection and transmission of shortwave radiation.
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
 
-  integer :: isd, ied, jsd, jed, CatIce, NkIce, idr
+  integer :: isd, ied, jsd, jed, CatIce, NkIce
 
   if (.not.associated(Rad)) allocate(Rad)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
@@ -2079,30 +2079,26 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
-  type(SIS_restart_CS),      pointer     :: Ice_restart !< The control structure for these restarts
+  type(SIS_restart_CS),      pointer     :: Ice_restart !< The control structure for the ice restarts
   character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
-
-  integer :: idr
 
 ! These fields are needed because the open-water fluxes are not recalculated.  It might be
 ! possible to make the fast-to-slow restart file smaller by breaking out the open-ocean
 ! category.
-  call register_restart_field(Ice_restart, 'flux_sh_top', FIA%flux_sh_top, &
+  call register_restart_field(Ice_restart, 'flux_sh_top', FIA%flux_sh_top, dim_3="cat0", &
                               mandatory=.false., units="W m-2")
-  call register_restart_field(Ice_restart, 'evap_top', FIA%evap_top, &
+  call register_restart_field(Ice_restart, 'evap_top', FIA%evap_top, dim_3="cat0", &
                               mandatory=.false., units="kg m-2 s-1")
-  call register_restart_field(Ice_restart, 'flux_lw_top', FIA%flux_lw_top, &
+  call register_restart_field(Ice_restart, 'flux_lw_top', FIA%flux_lw_top, dim_3="cat0", &
                               mandatory=.false., units="W m-2")
-  call register_restart_field(Ice_restart, 'flux_lh_top', FIA%flux_lh_top, &
+  call register_restart_field(Ice_restart, 'flux_lh_top', FIA%flux_lh_top, dim_3="cat0", &
                               mandatory=.false., units="W m-2")
-
-  call register_restart_field(Ice_restart, 'lprec_top', FIA%lprec_top, &
+  call register_restart_field(Ice_restart, 'lprec_top', FIA%lprec_top, dim_3="cat0", &
                               mandatory=.false., units="kg m-2 s-1")
-  call register_restart_field(Ice_restart, 'fprec_top', FIA%fprec_top, &
+  call register_restart_field(Ice_restart, 'fprec_top', FIA%fprec_top, dim_3="cat0", &
                               mandatory=.false., units="kg m-2 s-1")
-  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, &
-                              mandatory=.false., units="W m-2")
-
+  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, dim_3="cat0", &
+                              dim_4="band", mandatory=.false., units="W m-2")
   call register_restart_field(Ice_restart, 'WindStr_x', FIA%WindStr_x, &
                               mandatory=.false., units="Pa")
   call register_restart_field(Ice_restart, 'WindStr_y', FIA%WindStr_y, &
@@ -2127,26 +2123,23 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                               mandatory=.false., units="nondim")
   call register_restart_field(Ice_restart, 'ice_cover', FIA%ice_cover, &
                               mandatory=.false., units="nondim")
-  call register_restart_field(Ice_restart, 'flux_sw_dn', FIA%flux_sw_dn, &
+  call register_restart_field(Ice_restart, 'flux_sw_dn', FIA%flux_sw_dn, dim_3="band", &
                               mandatory=.false., units="W m-2")
 
-
   if (allocated(FIA%flux_sh0)) then
-    call register_restart_field(Ice_restart, 'flux_sh_T0', FIA%flux_sh0, &
+    call register_restart_field(Ice_restart, 'flux_sh_T0', FIA%flux_sh0, dim_3="cat0", &
                                 mandatory=.false., units="W m-2")
-    call register_restart_field(Ice_restart, 'flux_lw_T0', FIA%flux_lw0, &
+    call register_restart_field(Ice_restart, 'flux_lw_T0', FIA%flux_lw0, dim_3="cat0", &
                                 mandatory=.false., units="W m-2")
-    call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, &
+    call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, dim_3="cat0", &
                                 mandatory=.false., units="kg m-2 s-1")
-    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, &
+    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, dim_3="cat0", &
                                 mandatory=.false., units="W m-2 degC-1")
-    call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, &
+    call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, dim_3="cat0", &
                                 mandatory=.false., units="W m-2 degC-1")
-    call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, &
-                                mandatory=.false., units="W m-2 degC-1")
-    call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, &
+    call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, dim_3="cat0", &
                                 mandatory=.false., units="kg m-2 s-1 degC-1")
-    call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, &
+    call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, dim_3="cat0", &
                                 mandatory=.false., units="degC")
   endif
 
@@ -2167,7 +2160,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                               mandatory=.false., units="kg m-2 s-1")
   call register_restart_field(Ice_restart, 'total_fprec', TSF%fprec, &
                               mandatory=.false., units="kg m-2 s-1")
-  call register_restart_field(Ice_restart, 'total_flux_sw', TSF%flux_sw, &
+  call register_restart_field(Ice_restart, 'total_flux_sw', TSF%flux_sw, dim_3="band", &
                               longname="Total shortwave flux by frequency and angular band", &
                               mandatory=.false., units="W m-2")
 
