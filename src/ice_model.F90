@@ -42,10 +42,6 @@ use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=
 use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init
 use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
 
-use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
-use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
-
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
@@ -79,6 +75,9 @@ use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
 use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
+use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
+use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction

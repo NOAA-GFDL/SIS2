@@ -15,15 +15,15 @@ module SIS_ice_diags
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
-use MOM_time_manager, only : time_type
-use MOM_unit_scaling, only : unit_scale_type
-use coupler_types_mod, only: coupler_type_initialized, coupler_type_send_data
+use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_time_manager,  only : time_type
+use MOM_unit_scaling,  only : unit_scale_type
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl, safe_alloc_alloc
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data
 use SIS_hor_grid,  only : SIS_hor_grid_type
 use SIS_types,     only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types,     only : ice_state_type, IST_chksum, IST_bounds_check

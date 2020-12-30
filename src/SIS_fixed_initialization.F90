@@ -22,8 +22,6 @@ use MOM_shared_initialization, only : read_face_length_list, set_velocity_depth_
 use MOM_shared_initialization, only : compute_global_grid_integrals, write_ocean_geometry_file
 use MOM_unit_scaling, only : unit_scale_type
 
-use netcdf
-
 implicit none ; private
 
 public :: SIS_initialize_fixed

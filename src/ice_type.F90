@@ -1,8 +1,6 @@
 !> maintains the sea ice data, reads/writes restarts, reads the namelist and initializes diagnostics.
 module ice_type_mod
 
-use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_write_chksums
 use ice_bergs,         only : icebergs, icebergs_stock_pe, icebergs_save_restart
 use ice_grid,          only : ice_grid_type
 use MOM_coms,          only : PE_here
@@ -18,8 +16,9 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field
 use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, SIS_chksum, get_compute_domain
 use SIS_framework,     only : register_restart_field, SIS_restart_CS
-use SIS_framework,     only : save_restart, query_initialized
-use SIS_framework,     only : safe_alloc, safe_alloc_ptr
+use SIS_framework,     only : save_restart, query_initialized, safe_alloc, safe_alloc_ptr
+use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : ice_thermo_type, enth_from_TS, energy_melt_EnthS

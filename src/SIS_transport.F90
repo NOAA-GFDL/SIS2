@@ -1,7 +1,7 @@
 !> Does the transport and redistribution between thickness categories for the SIS2 sea ice model.
 module SIS_transport
 
-! This file is a part of SIS2.  See LICENSE.md for the licnese.
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_coms,          only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
 use MOM_domains,       only : pass_var, pass_vector, BGRID_NE, CGRID_NE
@@ -94,10 +94,10 @@ type, public :: cell_average_state_type ; private
   real, allocatable, dimension(:,:) :: mass0    !< The total mass of ice, snow and melt pond water
                                                 !! when the fields were populated [R Z ~> kg m-2].
   real, allocatable, dimension(:,:) :: uh_sum   !< The accumulated zonal mass fluxes of ice, snow
-                                                !! and melt pond water, summed acrosss categories,
+                                                !! and melt pond water, summed across categories,
                                                 !! since the fields were populated [R Z L2 ~> kg].
   real, allocatable, dimension(:,:) :: vh_sum   !< The accumulated meridional mass fluxes of ice, snow
-                                                !! and melt pond water, summed acrosss categories,
+                                                !! and melt pond water, summed across categories,
                                                 !! since the fields were populated [R Z L2 ~> kg].
   type(EFP_type) :: tot_ice                     !< The globally integrated mass of sea ice [kg].
   type(EFP_type) :: tot_snow                    !< The globally integrated mass of snow [kg].
@@ -557,10 +557,10 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
 ! thicker than the bounding limits of each category.
 
   ! Local variables
-  real :: mca_trans  ! The cell-averaged ice mass transfered between categories [R Z ~> kg m-2].
-  real :: part_trans ! The fractional area transfered between categories [nondim].
-  real :: snow_trans ! The cell-averaged snow transfered between categories [R Z ~> kg m-2].
-  real :: pond_trans ! The cell-averaged pond transfered between categories [R Z ~> kg m-2].
+  real :: mca_trans  ! The cell-averaged ice mass transferred between categories [R Z ~> kg m-2].
+  real :: part_trans ! The fractional area transferred between categories [nondim].
+  real :: snow_trans ! The cell-averaged snow transferred between categories [R Z ~> kg m-2].
+  real :: pond_trans ! The cell-averaged pond transferred between categories [R Z ~> kg m-2].
   real :: I_mH_lim1  ! The inverse of the lower thickness limit [R-1 Z-1 ~> m2 kg-1].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     ! The mass of snow, pond and ice per unit total area in a cell [R Z ~> kg m-2].
@@ -820,13 +820,13 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
   real :: mca_old
 !  real :: Imca_new
   real :: mass_neglect
-  real :: part_trans ! The fractional area transfered into a thicker category [nondim].
+  real :: part_trans ! The fractional area transferred into a thicker category [nondim].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category [R Z ~> kg m-2].
     m0_snow, & ! The initial mass per unit grid-cell area of snow in each category [R Z ~> kg m-2].
     m0_pond    ! The initial mass per unit grid-cell pond melt water in each category [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
-    trans_ice, trans_snow, trans_pond ! The masses tranferred into the next thicker category [R Z ~> kg m-2].
+    trans_ice, trans_snow, trans_pond ! The masses transferred into the next thicker category [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: mca_ice  ! The mass per unit grid-cell area
                                                   ! of the ice in each category [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZCAT_(IG)) :: mca_snow ! The mass per unit grid-cell area
@@ -893,7 +893,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
             part_sz(i,j,k) = part_sz(i,j,k) - excess_cover(i,j)
             excess_cover(i,j) = 0.0
           else
-            ! Mass from this category needs to be transfered to the next thicker
+            ! Mass from this category needs to be transferred to the next thicker
             ! category after being compacted to thickness IG%mH_cat_bound(k+1).
             excess_cover(i,j) = excess_cover(i,j) - part_sz(i,j,k)*(1.0-compression_ratio)
 

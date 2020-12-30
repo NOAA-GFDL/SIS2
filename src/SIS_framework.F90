@@ -4,6 +4,13 @@ module SIS_framework
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
+use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
+use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
+use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
+use coupler_types_mod, only : coupler_type_register_restarts
+use coupler_types_mod, only : coupler_type_set_diags, coupler_type_write_chksums
+
 use fms_io_mod,        only : set_domain, nullify_domain
 use fms_io_mod,        only : restart_file_type, FMS1_register_restart=>register_restart_field
 use fms_io_mod,        only : save_restart_FMS1=>save_restart, FMS1_restore_state=>restore_state
@@ -27,11 +34,15 @@ implicit none ; private
 public :: SIS_chksum, redistribute_data, domain2D, CENTER, CORNER, EAST, NORTH, axis_names_from_pos
 public :: set_domain, nullify_domain, get_layout, get_compute_domain, broadcast_domain
 public :: restart_file_type, restore_SIS_state, register_restart_field, save_restart, query_inited
+public :: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+public :: coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
+public :: coupler_type_redistribute_data, coupler_type_copy_data, coupler_type_rescale_data
+public :: coupler_type_increment_data, coupler_type_write_chksums, coupler_type_set_diags
 public :: query_initialized, SIS_restart_init, SIS_restart_end, only_read_from_restarts
 public :: SIS_initialize_framework, safe_alloc, safe_alloc_ptr
 
 !> A restart registry and the control structure for restarts
-type, public :: SIS_restart_CS ! ; private
+type, public :: SIS_restart_CS ; private
   type(restart_file_type), pointer :: fms_restart => NULL() !< The FMS restart file type to use
   type(domain2d), pointer :: mpp_domain => NULL() !< The mpp domain to use for read of decomposed fields.
   character(len=240) :: restart_file !< The name or name root for MOM restart files.
@@ -45,6 +56,8 @@ interface register_restart_field
   module procedure register_restart_field_2d
   module procedure register_restart_field_1d
   module procedure register_restart_field_0d
+  module procedure register_restart_coupler_type_3d
+  module procedure register_restart_coupler_type_2d
 end interface
 
 !> Register fields for restarts
@@ -59,7 +72,7 @@ end interface
 contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> SIS_initialize_framework is a template that might be used later to initialize structrures
+!> SIS_initialize_framework is a template that might be used later to initialize structures
 !! and types that are used for the SIS2 infrastructure.
 subroutine SIS_initialize_framework(PF)
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
@@ -103,7 +116,7 @@ subroutine SIS_restart_init(CS, filename, domain, use_FMS2)
     call SIS_error(FATAL, "SIS_restart_init: The SIS_framework code does not work with FMS2 yet.")
     !### Set up axes and axis variables for the dimensions whose properties are known at this
     ! point.  These would include: ih, jh, iq, jq, cat, cat0, zl, z_snow, and Time, although
-    ! the ice_grid and horizonal grid might be needed in this routine to set these up.
+    ! the ice_grid and horizontal grid might be needed in this routine to set these up.
     ! Other dimension and axis variables (e.g., Band) should be created as-needed.
   endif
 
@@ -277,7 +290,7 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name,
     dim_names(1) = "cat"
     if (present(dim_name)) then
       dim_names(1) = dim_name
-      ! If dim_name is specifiying a non-standard axes, it might need to be created here.
+      ! If dim_name is specifying a non-standard axes, it might need to be created here.
       !   call create_restart_dim_as_needed(CS, dim_name, size(f_ptr))
     endif
     is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
@@ -319,6 +332,72 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory
   endif
 
 end subroutine register_restart_field_0d
+
+
+!> Register a 3-d coupler-type field for restarts.  The coupler type provides the relevant metadata.
+subroutine register_restart_coupler_type_3d(CS, bc_ptr, varname_prefix, mandatory)
+  type(SIS_restart_CS),       pointer       :: CS     !< A pointer to a SIS_restart_CS object (intent in/out)
+  type(coupler_3d_bc_type),   intent(inout) :: bc_ptr !< The coupler type field to be read or written
+  character(len=*), optional, intent(in)    :: varname_prefix !< A prefix for the variable name in the
+                                                      !! restart file, intended to allow multiple
+                                                      !! BC_type variables to use the same restart
+                                                      !! files.
+  logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is
+                                                      !! not successfully read from the restart file.
+
+  ! Local variables
+  character(len=:), allocatable :: bc_name
+
+  bc_name = "unspecified" ; if (present(varname_prefix)) bc_name = trim(varname_prefix)
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_coupler_type_3d: "//&
+      "Restart_CS must be initialized before it is used to register "//trim(bc_name))
+
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+                                        varname_prefix=varname_prefix)
+  else
+    call SIS_error(FATAL, "register_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
+    ! This is the FMS2 variant of this call.
+    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+                                        varname_prefix=varname_prefix)
+  endif
+
+end subroutine register_restart_coupler_type_3d
+
+
+!> Register a 2-d coupler-type field for restarts.  The coupler type provides the relevant metadata.
+subroutine register_restart_coupler_type_2d(CS, bc_ptr, varname_prefix, mandatory)
+  type(SIS_restart_CS),       pointer       :: CS     !< A pointer to a SIS_restart_CS object (intent in/out)
+  type(coupler_2d_bc_type),   intent(inout) :: bc_ptr !< The coupler type field to be read or written
+  character(len=*), optional, intent(in)    :: varname_prefix !< A prefix for the variable name in the
+                                                      !! restart file, intended to allow multiple
+                                                      !! BC_type variables to use the same restart
+                                                      !! files.
+  logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is
+                                                      !! not successfully read from the restart file.
+
+  ! Local variables
+  character(len=:), allocatable :: bc_name
+
+  bc_name = "unspecified" ; if (present(varname_prefix)) bc_name = trim(varname_prefix)
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: register_restart_coupler_type_2d: "//&
+      "Restart_CS must be initialized before it is used to register "//trim(bc_name))
+
+  if (.not.CS%use_FMS2) then
+    ! This is the FMS1 variant of this call.
+    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+                                        varname_prefix=varname_prefix)
+  else
+    call SIS_error(FATAL, "register_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
+    ! This is the FMS2 variant of this call.
+    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+                                        varname_prefix=varname_prefix)
+  endif
+
+end subroutine register_restart_coupler_type_2d
 
 !====================== only_read_from_restarts variants =======================
 

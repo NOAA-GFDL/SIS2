@@ -2,7 +2,7 @@
 !! to a netcdf file and an ASCII output file.
 module SIS_sum_output
 
-! This file is a part of SIS2.  See LICNESE.md for the license.
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
@@ -30,8 +30,6 @@ use SIS_hor_grid,      only : SIS_hor_grid_type
 use ice_grid,          only : ice_grid_type
 use SIS2_ice_thm,      only : enthalpy_liquid_freeze, get_SIS2_thermo_coefs, ice_thermo_type
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_stocks
-
-use netcdf
 
 implicit none ; private
 

@@ -3,10 +3,6 @@
 !! these types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_types
 
-use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
-use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
-use coupler_types_mod, only : coupler_type_register_restarts
 
 use ice_grid,          only : ice_grid_type
 use MOM_coms,          only : PE_here
@@ -24,6 +20,9 @@ use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, redistribute_data
 use SIS_framework,     only : register_restart_field, SIS_restart_CS, restore_SIS_state
 use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts
 use SIS_framework,     only : safe_alloc, safe_alloc_ptr
+use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
+use SIS_framework,     only : coupler_type_redistribute_data, coupler_type_copy_data
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS2_ice_thm,      only : ice_thermo_type, SIS2_ice_thm_CS, get_SIS2_thermo_coefs
@@ -2166,10 +2165,8 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
 
   if (coupler_type_initialized(TSF%tr_flux) .and. &
       coupler_type_initialized(FIA%tr_flux)) then
-    call coupler_type_register_restarts(TSF%tr_flux, restart_file, &
-                                        Ice_restart%fms_restart, mpp_domain, "TSF_")
-    call coupler_type_register_restarts(FIA%tr_flux, restart_file, &
-                                        Ice_restart%fms_restart, mpp_domain, "FIA_")
+    call register_restart_field(Ice_restart, TSF%tr_flux, "TSF_")
+    call register_restart_field(Ice_restart, FIA%tr_flux, "FIA_")
   endif
 
 end subroutine register_fast_to_slow_restarts
@@ -2197,7 +2194,7 @@ end subroutine dealloc_IST_arrays
 !> dealloc_ocean_sfc_state deallocates the arrays in an ocean_sfc_state_type.
 subroutine dealloc_ocean_sfc_state(OSS)
   type(ocean_sfc_state_type), pointer :: OSS !< A structure containing the arrays that describe
-                                        !! the ocean's surface state that is dealloced here.
+                                        !! the ocean's surface state that is deallocated here.
 
 
   if (.not.associated(OSS)) then
@@ -2218,7 +2215,7 @@ end subroutine dealloc_ocean_sfc_state
 !> dealloc_simple_OSS deallocates the arrays in a simple_OSS_type.
 subroutine dealloc_simple_OSS(OSS)
   type(simple_OSS_type), pointer :: OSS !< A structure containing the arrays that describe
-                                        !! the ocean's surface state that is dealloced here.
+                                        !! the ocean's surface state that is deallocated here.
 
   if (.not.associated(OSS)) then
     call SIS_error(WARNING, "dealloc_ocean_sfc_state called with an unassociated pointer.")
@@ -2338,7 +2335,7 @@ end subroutine dealloc_ice_ocean_flux
 subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
   character(len=*),          intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_ocean_flux_type), intent(in) :: IOF   !< The structure whose arrays are being checksummed.
-  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizontal grid type.
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
   logical,         optional, intent(in)    :: mech_fluxes !< If true, do checksums of mechanical fluxes
   logical,         optional, intent(in)    :: thermo_fluxes !< If true, do checksums of thermodynamic fluxes
@@ -2389,7 +2386,7 @@ end subroutine IOF_chksum
 subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(fast_ice_avg_type), intent(in) :: FIA   !< The structure whose arrays are being checksummed.
-  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizontal grid type.
   type(unit_scale_type),   intent(in)    :: US !< A structure with unit conversion factors
   logical, optional,       intent(in) :: check_ocean !< If present and true, check the fluxes to the ocean.
 
@@ -2448,7 +2445,7 @@ subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
   character(len=*),           intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ocean_sfc_state_type), intent(in) :: OSS   !< A structure containing the arrays that describe
                                                   !! the ocean's surface state for the ice model.
-  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizontal grid type.
   type(unit_scale_type),      intent(in) :: US    !< A structure with unit conversion factors
   integer,          optional, intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
 
@@ -2484,7 +2481,7 @@ end subroutine OSS_chksum
 subroutine TSF_chksum(mesg, TSF, G, US, haloshift)
   character(len=*),           intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(total_sfc_flux_type),  pointer    :: TSF   !< The total_sfc_flux_type being checksummed.
-  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type), intent(inout) :: G     !< The ice-model's horizontal grid type.
   type(unit_scale_type),      intent(in) :: US    !< A structure with unit conversion factors
   integer,          optional, intent(in) :: haloshift !< The width of halos to check, or 0 if missing.
 
@@ -2513,7 +2510,7 @@ end subroutine TSF_chksum
 subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
   character(len=*),        intent(in) :: mesg  !< A message that appears on the chksum lines.
   type(ice_state_type),    intent(in) :: IST   !< The structure whose arrays are being checksummed.
-  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type), intent(inout) :: G  !< The ice-model's horizontal grid type.
   type(unit_scale_type),   intent(in)    :: US !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in) :: IG    !< The sea-ice grid type.
   integer, optional,       intent(in) :: haloshift !< The width of halos to check, or 0 if missing.

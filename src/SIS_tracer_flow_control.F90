@@ -1,7 +1,7 @@
 !> Contains subroutines into which calls to the tracer specific functions should be called.
 module SIS_tracer_flow_control
 
-! This file is a part of SIS2.  See LICNESE.md for the license.
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
@@ -88,7 +88,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, Ice_rest
   type(SIS_tracer_flow_control_CS), pointer    :: CS  !< A pointer that is set to point to the
                                                       !! control structure for the tracer flow control
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
-  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
+  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to the SIS tracer registry
   type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
 
   ! This include declares and sets the variable "version".

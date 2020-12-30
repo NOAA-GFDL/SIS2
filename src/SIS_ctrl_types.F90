@@ -2,9 +2,6 @@
 !! types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_ctrl_types
 
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_initialized, coupler_type_set_diags
-
 use ice_grid,          only : ice_grid_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : param_file_type
@@ -16,6 +13,8 @@ use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_dyn_trans,     only : dyn_trans_CS
 use SIS_fast_thermo,   only : fast_thermo_CS
 use SIS_framework,     only : domain2D, CORNER, EAST, NORTH
+use SIS_framework,     only : coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : coupler_type_initialized, coupler_type_set_diags
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_optics,        only : SIS_optics_CS
 use SIS_slow_thermo,   only : slow_thermo_CS
