@@ -19,6 +19,7 @@ use MOM_domains,       only : MOM_domain_type
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE
 use MOM_safe_alloc,    only : safe_alloc=>safe_alloc_alloc, safe_alloc_ptr
+use MOM_string_functions, only : slasher
 use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
 
 implicit none ; private
@@ -98,6 +99,14 @@ subroutine SIS_restart_init(CS, filename, domain, use_FMS2)
   CS%mpp_domain => domain%mpp_domain
   CS%use_FMS2 = .false. ; if (present(use_FMS2)) CS%use_FMS2 = use_FMS2
 
+  if (CS%use_FMS2) then
+    call SIS_error(FATAL, "SIS_restart_init: The SIS_framework code does not work with FMS2 yet.")
+    !### Set up axes and axis variables for the dimensions whose properties are known at this
+    ! point.  These would include: ih, jh, iq, jq, cat, cat0, zl, z_snow, and Time, although
+    ! the ice_grid and horizonal grid might be needed in this routine to set these up.
+    ! Other dimension and axis variables (e.g., Band) should be created as-needed.
+  endif
+
 end subroutine SIS_restart_init
 
 !======================= register_restart_field variants =======================
@@ -132,16 +141,25 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position,
                                 units=units, mandatory=mandatory, &
                                 domain=CS%mpp_domain, position=position)
   else
+    call SIS_error(FATAL, "register_restart_field_4d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
     dim_names(1:5) = (/ "ih  ", "jh  ", "cat ", "zl  ", "Time" /)
     if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
-    if (present(dim_3)) dim_names(3) = trim(dim_3)
-    if (present(dim_4)) dim_names(4) = trim(dim_4)
+    if (present(dim_3)) then
+      dim_names(3) = trim(dim_3)
+      ! If dim_3 is specifying a non-standard axis, it might need to be created here.
+      !   call create_restart_dim_as_needed(CS, dim_3, size(f_ptr, 3))
+    endif
+    if (present(dim_4)) then
+      dim_names(4) = trim(dim_4)
+      ! If dim_3 is specifying a non-standard axis, it might need to be created here.
+      !   call create_restart_dim_as_needed(CS, dim_4, size(f_ptr, 4))
+    endif
+    ! If dim_3 or dim_4 are using non-standard axes, they might need to be created here.
     is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
     ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
     ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
     ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
-    call SIS_error(FATAL, "register_restart_field_4d: The SIS_framework code does not work with FMS2 yet.")
   endif
 end subroutine register_restart_field_4d
 
@@ -173,15 +191,19 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position,
                                 units=units, mandatory=mandatory, &
                                 domain=CS%mpp_domain, position=position)
   else
+    call SIS_error(FATAL, "register_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
     dim_names(1:4) = (/ "ih  ", "jh  ", "cat ", "Time" /)
     if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
-    if (present(dim_3)) dim_names(3) = trim(dim_3)
+    if (present(dim_3)) then
+      dim_names(3) = trim(dim_3)
+      ! If dim_3 is specifying a non-standard axis, it might need to be created here.
+      !   call create_restart_dim_as_needed(CS, dim_3, size(f_ptr, 3))
+    endif
     is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
     ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
     ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
     ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
-    call SIS_error(FATAL, "register_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
   endif
 
 end subroutine register_restart_field_3d
@@ -214,6 +236,7 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
                                 domain=CS%mpp_domain, position=position)
 
   else
+    call SIS_error(FATAL, "register_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
     dim_names(1:3) = (/ "ih  ", "jh  ", "Time" /)
     if (present(position)) call axis_names_from_pos(dim_names(1:2), position, varname=name)
@@ -221,7 +244,6 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
     ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
     ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
     ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
-    call SIS_error(FATAL, "register_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
   endif
 
 end subroutine register_restart_field_2d
@@ -250,13 +272,18 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name,
     idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, no_domain=.true.)
   else
+    call SIS_error(FATAL, "register_restart_field_1d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
-    dim_names(1) = "cat" ; if (present(dim_name)) dim_names(1) = dim_name
+    dim_names(1) = "cat"
+    if (present(dim_name)) then
+      dim_names(1) = dim_name
+      ! If dim_name is specifiying a non-standard axes, it might need to be created here.
+      !   call create_restart_dim_as_needed(CS, dim_name, size(f_ptr))
+    endif
     is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
     ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
     ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
     ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
-    call SIS_error(FATAL, "register_restart_field_1d: The SIS_framework code does not work with FMS2 yet.")
   endif
 
 end subroutine register_restart_field_1d
@@ -283,12 +310,12 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory
     idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, no_domain=.true.)
   else
+    call SIS_error(FATAL, "register_restart_field_0d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
     is_optional = .false. ; if (present(mandatory)) is_optional = .not.mandatory
     ! call FMS2_register_restart(CS%FMS2_restfile, name, f_ptr, dim_names, is_optional)
     ! if (present(units)) call FMS2_set_attribute(CS%FMS2_restfile, name, "units", units)
     ! if (present(longname)) call FMS2_set_attribute(CS%FMS2_restfile, name, "longname", longname)
-    call SIS_error(FATAL, "register_restart_field_0d: The SIS_framework code does not work with FMS2 yet.")
   endif
 
 end subroutine register_restart_field_0d
@@ -306,21 +333,41 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, position, directory, doma
   type(MOM_domain_type), optional, intent(in)  :: domain    !< The MOM domain descriptor being used
   logical,               optional, intent(out) :: success   !< True if the field was read successfully
 
+  !For FMS2_io: type(FmsNetcdfDomainFile_t) :: file_ptr
+  character(len=:), allocatable :: full_path
+  logical :: opened
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: only_read_restart_field_4d: "//&
       "Restart_CS must be initialized before it is used to read "//trim(name))
 
-  if (present(domain)) then
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=domain%mpp_domain, mandatory=.false., position=position)
-  else
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=CS%mpp_domain, mandatory=.false., position=position)
-  endif
-  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
+  if (.not.CS%use_FMS2) then
+    if (present(domain)) then
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=domain%mpp_domain, mandatory=.false., position=position)
+    else
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=CS%mpp_domain, mandatory=.false., position=position)
+    endif
+    call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
-  if (present(success)) success = query_initialized(CS, name)
+    if (present(success)) success = query_initialized(CS, name)
+  else
+    if (present(success)) success = .false.
+    call SIS_error(FATAL, "only_read_restart_field_4d: The SIS_framework code does not work with FMS2 yet.")
+
+    full_path = trim(CS%restart_file)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    ! if (present(domain)) then
+    !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
+    ! else
+    !   opened = open_file(file_ptr, full_path, "read", CS%mpp_domain)
+    ! endif
+    ! if (opened) then ; if (variable_exists(file_ptr, name) then
+    !   call read_data(file_ptr, name, f_ptr)
+    !   if (present(success)) success = .true.
+    ! endif ; endif
+  endif
 
 end subroutine only_read_restart_field_4d
 
@@ -335,21 +382,41 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, position, directory, doma
   type(MOM_domain_type), optional, intent(in)  :: domain    !< The MOM domain descriptor being used
   logical,               optional, intent(out) :: success   !< True if the field was read successfully
 
+  !For FMS2_io: type(FmsNetcdfDomainFile_t) :: file_ptr
+  character(len=:), allocatable :: full_path
+  logical :: opened
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: only_read_restart_field_3d: "//&
       "Restart_CS must be initialized before it is used to read "//trim(name))
 
-  if (present(domain)) then
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=domain%mpp_domain, mandatory=.false., position=position)
-  else
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=CS%mpp_domain, mandatory=.false., position=position)
-  endif
-  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
+  if (.not.CS%use_FMS2) then
+    if (present(domain)) then
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=domain%mpp_domain, mandatory=.false., position=position)
+    else
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=CS%mpp_domain, mandatory=.false., position=position)
+    endif
+    call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
-  if (present(success)) success = query_initialized(CS, name)
+    if (present(success)) success = query_initialized(CS, name)
+  else
+    if (present(success)) success = .false.
+    call SIS_error(FATAL, "only_read_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
+
+    full_path = trim(CS%restart_file)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    ! if (present(domain)) then
+    !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
+    ! else
+    !   opened = open_file(file_ptr, full_path, "read", CS%mpp_domain)
+    ! endif
+    ! if (opened) then ; if (variable_exists(file_ptr, name) then
+    !   call read_data(file_ptr, name, f_ptr)
+    !   if (present(success)) success = .true.
+    ! endif ; endif
+  endif
 
 end subroutine only_read_restart_field_3d
 
@@ -364,21 +431,41 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
   type(MOM_domain_type), optional, intent(in)  :: domain    !< The MOM domain descriptor being used
   logical,               optional, intent(out) :: success   !< True if the field was read successfully
 
+  !For FMS2_io: type(FmsNetcdfDomainFile_t) :: file_ptr
+  character(len=:), allocatable :: full_path
+  logical :: opened
   integer :: idr
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_framework: only_read_restart_field_2d: "//&
       "Restart_CS must be initialized before it is used to read "//trim(name))
 
-  if (present(domain)) then
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=domain%mpp_domain, mandatory=.false., position=position)
-  else
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
-                                domain=CS%mpp_domain, mandatory=.false., position=position)
-  endif
-  call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
+  if (.not.CS%use_FMS2) then
+    if (present(domain)) then
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=domain%mpp_domain, mandatory=.false., position=position)
+    else
+      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+                                  domain=CS%mpp_domain, mandatory=.false., position=position)
+    endif
+    call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
 
-  if (present(success)) success = query_initialized(CS, name)
+    if (present(success)) success = query_initialized(CS, name)
+  else
+    if (present(success)) success = .false.
+    call SIS_error(FATAL, "only_read_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
+
+    full_path = trim(CS%restart_file)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    ! if (present(domain)) then
+    !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
+    ! else
+    !   opened = open_file(file_ptr, full_path, "read", CS%mpp_domain)
+    ! endif
+    ! if (opened) then ; if (variable_exists(file_ptr, name) then
+    !   call read_data(file_ptr, name, f_ptr)
+    !   if (present(success)) success = .true.
+    ! endif ; endif
+  endif
 
 end subroutine only_read_restart_field_2d
 

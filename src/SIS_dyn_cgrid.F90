@@ -29,8 +29,8 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
-use SIS_framework,     only : restore_SIS_state, register_restart_field, SIS_restart_CS
-use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts, safe_alloc
+use SIS_framework,     only : register_restart_field, only_read_from_restarts, SIS_restart_CS
+use SIS_framework,     only : query_initialized=>query_inited, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 
 implicit none ; private
