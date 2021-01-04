@@ -9,10 +9,10 @@ module ice_boundary_types
 !   develoment effort.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use coupler_types_mod, only : coupler_2d_bc_type, coupler_3d_bc_type, coupler_type_write_chksums
 use MOM_error_handler, only : stdout
 use MOM_domains,       only : CGRID_NE, BGRID_NE, AGRID
-use SIS_framework,     only : SIS_chksum
+use SIS_framework,     only : coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : SIS_chksum, coupler_type_write_chksums
 
 implicit none ; private
 

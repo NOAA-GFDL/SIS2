@@ -21,8 +21,8 @@ use MOM_hor_index,     only : hor_index_type, hor_index_init
 use MOM_io,            only : file_exists, MOM_read_data, slasher
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_unit_scaling,  only : unit_scale_type
-use SIS_framework,     only : restore_state, query_initialized
-use SIS_framework,     only : register_restart_field, restart_file_type
+use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited
+use SIS_framework,     only : register_restart_field, only_read_from_restarts
 use SIS_get_input,     only : directories
 use SIS_types,         only : ice_state_type
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
@@ -150,7 +150,7 @@ subroutine ice_state_mass_init(IST, Ice, G, IG, US, PF, init_Time, just_read_par
   endif
 
   if (any_data_override) then
-    call data_override_init()      
+    call data_override_init()
     call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
     call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
   endif
@@ -312,7 +312,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
                         (trim(enth_snow_config)=="data_override")) .and. .not.just_read)
 
   if (any_data_override) then
-    call data_override_init()      
+    call data_override_init()
     call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
     call data_override_init(Ice_domain_in=Ice%slow_domain_NH)
   endif
@@ -913,8 +913,8 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 # include "version_variable.h"
   character(len=40)  :: mdl = "SIS_state_initialization" ! This module's name.
   character(len=8)   :: nstr
-  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp, sal_ice_tmp
-  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
+  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp
+  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp, sal_ice_tmp
 
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
                          ! that is used to calculate the ocean salt flux.
@@ -925,8 +925,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   integer :: i, j, k, l, i2, j2, k2, n
   integer :: isc, iec, jsc, jec, CatIce, NkIce
-  integer :: idr, id_sal
-  logical :: read_aux_restart
+  logical :: read_values, read_t_ice(IG%NkIce)
 
   if (associated(Ice%sCS)) then ; if (.not.associated(Ice%sCS%IST)) then
     call SIS_error(FATAL, "read_archaic_thermo_restarts called with an unassociated Ice%sCS%Ice_state structure.")
@@ -954,33 +953,21 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
 
-
   ! Approximately initialize state fields that are not present in the restart files that were read.
 
   if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
     ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
-    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce)) ; sal_ice_tmp(:,:,:,:) = 0.0
+    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce)) ; sal_ice_tmp(:,:,:) = 0.0
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-      id_sal = register_restart_field(Ice%Ice_restart, restart_file, 'sal_ice'//trim(nstr), &
-                                   sal_ice_tmp(:,:,:,n), domain=sGD%mpp_domain, &
-                                   mandatory=.false., read_only=.true.)
-      call restore_state(Ice%Ice_restart, id_sal, directory=dirs%restart_input_dir)
-    enddo
-
-    if (query_initialized(Ice%Ice_restart, 'sal_ice1')) then
-      do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-        IST%sal_ice(i,j,k,1) = sal_ice_tmp(i,j,k,1)
-      enddo ; enddo ; enddo
-    else
-      IST%sal_ice(:,:,:,1) = ice_bulk_salin
-    endif
-    do n=2,NkIce
-      write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-      if (query_initialized(Ice%Ice_restart, 'sal_ice'//trim(nstr))) then
+      call only_read_from_restarts(Ice%Ice_restart, 'sal_ice'//trim(nstr), sal_ice_tmp(:,:,:), &
+                                   directory=dirs%restart_input_dir, success=read_values)
+      if (read_values) then
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k,n)
+          IST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k)
         enddo ; enddo ; enddo
+      elseif (n==1) then
+        IST%sal_ice(:,:,:,1) = ice_bulk_salin
       else
         IST%sal_ice(:,:,:,n) = IST%sal_ice(:,:,:,n-1)
       endif
@@ -989,49 +976,32 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     deallocate(sal_ice_tmp)
   endif
 
-  read_aux_restart = (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
-                     (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))
-  if (read_aux_restart) then
-    ! Try to initialize the ice enthalpy from separate temperature variables for each layer,
-    ! perhaps from a SIS1 restart.
-    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+  read_t_ice(:) = .false.
+  if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
+      (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))) then
     allocate(t_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
 
-    idr = register_restart_field(Ice%Ice_restart, restart_file, 't_snow', t_snow_tmp, &
-                                 domain=sGD%mpp_domain, mandatory=.false., read_only=.true.)
-    call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-      idr = register_restart_field(Ice%Ice_restart, restart_file, 't_ice'//trim(nstr), &
-                                   t_ice_tmp(:,:,:,n), domain=sGD%mpp_domain, &
-                                   mandatory=.false., read_only=.true.)
-      call restore_state(Ice%Ice_restart, idr, directory=dirs%restart_input_dir)
+      call only_read_from_restarts(Ice%Ice_restart, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n), &
+                                   directory=dirs%restart_input_dir, success=read_values)
+      read_t_ice(n) = read_values
     enddo
   endif
 
   ! Initialize the ice enthalpy.
   if (.not.query_initialized(Ice%Ice_restart, 'enth_ice')) then
-    if (.not.query_initialized(Ice%Ice_restart, 't_ice1')) then
+    ! Try to initialize the ice enthalpy from separate temperature variables for each layer,
+    ! perhaps from a SIS1 restart.
+    if (.not.read_t_ice(1)) then
       call SIS_error(FATAL, "Either t_ice1 or enth_ice must be present in the SIS2 restart file "//restart_path)
     endif
 
     S_col(:) = 0.0
     call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, spec_thermo_salin=spec_thermo_sal)
 
-    if (spec_thermo_sal) then
-      do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-        IST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), S_col(1), IST%ITV)
-      enddo ; enddo ; enddo
-    else
-      do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-        IST%enth_ice(i,j,k,1) = Enth_from_TS(t_ice_tmp(i,j,k,1), &
-                 IST%sal_ice(i,j,k,1), IST%ITV)
-      enddo ; enddo ; enddo
-    endif
-
-    do n=2,NkIce
-      write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-      if (.not.query_initialized(Ice%Ice_restart, 't_ice'//trim(nstr))) &
+    do n=1,NkIce
+      if ((n > 1) .and. (.not.read_t_ice(n))) &
         t_ice_tmp(:,:,:,n) = t_ice_tmp(:,:,:,n-1)
 
       if (spec_thermo_sal) then
@@ -1040,8 +1010,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
         enddo ; enddo ; enddo
       else
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-          IST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), &
-                           IST%sal_ice(i,j,k,n), IST%ITV)
+          IST%enth_ice(i,j,k,n) = Enth_from_TS(t_ice_tmp(i,j,k,n), IST%sal_ice(i,j,k,n), IST%ITV)
         enddo ; enddo ; enddo
       endif
     enddo
@@ -1049,22 +1018,27 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   ! Initialize the snow enthalpy.
   if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
-    if (.not.query_initialized(Ice%Ice_restart, 't_snow')) then
-      if (query_initialized(Ice%Ice_restart, 't_ice1')) then
+    ! Try to initialize the snow enthalpy from separate temperature variables for each layer,
+    ! perhaps from a SIS1 restart.
+    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+    call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, &
+                                   directory=dirs%restart_input_dir, success=read_values)
+    if (.not.read_values) then ! Try reading the ice temperature if snow is not available.
+      if (read_t_ice(1)) then
         t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
       else
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
-          t_snow_tmp(i,j,k) = Temp_from_En_S(IST%enth_ice(i,j,k,1), &
-                                IST%sal_ice(i,j,k,1), IST%ITV)
+          t_snow_tmp(i,j,k) = Temp_from_En_S(IST%enth_ice(i,j,k,1), IST%sal_ice(i,j,k,1), IST%ITV)
         enddo ; enddo ; enddo
       endif
     endif
     do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
       IST%enth_snow(i,j,k,1) = Enth_from_TS(t_snow_tmp(i,j,k), 0.0, IST%ITV)
     enddo ; enddo ; enddo
+    deallocate(t_snow_tmp)
   endif
 
-  if (read_aux_restart) deallocate(t_snow_tmp, t_ice_tmp)
+  if (allocated(t_ice_tmp)) deallocate(t_ice_tmp)
 
   call callTree_leave("read_archaic_thermo_restarts(), SIS_state_initialization.F90")
 

@@ -13,16 +13,14 @@ module SIS_continuity
 !*                                                                     *
 !********+*********+*********+*********+*********+*********+*********+**
 
-use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
+use ice_grid,          only : ice_grid_type
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_ROUTINE
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
+use MOM_file_parser,   only : get_param, log_version, param_file_type
 use MOM_obsolete_params, only : obsolete_logical
+use MOM_unit_scaling,  only : unit_scale_type
 use SIS_diag_mediator, only : time_type, SIS_diag_ctrl
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
-use MOM_file_parser, only : get_param, log_version, param_file_type
-use MOM_unit_scaling,   only : unit_scale_type
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
-! use MOM_variables, only : ocean_OBC_type, OBC_SIMPLE
-! use MOM_variables, only : OBC_FLATHER_E, OBC_FLATHER_W, OBC_FLATHER_N, OBC_FLATHER_S
+use SIS_hor_grid,      only : SIS_hor_grid_type
 
 implicit none ; private
 
@@ -94,7 +92,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
                                                 !! zonal mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                  optional, intent(in)    :: masking_vh  !< If this is 0, vh = 0.  Often this is another
-                                                !! merional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
+                                                !! meridional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
 
 !    This subroutine time steps the category thicknesses, using a monotonically
 !  limit, directionally split PPM scheme, based on Lin (1994).  In the following
@@ -603,7 +601,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
 end subroutine summed_continuity
 
 !> proportionate_continuity time steps the category thickness changes due to advection,
-!! using input total mass fluxes with the fluxes proprotionate to the relative upwind
+!! using input total mass fluxes with the fluxes proportionate to the relative upwind
 !! thicknesses.
 subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS, &
                                     h1, uh1, vh1, h2, uh2, vh2, h3, uh3, vh3)
@@ -957,7 +955,7 @@ subroutine merid_proportionate_fluxes(vh_tot, I_htot, h, vh, G, IG, LB, masking_
   type(loop_bounds_type),  intent(in)    :: LB  !< A structure with the active loop bounds.
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                  optional, intent(in)    :: masking_vh  !< If this is 0, vh = 0.  Often this is another
-                                                !! merional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
+                                                !! meridional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
   real,          optional, intent(in)    :: frac_neglect  !< Any category with less than this fraction
                                                 !! of the total transport has no transport [nondim].
 
@@ -1177,7 +1175,7 @@ subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_
                                                 !! is able to move out of a cell [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                  optional, intent(in)    :: masking_vh  !< If this is 0, vh = 0.  Often this is another
-                                                !! merional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
+                                                !! meridional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)), &
                  optional, intent(in)    :: masking_vhtot !< If this is 0, vh_tot = 0.  Often this is another
                                                 !! total meridional mass flux, e.g. of ice [R Z L2 T-1 ~> kg s-1].
@@ -1334,7 +1332,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
                                                        !! Otherwise use a simple positive-definite limiter.
   logical, optional,                intent(in)  :: simple_2nd !< If true, use the arithmetic mean thicknesses as the
                                                        !! default edge values for a simple 2nd order scheme.
-! This subroutine calculates left/right edge valus for PPM reconstruction.
+! This subroutine calculates left/right edge values for PPM reconstruction.
 
   ! Local variables with useful mnemonic names.
   real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes.
@@ -1426,7 +1424,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
                                                        !! Otherwise use a simple positive-definite limiter.
   logical, optional,                intent(in)  :: simple_2nd !< If true, use the arithmetic mean thicknesses as the
                                                        !! default edge values for a simple 2nd order scheme.
-! This subroutine calculates left/right edge valus for PPM reconstruction.
+! This subroutine calculates left/right edge values for PPM reconstruction.
 
 ! Local variables with useful mnemonic names.
   real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes.

@@ -1,4 +1,4 @@
-!> Handles the main updates of the ice states at the slower time-scales of the couplng or the
+!> Handles the main updates of the ice states at the slower time-scales of the coupling or the
 !! interactions with the ocean, including the ice mass balance and related thermodynamics and
 !! salinity changes, and thermodynamic coupling with the ocean.  The radiative heating and
 !! diffusive temperature changes due to coupling with the atmosphere are handled elsewhere.
@@ -14,62 +14,51 @@ module SIS_slow_thermo
 ! with the Modular Ocean Model, version 6 (MOM6), and to permit might tighter  !
 ! dynamical coupling between the ocean and sea-ice.                            !
 !   This module handles the main updates of the ice states at the slower time- !
-! scales of the couplng or the interactions with the ocean, including the ice  !
+! scales of the coupling or the interactions with the ocean, including the ice !
 ! mass balance and related thermodynamics and salinity changes, and            !
 ! thermodynamic coupling with the ocean.  The radiative heating and diffusive  !
 ! temperature changes due to coupling with the atmosphere are handled elsewhere.!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+
+use data_override_mod, only : data_override
+
+use ice_grid,          only : ice_grid_type
+use ice_spec_mod,      only : get_sea_surface
+
+use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
+use MOM_cpu_clock,     only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use MOM_EOS,           only : EOS_type, calculate_density_derivs
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
+use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
+use MOM_hor_index,     only : hor_index_type
+use MOM_io,            only : file_exists, MOM_read_data, slasher
+use MOM_time_manager,  only : time_type, time_type_to_real
+use MOM_unit_scaling,  only : unit_scale_type
+
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
-use SIS_sum_output, only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
-use SIS_sum_output, only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
-
-! use MOM_domains,       only : pass_var
-! ! use MOM_dyn_horgrid, only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_hor_index, only : hor_index_type
-use MOM_io, only : file_exists, MOM_read_data, slasher
-use MOM_unit_scaling, only : unit_scale_type
-use MOM_EOS, only : EOS_type, calculate_density_derivs
-
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
-use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
-use coupler_types_mod, only : coupler_type_send_data
-use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
-use MOM_cpu_clock, only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
-
-use MOM_time_manager, only : time_type, time_type_to_real
-! use MOM_time_manager, only : operator(+), operator(-)
-! use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
-use data_override_mod, only : data_override
-
-use SIS_types, only : ice_state_type, ice_ocean_flux_type, fast_ice_avg_type
-use SIS_types, only : ocean_sfc_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : total_sfc_flux_type
-
-use SIS_utils, only : post_avg
-use SIS_hor_grid, only : SIS_hor_grid_type
-
-use ice_grid, only : ice_grid_type
-use ice_spec_mod, only : get_sea_surface
-
-use SIS_tracer_flow_control, only : SIS_call_tracer_column_fns
-
-use SIS2_ice_thm, only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm, only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
-use SIS2_ice_thm, only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm, only : enth_from_TS, Temp_from_En_S
-use SIS2_ice_thm, only : enthalpy_liquid, calculate_T_freeze
-use SIS_optics,   only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
-use SIS_transport, only : adjust_ice_categories, SIS_transport_CS
-use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
+use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
+use SIS_framework,     only : coupler_type_increment_data, coupler_type_rescale_data
+use SIS_framework,     only : coupler_type_send_data
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+use SIS_sum_output,    only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
+use SIS_sum_output,    only : accumulate_bottom_input, accumulate_input_1, accumulate_input_2
+use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS, SIS_call_tracer_column_fns
 use SIS_tracer_registry, only : SIS_unpack_passive_ice_tr, SIS_repack_passive_ice_tr
 use SIS_tracer_registry, only : SIS_count_passive_tracers
+use SIS_transport,     only : adjust_ice_categories, SIS_transport_CS
+use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check, total_sfc_flux_type
+use SIS_types,         only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
+use SIS_utils,         only : post_avg
+use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,      only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
+use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, calculate_T_freeze
 
 implicit none ; private
 
@@ -93,7 +82,7 @@ type slow_thermo_CS ; private
                             !! Otherwise the frazil is always assigned to a
                             !! single category with part size > 0.01.
   real    :: fraz_fill_time !< A timescale with which the filling frazil causes
-                            !! the thinest cells to attain similar thicknesses,
+                            !! the thinnest cells to attain similar thicknesses,
                             !! or a negative number to apply the frazil flux
                             !! uniformly [T ~> s].
 
@@ -118,7 +107,7 @@ type slow_thermo_CS ; private
                             !! the sea ice nudging of warm water includes a freshwater flux so as to
                             !! be destabilizing on net (<1), stabilizing (>1), or neutral (=1).
                             !!  The default is 1.
-  real    :: nudge_conc_tol !< The tolerance for mismatch in the sea ice concentations
+  real    :: nudge_conc_tol !< The tolerance for mismatch in the sea ice concentrations
                             !! before nudging begins to be applied.
   logical :: transmute_ice  !< If true, allow ice to be transmuted directly into seawater with a
                             !! spatially varying rate as a form of outflow open boundary condition.
@@ -626,7 +615,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
-  real :: yr_dtslow   ! The ratio of 1 year to the thermodyamic time step times some scaling
+  real :: yr_dtslow   ! The ratio of 1 year to the thermodynamic time step times some scaling
                       ! factors, used to change the units of several diagnostics to rate yr-1.
   real :: heat_to_ocn    ! The heat passed from the ice to the ocean [Q R Z ~> J m-2]
   real :: water_to_ocn   ! The water passed to the ocean [R Z ~> kg m-2]
@@ -1041,7 +1030,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     k_merge = 1  ! Find the category that will be combined with the ice free category.
     if (.not.CS%filling_frazil) then
       do k=1,ncat ; if (IST%part_size(i,j,0)+IST%part_size(i,j,k)>0.01) then
-        ! absorb frazil in thinest ice partition available    (was ...>0.0)
+        ! absorb frazil in thinnest ice partition available    (was ...>0.0)
         ! raised above threshold from 0 to 0.01 to avert ocean-ice model blow-ups
         k_merge = k ; exit
       endif ; enddo

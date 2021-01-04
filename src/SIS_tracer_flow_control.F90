@@ -1,7 +1,7 @@
 !> Contains subroutines into which calls to the tracer specific functions should be called.
 module SIS_tracer_flow_control
 
-! This file is a part of SIS2.  See LICNESE.md for the license.
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *
@@ -49,7 +49,7 @@ use ice_grid,            only : ice_grid_type
 use MOM_error_handler,   only : SIS_error=>MOM_error, FATAL, WARNING
 use MOM_file_parser,     only : get_param, log_version, param_file_type
 use SIS_diag_mediator,   only : time_type, SIS_diag_ctrl
-use SIS_framework,       only : restart_file_type
+use SIS_framework,       only : SIS_restart_CS
 use SIS_hor_grid,        only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS_tracer_registry, only : register_SIS_tracer, register_SIS_tracer_pair
@@ -81,20 +81,18 @@ contains
 ! tracers and apply vertical column processes to tracers.
 
 !> Call the routines that register all of tracers in the tracer packages
-subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
-                                    Ice_restart, restart_file)
+subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, Ice_restart)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_tracer_flow_control_CS), pointer    :: CS  !< A pointer that is set to point to the
                                                       !! control structure for the tracer flow control
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
-  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
-  character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
+  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to the SIS tracer registry
+  type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
 
   ! This include declares and sets the variable "version".
-#include "version_variable.h"
+# include "version_variable.h"
   character(len=40)  :: mdl = "SIS_tracer_flow_control" ! This module's name.
 
   if (associated(CS)) then
@@ -114,7 +112,7 @@ subroutine SIS_call_tracer_register(G, IG, param_file, CS, diag, TrReg, &
   !  for some reason.  This then overrides the run-time selection from above.
   if (CS%use_ice_age) then
     CS%use_ice_age = register_ice_age_tracer(G, IG, param_file, CS%ice_age_tracer_CSp, &
-        diag, TrReg, Ice_restart, restart_file)
+                         diag, TrReg, Ice_restart)
   endif
 
 

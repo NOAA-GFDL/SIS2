@@ -6,19 +6,15 @@ module ice_age_tracer
 ! ashao: Get all the dependencies from other modules (check against
 !   ideal_age_example.F90)
 
+use MOM_error_handler, only     : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser, only       : get_param, log_param, log_version, param_file_type
-use MOM_restart, only           : query_initialized, MOM_restart_CS
 use MOM_io, only                : vardesc, var_desc, query_vardesc, file_exists
-use MOM_time_manager, only      : time_type, time_type_to_real
-use MOM_sponge, only            : set_up_sponge_field, sponge_CS
-use MOM_error_handler, only     : SIS_error=>MOM_error, FATAL, WARNING
-use MOM_error_handler, only     : SIS_mesg=>MOM_mesg
 use MOM_string_functions, only  : slasher
+use MOM_time_manager, only      : time_type, time_type_to_real
 use MOM_unit_scaling, only      : unit_scale_type
 use SIS_diag_mediator, only     : register_SIS_diag_field, safe_alloc_ptr
 use SIS_diag_mediator, only     : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_framework, only         : register_restart_field, restore_state
-use SIS_framework, only         : restart_file_type
+use SIS_framework, only         : register_restart_field, SIS_restart_CS
 use SIS_hor_grid, only          : SIS_hor_grid_type
 use SIS_tracer_registry, only   : register_SIS_tracer, SIS_tracer_registry_type
 use SIS_utils, only             : post_avg
@@ -39,7 +35,7 @@ type p3d
   real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3-d array
 end type p3d
 
-!> The controol structure for the ice age tracer module
+!> The control structure for the ice age tracer module
 type, public :: ice_age_tracer_CS
   integer :: ntr                              !< The number of tracers that are actually used.
   character(len = 200) :: IC_file             !< The file in which the age-tracer initial values
@@ -69,7 +65,7 @@ type, public :: ice_age_tracer_CS
   logical :: advect_vertical(NTR_MAX)         !< Whether the tracer should be advected "vertically" to thicker ice
   logical :: uniform_vertical(NTR_MAX)        !< Whether the tracer should uniform across ice thickness
                                               !! categories if so, "mix" the tracer by setting it to
-                                              !! the maximum age at the grid pont
+                                              !! the maximum age at the grid point
   logical :: do_ice_age_areal                 !< If true, use the areal age tracer
   logical :: do_ice_age_mass                  !< If true, use the areal age tracer
   real    :: min_thick_age                    !< The minimum thickness age
@@ -93,17 +89,15 @@ end type ice_age_tracer_CS
 contains
 
 !> Register tracers from the ice age package
-logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
-                                         Ice_restart, restart_file)
+logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice_restart)
   type(sis_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in) :: IG  !< The sea-ice specific grid type
   type(param_file_type),            intent(in) :: param_file !< A structure to parse for run-time parameters
   type(ice_age_tracer_CS),          pointer    :: CS  !<  A pointer that is set to point to the control
                                                       !! structure for the ice age tracer
   type(SIS_diag_ctrl),              target     :: diag !< A structure that is used to regulate diagnostic output
-  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to thie SIS tracer registry
-  type(restart_file_type),          intent(inout) :: Ice_restart !< The SIS restart structure
-  character(len=*),                 intent(in) :: restart_file !< The full path to the restart file.
+  type(SIS_tracer_registry_type),   pointer    :: TrReg !< A pointer to the SIS tracer registry
+  type(SIS_restart_CS),             pointer    :: Ice_restart !< The control structure for the ice restarts
 
   ! This subroutine is used to age register tracer fields and subroutines to be used with SIS.
 
@@ -117,10 +111,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (associated(CS)) then
-      call SIS_error(WARNING, "register_ice_age_tracer called with an "// &
-          "associated control structure.")
-      register_ice_age_tracer = .false.
-      return
+    call SIS_error(WARNING, "register_ice_age_tracer called with an "// &
+        "associated control structure.")
+    register_ice_age_tracer = .false.
+    return
   endif
   allocate(CS)
 
@@ -175,13 +169,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, &
 
   do m=1,CS%ntr
 
-    call query_vardesc(CS%tr_desc(m), name=var_name, &
-        caller="register_ice_age_tracer")
+    call query_vardesc(CS%tr_desc(m), name=var_name, caller="register_ice_age_tracer")
 
     ! Register the tracer for the restart file.
-    CS%id_tracer(m) = register_restart_field(Ice_restart, restart_file, var_name, &
-        CS%tr(:,:,:,1,m), domain=G%domain%mpp_domain, &
-        mandatory=.false.)
+    call register_restart_field(Ice_restart, var_name, CS%tr(:,:,:,1,m), mandatory=.false.)
 
     ocean_BC_ptr => CS%ocean_BC(:,:,:,m)
     snow_BC_ptr  => CS%snow_BC(:,:,:,m)
