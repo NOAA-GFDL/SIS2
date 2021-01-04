@@ -13,10 +13,10 @@ use MOM_safe_alloc, only : safe_alloc_ptr, safe_alloc_alloc
 use MOM_string_functions, only : lowercase, uppercase, slasher
 use MOM_time_manager, only : time_type
 
-use diag_manager_mod, only : diag_manager_init
-use diag_manager_mod, only : send_data, diag_axis_init,EAST,NORTH
+use diag_manager_mod, only : diag_manager_init, send_data, diag_axis_init
 use diag_manager_mod, only : register_diag_field_fms=>register_diag_field
 use diag_manager_mod, only : register_static_field_fms=>register_static_field
+use SIS_framework,    only : EAST, NORTH
 
 implicit none ; private
 

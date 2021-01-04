@@ -1,19 +1,17 @@
 !> Does the transport and redistribution between thickness categories for the SIS2 sea ice model.
 module slab_ice
 
-! This file is a part of SIS2.  See LICENSE.md for the licnese.
+! This file is a part of SIS2.  See LICENSE.md for the license.
 
 ! use MOM_coms, only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
 use MOM_domains,       only : pass_var, pass_vector, BGRID_NE, CGRID_NE
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING
-use MOM_error_handler, only : SIS_mesg=>MOM_mesg, is_root_pe
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 ! use MOM_file_parser, only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_hor_index,   only : hor_index_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
 use MOM_unit_scaling,   only : unit_scale_type
 ! use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
-! use SIS_diag_mediator, only : safe_alloc_alloc
 use SIS_hor_grid, only : SIS_hor_grid_type
 use ice_grid, only : ice_grid_type
 

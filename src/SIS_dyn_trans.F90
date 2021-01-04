@@ -29,21 +29,21 @@ use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=
 use MOM_unit_scaling,  only : unit_scale_type
 use MOM_EOS,           only : EOS_type, calculate_density_derivs
 
-use coupler_types_mod, only : coupler_type_initialized, coupler_type_send_data
 
 use SIS_continuity,    only : SIS_continuity_CS, summed_continuity, ice_cover_transport
 use SIS_debugging,     only : chksum, Bchksum, hchksum
 use SIS_debugging,     only : hchksum_pair, Bchksum_pair, uvchksum
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
-use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl, safe_alloc_alloc
+use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_dyn_bgrid,     only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts
-use SIS_framework,     only : restart_file_type, domain2D
+use SIS_framework,     only : SIS_restart_CS, safe_alloc
+use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
 use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
@@ -2095,15 +2095,12 @@ end subroutine set_wind_stresses_B
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
-                                      Ice_restart, restart_file)
-  type(domain2d),          intent(in) :: mpp_domain !< The ice models' FMS domain type
+subroutine SIS_dyn_trans_register_restarts(HI, IG, param_file, CS, Ice_restart)
   type(hor_index_type),    intent(in) :: HI     !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
-  character(len=*),        intent(in) :: restart_file !< The ice restart file name
+  type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
 
 !   This subroutine registers the restart variables associated with the
 ! the slow ice dynamics and thermodynamics.
@@ -2118,32 +2115,26 @@ subroutine SIS_dyn_trans_register_restarts(mpp_domain, HI, IG, param_file, CS, &
   CS%Cgrid_dyn = .true. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn)
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_C_dyn_CSp, Ice_restart, restart_file)
+    call SIS_C_dyn_register_restarts(HI, param_file, CS%SIS_C_dyn_CSp, Ice_restart)
   else
-    call SIS_B_dyn_register_restarts(mpp_domain, HI, param_file, &
-                 CS%SIS_B_dyn_CSp, Ice_restart, restart_file)
+    call SIS_B_dyn_register_restarts(HI, param_file, CS%SIS_B_dyn_CSp, Ice_restart)
   endif
-!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, &
-!                                       Ice_restart, restart_file)
+!  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, Ice_restart)
 
 end subroutine SIS_dyn_trans_register_restarts
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, &
-                                           restart_file, restart_dir)
+subroutine SIS_dyn_trans_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
   type(dyn_trans_CS),      pointer    :: CS  !< The control structure for the SIS_dyn_trans module
   type(unit_scale_type),   intent(in) :: US  !< A structure with unit conversion factors
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
-  type(restart_file_type), pointer    :: Ice_restart !< The sea ice restart control structure
-  character(len=*),        intent(in) :: restart_file !< The ice restart file name
+  type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in) :: restart_dir !< The directory in which to find the restart files
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, Ice_restart, &
-                                     restart_file, restart_dir)
+    call SIS_C_dyn_read_alt_restarts(CS%SIS_C_dyn_CSp, G, US, Ice_restart, restart_dir)
   endif
 
 end subroutine SIS_dyn_trans_read_alt_restarts
@@ -2291,22 +2282,22 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
 
     if (.not.associated(CS%DS2d)) allocate(CS%DS2d)
     CS%DS2d%ridge_rate_count = 0.
-    if (CS%do_ridging) call safe_alloc_alloc(CS%DS2d%avg_ridge_rate, G%isd, G%ied, G%jsd, G%jed)
+    if (CS%do_ridging) call safe_alloc(CS%DS2d%avg_ridge_rate, G%isd, G%ied, G%jsd, G%jed)
 
     if (CS%merged_cont) then
       CS%DS2d%nts = 0 ; CS%DS2d%max_nts = 0
-      call safe_alloc_alloc(CS%DS2d%mi_sum, G%isd, G%ied, G%jsd, G%jed)
-      call safe_alloc_alloc(CS%DS2d%ice_cover, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%mi_sum, G%isd, G%ied, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%ice_cover, G%isd, G%ied, G%jsd, G%jed)
       max_nts = CS%adv_substeps
       if ((CS%dt_ice_dyn > 0.0) .and. (CS%dt_advect > CS%dt_ice_dyn)) &
         max_nts = CS%adv_substeps * max(CEILING(CS%dt_advect/CS%dt_ice_dyn - 1e-6), 1)
       call increase_max_tracer_step_memory(CS%DS2d, G, max_nts)
 
-      call safe_alloc_alloc(CS%DS2d%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
-      call safe_alloc_alloc(CS%DS2d%v_ice_C, G%isd, G%ied, G%JsdB, G%JedB)
+      call safe_alloc(CS%DS2d%u_ice_C, G%IsdB, G%IedB, G%jsd, G%jed)
+      call safe_alloc(CS%DS2d%v_ice_C, G%isd, G%ied, G%JsdB, G%JedB)
       if (.not.CS%Cgrid_dyn) then
-        call safe_alloc_alloc(CS%DS2d%u_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
-        call safe_alloc_alloc(CS%DS2d%v_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
+        call safe_alloc(CS%DS2d%u_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
+        call safe_alloc(CS%DS2d%v_ice_B, G%IsdB, G%IedB, G%JsdB, G%JedB)
       endif
     endif
 
@@ -2375,8 +2366,8 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
     deallocate(tmp_array)
   else
     allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts)) ; DS2d%mca_step(:,:,:) = 0.0
-  !  This is the equivalent for when the 6 argument version of safe_alloc_alloc is available.
-  !      call safe_alloc_alloc(DS2d%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, DS2d%max_nts)
+  !  This is the equivalent for when the 6 argument version of safe_alloc is available.
+  !      call safe_alloc(DS2d%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, DS2d%max_nts)
   endif
 
   if (allocated(DS2d%uh_step)) then
@@ -2385,13 +2376,13 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
       if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%uh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%uh_step)
-    call safe_alloc_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
+    call safe_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
     if (nts_prev > 0) then ! Copy over the data that had been set before.
       DS2d%uh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
       deallocate(tmp_array)
     endif
   else
-    call safe_alloc_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
+    call safe_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
   endif
 
   if (allocated(DS2d%vh_step)) then
@@ -2400,13 +2391,13 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
       if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%vh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%vh_step)
-    call safe_alloc_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
+    call safe_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
     if (nts_prev > 0) then ! Copy over the data that had been set before.
       DS2d%vh_step(:,:,1:nts_prev) = tmp_array(:,:,1:nts_prev)
       deallocate(tmp_array)
     endif
   else
-    call safe_alloc_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
+    call safe_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)
   endif
 
 end subroutine increase_max_tracer_step_memory

@@ -42,10 +42,6 @@ use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=
 use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init
 use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
 
-use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized
-use coupler_types_mod, only : coupler_type_rescale_data, coupler_type_copy_data
-
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
 use ocean_albedo_mod, only : compute_ocean_albedo            ! ice sets ocean surface
@@ -78,7 +74,10 @@ use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, tota
 use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
-use SIS_framework,     only : restart_file_type, restore_state, query_initialized, register_restart_field
+use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
+use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
+use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
@@ -2084,14 +2083,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     call set_domain(sGD%mpp_domain)
-    if (.not.associated(Ice%Ice_restart)) allocate(Ice%Ice_restart)
+    if (.not.associated(Ice%Ice_restart)) &
+      call SIS_restart_init(Ice%Ice_restart, restart_file, sGD)
 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
-                      param_file, Ice, Ice%Ice_restart, restart_file)
+                      param_file, Ice, Ice%Ice_restart)
 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
-    call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart, restart_file)
-    call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart, restart_file)
+    call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart)
+    call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
     Ice%sCS%OSS%kmelt = kmelt
@@ -2111,8 +2111,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     if (.not.specified_ice) &
-      call SIS_dyn_trans_register_restarts(sGD%mpp_domain, sHI, sIG, param_file, &
-                                           Ice%sCS%dyn_trans_CSp, Ice%Ice_restart, restart_file)
+      call SIS_dyn_trans_register_restarts(sHI, sIG, param_file, Ice%sCS%dyn_trans_CSp, &
+                                           Ice%Ice_restart)
 
     call SIS_diag_mediator_init(sG, sIG, param_file, Ice%sCS%diag, component="SIS", &
                                 doc_file_dir = dirs%output_directory)
@@ -2136,7 +2136,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   !   Register any tracers that will be handled via tracer flow control for
   ! restarts and advection.
     call SIS_call_tracer_register(sG, sIG, param_file, Ice%sCS%SIS_tracer_flow_CSp, &
-                                  Ice%sCS%diag, sIST%TrReg, Ice%Ice_restart, restart_file)
+                                  Ice%sCS%diag, sIST%TrReg, Ice%Ice_restart)
 
     ! Set a few final things to complete the setup of the grid.
     sG%g_Earth = g_Earth
@@ -2228,7 +2228,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
     if (split_restart_files) then
-      if (.not.associated(Ice%Ice_fast_restart)) allocate(Ice%Ice_fast_restart)
+      if (.not.associated(Ice%Ice_fast_restart)) &
+        call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD)
     else
       Ice%Ice_fast_restart => Ice%Ice_restart
     endif
@@ -2237,9 +2238,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! they allocate are registered for inclusion in restart files is determined by
   ! whether the Ice%Ice...restart types are associated.
     call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
-                      param_file, Ice, Ice%Ice_fast_restart, fast_rest_file)
+                      param_file, Ice, Ice%Ice_fast_restart)
     if (split_restart_files) &
-      call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart, fast_rest_file)
+      call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart)
 
     if (redo_fast_update .or. .not.single_IST) then
       call alloc_IST_arrays(fHI, Ice%fCS%IG, Ice%fCS%IST, &
@@ -2253,8 +2254,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call alloc_total_sfc_flux(Ice%fCS%TSF, fHI, gas_fluxes)
     Ice%fCS%FIA%atmos_winds = atmos_winds
 
-    call ice_rad_register_restarts(fGD%mpp_domain, fHI, Ice%fCS%IG, param_file, &
-                                   Ice%fCS%Rad, Ice%Ice_fast_restart, fast_rest_file)
+    call ice_rad_register_restarts(fHI, Ice%fCS%IG, param_file, Ice%fCS%Rad, Ice%Ice_fast_restart)
     Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
     Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
 
@@ -2306,18 +2306,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       is_restart = .true.
       recategorize_ice = .false. ! Assume that the ice is already in the right thickness categories.
 
-      call restore_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
+      call restore_SIS_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
-      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, &
-                                       restart_file, dirs%restart_input_dir)
+      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, dirs%restart_input_dir)
       if (.not.specified_ice) &
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
-                                       restart_file, dirs%restart_input_dir)
-
+                                             dirs%restart_input_dir)
 
       call rescale_ice_state_restart_fields(sIST, sG, US, sIG, H_to_kg_m2_tmp, Rho_ice, Rho_snow)
+
       sIG%H_to_kg_m2 = H_to_kg_m2_tmp
 
       if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
@@ -2537,7 +2536,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Read the fast restart file, if it exists.
       fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
       if (file_exists(fast_rest_path)) then
-        call restore_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
+        call restore_SIS_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
         init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
@@ -2608,7 +2607,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call fix_restart_unit_scaling(US)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
-  !but it should be called after restore_state() otherwise it causes a restart mismatch
+  !but it should be called after restore_SIS_state() otherwise it causes a restart mismatch
   call nullify_domain()
 
   ! Close the parameter file, supplying information for logging the default values.

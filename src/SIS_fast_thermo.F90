@@ -16,39 +16,28 @@ module SIS_fast_thermo
 ! not changes to the ice or snow mass.                                         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use SIS_diag_mediator, only : SIS_diag_ctrl
-! ! use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
-! ! use SIS_diag_mediator, only : query_SIS_averaging_enabled, post_SIS_data
-! ! use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
+use ice_grid,           only : ice_grid_type
 
-use SIS_debugging,     only : hchksum
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-! use MOM_hor_index, only : hor_index_type, hor_index_init
-! use MOM_obsolete_params, only : obsolete_logical
-! use MOM_string_functions, only : uppercase
-use MOM_time_manager, only : time_type, time_type_to_real
-use MOM_time_manager, only : operator(+), operator(-)
-use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
-use MOM_unit_scaling, only : unit_scale_type
+use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
+use MOM_time_manager,  only : time_type, time_type_to_real, operator(+), operator(-)
+use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
+use MOM_unit_scaling,  only : unit_scale_type
 
-use coupler_types_mod, only : coupler_3d_bc_type, coupler_type_spawn
-use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
-use SIS_optics, only : ice_optics_SIS2, bright_ice_temp, SIS_optics_CS
-use SIS_optics, only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
-use SIS_types, only : ice_state_type, IST_chksum, IST_bounds_check
-use SIS_types, only : fast_ice_avg_type, ice_rad_type, simple_OSS_type, total_sfc_flux_type
-use SIS_types, only : FIA_chksum
-
-use ice_boundary_types, only : atmos_ice_boundary_type ! , land_ice_boundary_type
-use SIS_hor_grid, only : SIS_hor_grid_type
-
-use ice_grid, only : ice_grid_type
-
-use SIS2_ice_thm,  only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,  only : ice_temp_SIS2, latent_sublimation
-use SIS2_ice_thm,  only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
+use SIS_debugging,     only : hchksum
+use SIS_diag_mediator, only : SIS_diag_ctrl
+use SIS_framework,     only : coupler_3d_bc_type, coupler_type_spawn
+use SIS_framework,     only : coupler_type_increment_data, coupler_type_rescale_data
+use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_optics,        only : ice_optics_SIS2, bright_ice_temp, SIS_optics_CS
+use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
+use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check, ice_rad_type
+use SIS_types,         only : fast_ice_avg_type, simple_OSS_type, total_sfc_flux_type, FIA_chksum
+use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
+use SIS2_ice_thm,      only : ice_temp_SIS2, latent_sublimation
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
 
 implicit none ; private
 
@@ -59,7 +48,7 @@ public :: redo_update_ice_model_fast, find_excess_fluxes
 
 !> The control structure for the SIS fast thermodynamics module
 type fast_thermo_CS ; private
-  ! These two arrarys are used with column_check when evaluating the enthalpy
+  ! These two arrays are used with column_check when evaluating the enthalpy
   ! conservation with the fast thermodynamics code.
   real, pointer, dimension(:,:,:) :: enth_prev => NULL() !< The previous enthalpy [Q R Z ~> J m-2], used with
                                      !! column_check when evaluating the enthalpy conservation
@@ -81,7 +70,7 @@ type fast_thermo_CS ; private
   integer :: n_fast = 0   !< The number of times update_ice_model_fast has been called.
   logical :: Reorder_0C_heatflux !< If true, rearrange the calculation of the heat fluxes projected
                           !! back to 0C to work on each contribution separately, so that they can
-                          !! be indentically replicated if there is a single fast timestep per
+                          !! be identically replicated if there is a single fast timestep per
                           !!  coupled timestep and REDO_FAST_ICE_UPDATE=True
   integer :: max_tskin_itt !< The maximum number of iterations of the skin temperature and
                           !! optical properties during redo_update_ice_model_fast.
@@ -409,7 +398,7 @@ end subroutine total_top_quantities
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> find_excess_fluxes determines the difference between the sum across
-!! partitions of various fluxes amd the sum previously found by total_top_quantities.
+!! partitions of various fluxes and the sum previously found by total_top_quantities.
 subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, US, IG)
   type(fast_ice_avg_type),   intent(in)    :: FIA !< A type containing averages of fields
                                                   !! (mostly fluxes) over the fast updates
@@ -624,10 +613,10 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
                   ! ice [Q R Z T-1 ~> W m-2].
   real :: dt_fast ! The fast thermodynamic time step [T ~> s].
   real :: Tskin   ! The new skin temperature [degC].
-  real :: dTskin  ! The change in the skin temperatue [degC].
+  real :: dTskin  ! The change in the skin temperature [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [Q ~> J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over all shortwave (dir/dif and vis/nir) components [Q R Z T-1 ~> W m-2].
   real :: snow_wt ! A fractional weighting of snow in the category surface area [nondim].
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
@@ -883,7 +872,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: Tskin   ! The new skin temperature [degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [Q ~> J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
-  real :: dhf_dt  ! The deriviative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components [Q R Z T-1 ~> W m-2]
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos             ! The ice albedos by directional and wavelength band.
@@ -915,7 +904,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: ice_sw_tot ! The sum of shortwave fluxes into the ice and snow, but
                      ! excluding the fluxes transmitted to the ocean [Q R Z T-1 ~> W m-2].
   real :: TSF_sw_tot ! The total of all shortwave fluxes into the snow, ice,
-                     ! and ocean that were previouslly stored in TSF [Q R Z T-1 ~> W m-2].
+                     ! and ocean that were previously stored in TSF [Q R Z T-1 ~> W m-2].
   real :: I_Nk       ! The inverse of the number of internal ice layers [nondim].
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
@@ -1104,7 +1093,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
     sw_tot_ice_band(:,:) = 0.0
     ! Note that the flux to the ocean is deliberately omitted here.
-    ! Properly the raditive properties should be treated separately for each band.
+    ! Properly the radiative properties should be treated separately for each band.
     do k=1,ncat ; do b=1,nb ; do i=isc,iec
       sw_tot_ice_band(i,b) = sw_tot_ice_band(i,b) + IST%part_size(i,j,k) * &
                ((1.0 - Rad%sw_abs_ocn(i,j,k)) * FIA%flux_sw_top(i,j,k,b))
@@ -1121,7 +1110,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         ! Note that the shortwave flux to the ocean will be adjusted later
         ! so that the total shortwave heat fluxes agree with the initial
         ! calculation as passed from the atmosphere; that is where conservation
-        ! is achieved.  This is the least agressive rescaling that will avoid
+        ! is achieved.  This is the least aggressive rescaling that will avoid
         ! having negative shortwave fluxes into the ocean.
         do b2=0,nbmerge-1 ; do k=0,ncat
           FIA%flux_sw_top(i,j,k,b+b2) = rescale * FIA%flux_sw_top(i,j,k,b+b2)
@@ -1193,7 +1182,7 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, US, IG)
   type(total_sfc_flux_type), intent(in) :: TSF   !< A type with fluxes that are averaged across
                                                  !! the fast updates and integrated across thickness
                                                  !! categories from the fast ice update
-  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizonal grid type.
+  type(SIS_hor_grid_type),   intent(inout) :: G  !< The ice-model's horizontal grid type.
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
   type(ice_grid_type),       intent(in)    :: IG !< The ice vertical grid type
 
