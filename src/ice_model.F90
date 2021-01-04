@@ -1051,7 +1051,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   !$OMP parallel do default(shared) private(i2,j2,k2,sw_abs_lay,albedos)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-    if (IST%part_size(i,j,k) > 0.0) then
+    if (IST%part_size(i,j,k)*IST%MH_ice(i,j,k) > 0.0) then
       call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
                Rad%t_skin(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, albedos, &
                Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
