@@ -1058,7 +1058,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         endif
       else
         drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
-        if (CS%lemieux_landfast) speed_u = sqrt(uio_init**2 + v2_at_u )
+        if (CS%lemieux_landfast) speed_u = sqrt(uio_init**2 + v2_at_u_min )
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
 
@@ -1151,7 +1151,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         endif
       else
         drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
-        if (CS%lemieux_landfast) speed_v = sqrt(vio_init**2 + u2_at_v )
+        if (CS%lemieux_landfast) speed_v = sqrt(vio_init**2 + u2_at_v_min )
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
 
