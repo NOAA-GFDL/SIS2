@@ -632,7 +632,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: m_neglect2 ! A tiny mass per unit area squared [R2 Z2 ~> kg2 m-4].
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power [R4 Z4 ~> kg4 m-8].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
-  real :: drag_bot_u, drag_bot_v ! The speed at u and v points, respectively [L T-1 ~> m s-1].
+  real :: drag_bot_u, drag_bot_v ! A drag with the bottom at u & v points [R Z T-1 ~> kg m-2 s-1].
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iteratve steps.
