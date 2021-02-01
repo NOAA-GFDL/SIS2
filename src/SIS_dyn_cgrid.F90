@@ -632,7 +632,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: m_neglect2 ! A tiny mass per unit area squared [R2 Z2 ~> kg2 m-4].
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power [R4 Z4 ~> kg4 m-8].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
-  real :: speed_u, speed_v ! The speed at u and v points, respectively [L T-1 ~> m s-1].
+  real :: drag_bot_u, drag_bot_v ! The speed at u and v points, respectively [L T-1 ~> m s-1].
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iteratve steps.
@@ -1054,13 +1054,13 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
             uio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_uio_explicit)) - b_vel0)
           endif
           drag_u = cdRho * sqrt(max(uio_init**2, uio_pred**2) + v2_at_u )
-          if (CS%lemieux_landfast) speed_u = sqrt(max(uio_init**2, uio_pred**2) + v2_at_u_min )
         endif
       else
         drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
-        if (CS%lemieux_landfast) speed_u = sqrt(uio_init**2 + v2_at_u_min )
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
+      if (CS%lemieux_landfast) drag_bot_u = CS%Tb_u(I,j) / &
+           (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
@@ -1068,8 +1068,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
                  ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
                   dt * (mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) ) / &
-                 (mi_u(I,j) + m_neglect + dt * drag_u + &
-                 CS%Tb_u(I,j) / (speed_u + CS%lemieux_u0))
+                 ((mi_u(I,j) + m_neglect) + dt * (drag_u + drag_bot_u))
       else
         uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
                  ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
@@ -1147,13 +1146,13 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
             vio_pred = 0.5 * (sqrt(b_vel0**2 + 4.0*I_cdRhoDt*abs(m_vio_explicit)) - b_vel0)
           endif
           drag_v = cdRho * sqrt(max(vio_init**2, vio_pred**2) + u2_at_v )
-          if (CS%lemieux_landfast) speed_v = sqrt(max(vio_init**2, vio_pred**2) + u2_at_v_min )
         endif
       else
         drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
-        if (CS%lemieux_landfast) speed_v = sqrt(vio_init**2 + u2_at_v_min )
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
+      if (CS%lemieux_landfast) drag_bot_v = CS%Tb_v(i,J) / &
+           (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
@@ -1161,8 +1160,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
                  ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
                   dt * (mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) ) / &
-                 (mi_v(i,J) + m_neglect + dt * drag_v + &
-                 CS%Tb_v(i,J) / (speed_v + CS%lemieux_u0))
+                 ((mi_v(i,J) + m_neglect) + dt * (drag_v + drag_bot_v))
       else
         vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
                  ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
@@ -1668,10 +1666,10 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
 
   ! Compute the term (h_u - h_cu) * exp(-C(1-A_u)) (at u points)
   do j=jsc,jec
-    do I=isc,iec
+    do I=isc-1,iec
       hw_u = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i+1,j) + sea_lev(i+1,j))
-      if (hw_u < CS%lemieux_threshold_hw) then
-        ci_u = max(ci(i,j), ci(i+1,j))
+      ci_u = max(ci(i,j), ci(i+1,j))
+      if (ci_u > 0.01 .and. G%mask2dCu(I,j) > 0.0 .and. hw_u < CS%lemieux_threshold_hw) then
         h_u = max(mi(i,j), mi(i+1,j))/CS%Rho_ice
 
         ! 1- calculate critical thickness
@@ -1688,11 +1686,11 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
 !
 ! Compute the term (h_v - h_cv) * exp(-C(1-A_v)) (at v points)
 !
-  do J=jsc,jec
+  do J=jsc-1,jec
     do i=isc,iec
       hw_v = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i,j+1) + sea_lev(i,j+1))
-      if (hw_v < CS%lemieux_threshold_hw) then
-        ci_v = max(ci(i,j), ci(i,j+1))
+      ci_v = max(ci(i,j), ci(i,j+1))
+      if (ci_v > 0.01 .and. G%mask2dCv(i,J) > 0.0 .and. hw_v < CS%lemieux_threshold_hw) then
         h_v = max(mi(i,j), mi(i,j+1))/CS%Rho_ice
 
         ! 1- calculate critical thickness
@@ -1706,6 +1704,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
       endif
     enddo
   enddo
+!          call uvchksum("Tb_[uv] before SIS_C_dynamics", CS%Tb_u, CS%Tb_v, G, &
+!                         halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 
 end subroutine basal_stress_coeff_C
 
