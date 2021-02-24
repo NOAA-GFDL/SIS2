@@ -455,11 +455,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
                                    WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, US, CS%complete_ice_cover)
 
           if (CS%lemieux_landfast) then
-            if (CS%Warsaw_sum_order) then
-              call basal_stress_coeff_C(G, mi_sum, 1.0-ice_free(:,:), OSS%sea_lev, CS%SIS_C_dyn_CSp)
-            else
-              call basal_stress_coeff_C(G, mi_sum, ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
-            endif
+            call basal_stress_coeff_C(G, mi_sum, ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
           endif
 
           if (CS%debug) then

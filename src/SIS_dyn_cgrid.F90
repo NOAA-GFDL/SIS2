@@ -1029,8 +1029,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
                      (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                       ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
-      if (CS%lemieux_landfast) v2_at_u_min = &
-                     min(vi(i,J), vi(i+1,J-1), vi(i+1,J), vi(i,J-1))**2
+      if (CS%lemieux_landfast) v2_at_u_min = min(abs(vi(I,j)), abs(vi(i+1,J-1)), &
+               abs(vi(i+1,J)), abs(vi(i,J-1)))**2
 
       uio_init = (ui(I,j)-uo(I,j))
 
@@ -1059,22 +1059,24 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
-      if (CS%lemieux_landfast) drag_bot_u = CS%Tb_u(I,j) / &
+      if (CS%lemieux_landfast) then
+        drag_bot_u = CS%Tb_u(I,j) / &
            (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
+        drag_u = drag_u + drag_bot_u
+      endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
-      if (CS%lemieux_landfast) then
-        uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
-                 ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
-                  dt * (mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) ) / &
-                 ((mi_u(I,j) + m_neglect) + dt * (drag_u + drag_bot_u))
-      else
-        uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
-                 ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
-                  dt * (mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) ) / &
-                 (mi_u(I,j) + m_neglect + dt * drag_u)
-      endif
+!     if (CS%lemieux_landfast) then
+!       if (G%idg_offset + I == 25 .and. G%jdg_offset + j == 573) then
+!       if (G%idg_offset + I == 471 .and. G%jdg_offset + j == 671) then
+!         print *, 'inside ice timestep', CS%Tb_u(I,j), drag_u, drag_max, uio_C, ui(i,J), v2_at_u_min
+!       endif
+!     endif
+      uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
+               ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
+                dt * (mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) ) / &
+               (mi_u(I,j) + m_neglect + dt * drag_u)
 
       ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
       ! Note that fxoc is the stress felt by the ocean.
@@ -1121,8 +1123,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       u2_at_v = CS%drag_bg_vel2 + 0.25 * &
                 (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                  ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
-      if (CS%lemieux_landfast) u2_at_v_min = &
-                     min(u_tmp(I,j), u_tmp(I-1,j+1), u_tmp(I,j+1), u_tmp(I-1,j))**2
+      if (CS%lemieux_landfast) u2_at_v_min = min(abs(u_tmp(i,J)), abs(u_tmp(I-1,j+1)), &
+               abs(u_tmp(I,j+1)), abs(u_tmp(I-1,j)))**2
 
       vio_init = (vi(i,J)-vo(i,J))
 
@@ -1151,22 +1153,24 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
-      if (CS%lemieux_landfast) drag_bot_v = CS%Tb_v(i,J) / &
+      if (CS%lemieux_landfast) then
+        drag_bot_v = CS%Tb_v(i,J) / &
            (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
+        drag_v = drag_v + drag_bot_v
+      endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
-      if (CS%lemieux_landfast) then
-        vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
-                 ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
-                  dt * (mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) ) / &
-                 ((mi_v(i,J) + m_neglect) + dt * (drag_v + drag_bot_v))
-      else
-        vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
-                 ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
-                  dt * (mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) ) / &
-                 (mi_v(i,J) + m_neglect + dt * drag_v)
-      endif
+!     if (CS%lemieux_landfast) then
+!       if (G%idg_offset + i == 25 .and. G%jdg_offset + J == 573) then
+!       if (G%idg_offset + i == 471 .and. G%jdg_offset + J == 671) then
+!         print *, 'inside ice timestep', CS%Tb_v(i,J), drag_v, drag_max, vio_C, vi(i,J), u2_at_v_min
+!       endif
+!     endif
+      vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
+               ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
+                dt * (mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) ) / &
+               (mi_v(i,J) + m_neglect + dt * drag_v)
 
       vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
       ! Note that fyoc is the stress felt by the ocean.
@@ -1681,6 +1685,10 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
       else
         CS%Tb_u(I,j) = 0.0
       endif
+!     if (G%idg_offset + I == 25 .and. G%jdg_offset + j == 573) then
+!     if (G%idg_offset + I == 471 .and. G%jdg_offset + j == 671) then
+!       print *, 'inside basal_stress', hw_u, ci_u, h_u, hc_u
+!     endif
     enddo
   enddo
 !
@@ -1702,6 +1710,10 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
       else
         CS%Tb_v(i,J) = 0.0
       endif
+!     if (G%idg_offset + i == 471 .and. G%jdg_offset + J == 671) then
+!     if (G%idg_offset + i == 25 .and. G%jdg_offset + J == 573) then
+!       print *, 'inside basal_stress', hw_v, ci_v, h_v, hc_v
+!     endif
     enddo
   enddo
 !          call uvchksum("Tb_[uv] before SIS_C_dynamics", CS%Tb_u, CS%Tb_v, G, &
