@@ -511,6 +511,7 @@ subroutine initialize_concentration_from_latitudes(part_size, G, IG, US, PF, jus
   call get_param(PF, mdl, "ANTARCTIC_ICE_EDGE_IC", Antarctic_ice_edge, &
                  "The northern latitude of Antarctic ice in an initial condition.", &
                  default=-91.0, units="degrees of latitude", do_not_log=just_read)
+  if (just_read) return ! All run-time parameters have been read, so return.
 
   do j=js,je ; do i=is,ie
     part_size(i,j,1) = 0.0
