@@ -41,7 +41,7 @@ use SIS_dyn_bgrid,     only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
-use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts
+use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts, basal_stress_coeff_C
 use SIS_framework,     only : SIS_restart_CS, safe_alloc
 use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data
 use SIS_hor_grid,      only : SIS_hor_grid_type
@@ -121,6 +121,7 @@ type dyn_trans_CS ; private
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    !! timing of diagnostic output.
+  logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1
@@ -453,6 +454,9 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           call set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
                                    WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, US, CS%complete_ice_cover)
 
+          if (CS%lemieux_landfast) then
+            call basal_stress_coeff_C(G, mi_sum, ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
+          endif
 
           if (CS%debug) then
             call uvchksum("Before SIS_C_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, scale=US%L_T_to_m_s)
@@ -969,6 +973,10 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
       ! stresses were updated.
       call set_wind_stresses_C(FIA, DS2d%ice_cover, ice_free, WindStr_x_Cu, WindStr_y_Cv, &
                                WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, G, US, CS%complete_ice_cover)
+
+      if (CS%lemieux_landfast) then
+        call basal_stress_coeff_C(G, DS2d%mi_sum, DS2d%ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
+      endif
 
       if (CS%debug) then
         call uvchksum("Before SIS_C_dynamics [uv]_ice_C", DS2d%u_ice_C, DS2d%v_ice_C, G, scale=US%L_T_to_m_s)
@@ -2228,6 +2236,9 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
                  default=.not.CS%merged_cont, do_not_log=CS%merged_cont)
   if (CS%merged_cont .and. CS%Warsaw_sum_order) &
     call SIS_error(FATAL, "WARSAW_SUM_ORDER can not be true if MERGED_CONTINUITY=True.")
+  call get_param(param_file, mdl, "LEMIEUX_LANDFAST", CS%lemieux_landfast, &
+                   "If true, turn on Lemieux landfast ice parameterization.", default=.false., &
+                   do_not_log=.true.)
 
   call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
