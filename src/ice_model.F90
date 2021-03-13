@@ -57,6 +57,7 @@ use ice_type_mod,       only : ice_data_type, dealloc_ice_arrays
 use ice_type_mod,       only : ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 use ice_type_mod,       only : Ice_public_type_chksum, Ice_public_type_bounds_check
 use ice_type_mod,       only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
+use ice_ridging_mod, only : ice_ridging_init
 
 use SIS_ctrl_types,    only : SIS_slow_CS, SIS_fast_CS
 use SIS_ctrl_types,    only : ice_diagnostics_init, ice_diags_fast_init
@@ -2132,6 +2133,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                sIST%TrReg, snow_tracer=.false., &
                                massless_val=massless_ice_salin, nonnegative=.true.)
     endif
+
+    call ice_ridging_init(sG,sIG,sIST%TrReg,US)
 
   !   Register any tracers that will be handled via tracer flow control for
   ! restarts and advection.
