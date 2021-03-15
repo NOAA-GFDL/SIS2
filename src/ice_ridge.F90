@@ -292,8 +292,9 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, US, dt, r
     IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) + sum(mca_pond(i,j,:));
     aicen(1:nCat) = IST%part_size(i,j,1:nCat);
 
+
     if (sum(aicen) .eq. 0.0) then ! no ice -> no ridging
-      IST%part_size(i,j,0) = 1.0
+      IST%part_size(i,j,0) = 1.0;
     else
       ! set up ice and snow volumes
       vicen(1:nCat) = mca_ice(i,j,1:nCat) /Rho_ice ! volume per unit area of ice (m)
@@ -313,7 +314,13 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, US, dt, r
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
       rdg_conv  = -min(sh_Dd,0.0)              ! energy dissipated by convergence ...
       rdg_shear = 0.5*(del_sh-abs(sh_Dd))      ! ... and by shear
+
       aice0 = IST%part_size(i,j,0)
+      if (aice0<0.) then
+         call SIS_error(WARNING,'aice0<0. before call to ridge ice.')
+         aice0=0.
+      endif
+
       ntrcr = 0
 !      Tr_ptr=>NULL()
       if (TrReg%ntr>0) then ! load tracer array
@@ -437,6 +444,11 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, US, dt, r
 
       endif ! have tracers to unload
 
+      if (sum(aicen(1:nCat))>1.0) then
+        call SIS_error(WARNING,'Ice cover exceeds 1 after call to ice ridge. Renormalizing.')
+        aicen(1:ncat)=aicen(1:ncat)/sum(aicen(1:ncat))
+      endif
+
       ! ! output: snow/ice masses/thicknesses
       do k=1,nCat
 
@@ -455,6 +467,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, US, dt, r
        endif
 
      enddo
+
 
      IST%part_size(i,j,0) = 1.0 - sum(IST%part_size(i,j,1:nCat))
 
