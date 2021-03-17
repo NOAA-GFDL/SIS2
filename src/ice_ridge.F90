@@ -444,11 +444,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, US, dt, r
 
       endif ! have tracers to unload
 
-      if (sum(aicen(1:nCat))>1.0) then
-        call SIS_error(WARNING,'Ice cover exceeds 1 after call to ice ridge. Renormalizing.')
-        aicen(1:ncat)=aicen(1:ncat)/sum(aicen(1:ncat))
-      endif
-
       ! ! output: snow/ice masses/thicknesses
       do k=1,nCat
 
