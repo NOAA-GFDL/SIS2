@@ -632,7 +632,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: m_neglect2 ! A tiny mass per unit area squared [R2 Z2 ~> kg2 m-4].
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power [R4 Z4 ~> kg4 m-8].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
-  real :: drag_bot_u, drag_bot_v ! A drag with the bottom at u & v points [R Z T-1 ~> kg m-2 s-1].
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iteratve steps.
@@ -1060,9 +1059,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
       if (CS%lemieux_landfast) then
-        drag_bot_u = CS%Tb_u(I,j) / &
-           (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
-        drag_u = drag_u + drag_bot_u
+        drag_u = drag_u + CS%Tb_u(I,j) / (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
@@ -1154,9 +1151,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
       if (CS%lemieux_landfast) then
-        drag_bot_v = CS%Tb_v(i,J) / &
-           (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
-        drag_v = drag_v + drag_bot_v
+        drag_v = drag_v + CS%Tb_v(i,J) / (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
