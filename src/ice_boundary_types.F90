@@ -9,10 +9,11 @@ module ice_boundary_types
 !   develoment effort.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use MOM_error_handler, only : stdout
+use MOM_error_handler, only : stdout, is_root_pe
 use MOM_domains,       only : CGRID_NE, BGRID_NE, AGRID
 use SIS_framework,     only : coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : SIS_chksum, coupler_type_write_chksums
+use iso_fortran_env,   only : int64
 
 implicit none ; private
 
@@ -121,16 +122,22 @@ subroutine ocn_ice_bnd_type_chksum(id, timestep, bnd_type)
   character(len=*), intent(in) :: id !< An identifying message fragment
   integer         , intent(in) :: timestep !< The timestep number
   type(ocean_ice_boundary_type), intent(in) :: bnd_type !< The structure whose elements are to be checksummed
-  integer ::   n, m, outunit
+
+  ! Local variables
+  integer(kind=int64) :: chks ! A checksum for the field
+  logical :: root    ! True only on the root PE
+  integer :: outunit ! The output unit to write to
 
   outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(ocean_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'ocn_ice_bnd_type%u        ', SIS_chksum(bnd_type%u        )
-  write(outunit,100) 'ocn_ice_bnd_type%v        ', SIS_chksum(bnd_type%v        )
-  write(outunit,100) 'ocn_ice_bnd_type%t        ', SIS_chksum(bnd_type%t        )
-  write(outunit,100) 'ocn_ice_bnd_type%s        ', SIS_chksum(bnd_type%s        )
-  write(outunit,100) 'ocn_ice_bnd_type%frazil   ', SIS_chksum(bnd_type%frazil   )
-  write(outunit,100) 'ocn_ice_bnd_type%sea_level', SIS_chksum(bnd_type%sea_level)
+  root = is_root_pe()
+
+  if (root) write(outunit,*) 'BEGIN CHECKSUM(ocean_ice_boundary_type):: ', id, timestep
+  chks = SIS_chksum(bnd_type%u        ) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%u        ', chks
+  chks = SIS_chksum(bnd_type%v        ) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%v        ', chks
+  chks = SIS_chksum(bnd_type%t        ) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%t        ', chks
+  chks = SIS_chksum(bnd_type%s        ) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%s        ', chks
+  chks = SIS_chksum(bnd_type%frazil   ) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%frazil   ', chks
+  chks = SIS_chksum(bnd_type%sea_level) ; if (root) write(outunit,100) 'ocn_ice_bnd_type%sea_level', chks
   !    write(outunit,100) 'ocn_ice_bnd_type%data     ', SIS_chksum(bnd_type%data     )
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 
@@ -143,36 +150,46 @@ subroutine atm_ice_bnd_type_chksum(id, timestep, bnd_type)
   character(len=*), intent(in) :: id !< An identifying message fragment
   integer         , intent(in) :: timestep !< The timestep number
   type(atmos_ice_boundary_type), intent(in) :: bnd_type !< The structure whose elements are to be checksummed
-  integer ::   n, outunit
+
+  ! Local variables
+  integer(kind=int64) :: chks ! A checksum for the field
+  logical :: root    ! True only on the root PE
+  integer :: outunit ! The output unit to write to
 
   outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(atmos_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'atm_ice_bnd_type%u_flux          ', SIS_chksum(bnd_type%u_flux)
-  write(outunit,100) 'atm_ice_bnd_type%v_flux          ', SIS_chksum(bnd_type%v_flux)
-  write(outunit,100) 'atm_ice_bnd_type%u_star          ', SIS_chksum(bnd_type%u_star)
-  write(outunit,100) 'atm_ice_bnd_type%t_flux          ', SIS_chksum(bnd_type%t_flux)
-  write(outunit,100) 'atm_ice_bnd_type%q_flux          ', SIS_chksum(bnd_type%q_flux)
-  write(outunit,100) 'atm_ice_bnd_type%lw_flux         ', SIS_chksum(bnd_type%lw_flux)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ', SIS_chksum(bnd_type%sw_flux_vis_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ', SIS_chksum(bnd_type%sw_flux_vis_dif)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ', SIS_chksum(bnd_type%sw_flux_nir_dir)
-  write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ', SIS_chksum(bnd_type%sw_flux_nir_dif)
-  if (associated(bnd_type%sw_down_vis_dir)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dir ', SIS_chksum(bnd_type%sw_down_vis_dir)
-  if (associated(bnd_type%sw_down_vis_dif)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dif ', SIS_chksum(bnd_type%sw_down_vis_dif)
-  if (associated(bnd_type%sw_down_nir_dir)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dir ', SIS_chksum(bnd_type%sw_down_nir_dir)
-  if (associated(bnd_type%sw_down_nir_dif)) &
-    write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dif ', SIS_chksum(bnd_type%sw_down_nir_dif)
-  write(outunit,100) 'atm_ice_bnd_type%lprec           ', SIS_chksum(bnd_type%lprec)
-  write(outunit,100) 'atm_ice_bnd_type%fprec           ', SIS_chksum(bnd_type%fprec)
-  write(outunit,100) 'atm_ice_bnd_type%dhdt            ', SIS_chksum(bnd_type%dhdt)
-  write(outunit,100) 'atm_ice_bnd_type%dedt            ', SIS_chksum(bnd_type%dedt)
-  write(outunit,100) 'atm_ice_bnd_type%drdt            ', SIS_chksum(bnd_type%drdt)
-  write(outunit,100) 'atm_ice_bnd_type%coszen          ', SIS_chksum(bnd_type%coszen)
-  write(outunit,100) 'atm_ice_bnd_type%p               ', SIS_chksum(bnd_type%p)
-!    write(outunit,100) 'atm_ice_bnd_type%data            ', SIS_chksum(bnd_type%data)
+  root = is_root_pe()
+
+  if (root) write(outunit,*) 'BEGIN CHECKSUM(atmos_ice_boundary_type):: ', id, timestep
+  chks = SIS_chksum(bnd_type%u_flux)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%u_flux  ', chks
+  chks = SIS_chksum(bnd_type%v_flux)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%v_flux  ', chks
+  chks = SIS_chksum(bnd_type%u_star)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%u_star  ', chks
+  chks = SIS_chksum(bnd_type%t_flux)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%t_flux  ', chks
+  chks = SIS_chksum(bnd_type%q_flux)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%q_flux  ', chks
+  chks = SIS_chksum(bnd_type%lw_flux) ; if (root) write(outunit,100) 'atm_ice_bnd_type%lw_flux ', chks
+  chks = SIS_chksum(bnd_type%sw_flux_vis_dir) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dir ', chks
+  chks = SIS_chksum(bnd_type%sw_flux_vis_dif) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_flux_vis_dif ', chks
+  chks = SIS_chksum(bnd_type%sw_flux_nir_dir) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dir ', chks
+  chks = SIS_chksum(bnd_type%sw_flux_nir_dif) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_flux_nir_dif ', chks
+  if (associated(bnd_type%sw_down_vis_dir)) then
+    chks = SIS_chksum(bnd_type%sw_down_vis_dir) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dir ', chks
+  endif
+  if (associated(bnd_type%sw_down_vis_dif)) then
+    chks = SIS_chksum(bnd_type%sw_down_vis_dif) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_down_vis_dif ', chks
+  endif
+  if (associated(bnd_type%sw_down_nir_dir)) then
+    chks = SIS_chksum(bnd_type%sw_down_nir_dir) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dir ', chks
+  endif
+  if (associated(bnd_type%sw_down_nir_dif)) then
+    chks = SIS_chksum(bnd_type%sw_down_nir_dif) ; if (root) write(outunit,100) 'atm_ice_bnd_type%sw_down_nir_dif ', chks
+  endif
+  chks = SIS_chksum(bnd_type%lprec)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%lprec  ', chks
+  chks = SIS_chksum(bnd_type%fprec)  ; if (root) write(outunit,100) 'atm_ice_bnd_type%fprec  ', chks
+  chks = SIS_chksum(bnd_type%dhdt)   ; if (root) write(outunit,100) 'atm_ice_bnd_type%dhdt   ', chks
+  chks = SIS_chksum(bnd_type%dedt)   ; if (root) write(outunit,100) 'atm_ice_bnd_type%dedt   ', chks
+  chks = SIS_chksum(bnd_type%drdt)   ; if (root) write(outunit,100) 'atm_ice_bnd_type%drdt   ', chks
+  chks = SIS_chksum(bnd_type%coszen) ; if (root) write(outunit,100) 'atm_ice_bnd_type%coszen ', chks
+  chks = SIS_chksum(bnd_type%p)      ; if (root) write(outunit,100) 'atm_ice_bnd_type%p      ', chks
+  ! chks = SIS_chksum(bnd_type%data) ; if (root) write(outunit,100) 'atm_ice_bnd_type%data   ', chks
 100 FORMAT("CHECKSUM::",A32," = ",Z20)
 
 end subroutine atm_ice_bnd_type_chksum
@@ -182,15 +199,21 @@ subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
   character(len=*), intent(in) :: id !< An identifying message fragment
   integer         , intent(in) :: timestep !< The timestep number
   type(land_ice_boundary_type), intent(in) :: bnd_type !< The structure whose elements are to be checksummed
-  integer ::   n, outunit
+
+  ! Local variables
+  integer(kind=int64) :: chks ! A checksum for the field
+  logical :: root    ! True only on the root PE
+  integer :: outunit ! The output unit to write to
 
   outunit = stdout()
-  write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
-  write(outunit,100) 'lnd_ice_bnd_type%runoff  ', SIS_chksum(bnd_type%runoff)
-  write(outunit,100) 'lnd_ice_bnd_type%calving ', SIS_chksum(bnd_type%calving)
-  write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ', SIS_chksum(bnd_type%runoff_hflx)
-  write(outunit,100) 'lnd_ice_bnd_type%calving_hflx', SIS_chksum(bnd_type%calving_hflx)
-  !    write(outunit,100) 'lnd_ice_bnd_type%data    ', SIS_chksum(bnd_type%data)
+  root = is_root_pe()
+
+  if (root) write(outunit,*) 'BEGIN CHECKSUM(land_ice_boundary_type):: ', id, timestep
+  chks = SIS_chksum(bnd_type%runoff)       ; if (root) write(outunit,100) 'lnd_ice_bnd_type%runoff  ', chks
+  chks = SIS_chksum(bnd_type%calving)      ; if (root) write(outunit,100) 'lnd_ice_bnd_type%calving ', chks
+  chks = SIS_chksum(bnd_type%runoff_hflx)  ; if (root) write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ', chks
+  chks = SIS_chksum(bnd_type%calving_hflx) ; if (root) write(outunit,100) 'lnd_ice_bnd_type%calving_hflx', chks
+  ! chks = SIS_chksum(bnd_type%data) ; if (root) write(outunit,100) 'lnd_ice_bnd_type%data    ', chks
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 end subroutine lnd_ice_bnd_type_chksum
 
