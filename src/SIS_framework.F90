@@ -4,25 +4,24 @@ module SIS_framework
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
-use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
-use coupler_types_mod, only : coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
-use coupler_types_mod, only : coupler_type_redistribute_data, coupler_type_copy_data
-use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
 use coupler_types_mod, only : coupler_type_register_restarts
-use coupler_types_mod, only : coupler_type_set_diags, coupler_type_write_chksums
 
 use fms_io_mod,        only : set_domain, nullify_domain
+
 use fms_io_mod,        only : restart_file_type, FMS1_register_restart=>register_restart_field
 use fms_io_mod,        only : save_restart_FMS1=>save_restart, FMS1_restore_state=>restore_state
 use fms_io_mod,        only : FMS1_query_initialized=>query_initialized
 ! use fms2_io_mod,       only : query_initialized=>is_registered_to_restart
-use mpp_mod,           only : SIS_chksum=>mpp_chksum
-use mpp_domains_mod,   only : domain2D, CENTER, CORNER, EAST, NORTH
-use mpp_domains_mod,   only : get_layout=>mpp_get_layout, get_compute_domain=>mpp_get_compute_domain
-use mpp_domains_mod,   only : redistribute_data=>mpp_redistribute
-use mpp_domains_mod,   only : broadcast_domain=>mpp_broadcast_domain
 
-use MOM_domains,       only : MOM_domain_type
+use MOM_coms_infra,    only : SIS_chksum=>field_chksum
+use MOM_coupler_types, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
+use MOM_coupler_types, only : coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
+use MOM_coupler_types, only : coupler_type_copy_data,  coupler_type_redistribute_data
+use MOM_coupler_types, only : coupler_type_increment_data, coupler_type_rescale_data
+use MOM_coupler_types, only : coupler_type_set_diags, coupler_type_write_chksums
+use MOM_domain_infra,  only : MOM_domain_type, domain2D, get_domain_extent
+use MOM_domain_infra,  only : global_field, redistribute_data=>redistribute_array, broadcast_domain
+use MOM_domain_infra,  only : CENTER, CORNER, EAST=>EAST_FACE, NORTH=>NORTH_FACE, EAST_FACE, NORTH_FACE
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE
 use MOM_safe_alloc,    only : safe_alloc=>safe_alloc_alloc, safe_alloc_ptr
@@ -31,8 +30,8 @@ use MOM_file_parser,   only : get_param, read_param, log_param, log_version, par
 
 implicit none ; private
 
-public :: SIS_chksum, redistribute_data, domain2D, CENTER, CORNER, EAST, NORTH, axis_names_from_pos
-public :: set_domain, nullify_domain, get_layout, get_compute_domain, broadcast_domain
+public :: SIS_chksum, redistribute_data, domain2D, axis_names_from_pos
+public :: set_domain, nullify_domain, get_domain_extent, broadcast_domain
 public :: restart_file_type, restore_SIS_state, register_restart_field, save_restart, query_inited
 public :: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 public :: coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
@@ -40,6 +39,9 @@ public :: coupler_type_redistribute_data, coupler_type_copy_data, coupler_type_r
 public :: coupler_type_increment_data, coupler_type_write_chksums, coupler_type_set_diags
 public :: query_initialized, SIS_restart_init, SIS_restart_end, only_read_from_restarts
 public :: SIS_initialize_framework, safe_alloc, safe_alloc_ptr
+! These encoding constants are used to indicate the discretization position of a variable
+public :: CENTER, CORNER, EAST, NORTH, EAST_FACE, NORTH_FACE
+
 
 !> A restart registry and the control structure for restarts
 type, public :: SIS_restart_CS ; private
@@ -594,9 +596,9 @@ subroutine axis_names_from_pos(dim_names, position, varname)
     dim_names(1:2) = (/ "ih", "jh" /)
   elseif (position == CORNER) then
     dim_names(1:2) = (/ "iq", "jq" /)
-  elseif (position == NORTH) then
+  elseif (position == NORTH_FACE) then
     dim_names(1:2) = (/ "iq", "jq" /)
-  elseif (position == EAST) then
+  elseif (position == EAST_FACE) then
     dim_names(1:2) = (/ "iq", "jq" /)
   elseif (present(varname)) then
     call SIS_error(FATAL, "set_axis_names_from_pos: Unrecognized position setting for "//trim(varname))
