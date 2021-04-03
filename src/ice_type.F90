@@ -13,11 +13,9 @@ use MOM_time_manager,  only : time_type, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_ctrl_types,    only : SIS_fast_CS, SIS_slow_CS
 use SIS_debugging,     only : chksum
-use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
-use SIS_diag_mediator, only : register_SIS_diag_field
-use SIS_framework,     only : domain2D, CORNER, EAST, NORTH, SIS_chksum, get_compute_domain
-use SIS_framework,     only : register_restart_field, SIS_restart_CS
-use SIS_framework,     only : save_restart, query_initialized, safe_alloc, safe_alloc_ptr
+use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data, register_SIS_diag_field
+use SIS_framework,     only : domain2D, SIS_chksum, get_domain_extent, safe_alloc, safe_alloc_ptr
+use SIS_framework,     only : register_restart_field, save_restart, SIS_restart_CS, query_initialized
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
@@ -179,7 +177,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   ! registers the appopriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
-  call get_compute_domain(domain, isc, iec, jsc, jec )
+  call get_domain_extent(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
   ! The fields t_surf, s_surf, and part_size are only available on fast PEs.
@@ -271,7 +269,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   ! registers the appopriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
-  call get_compute_domain(domain, isc, iec, jsc, jec )
+  call get_domain_extent(domain, isc, iec, jsc, jec )
   km = CatIce + 1
 
   call safe_alloc_ptr(Ice%t_surf, isc, iec, jsc, jec, km)
