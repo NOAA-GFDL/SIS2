@@ -21,13 +21,13 @@ module SIS_slow_thermo
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 
-use data_override_mod, only : data_override
 
 use ice_grid,          only : ice_grid_type
 use ice_spec_mod,      only : get_sea_surface
 
 use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
 use MOM_cpu_clock,     only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use MOM_data_override, only : data_override
 use MOM_EOS,           only : EOS_type, calculate_density_derivs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
