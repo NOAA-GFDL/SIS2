@@ -3,20 +3,17 @@ module SIS_diag_mediator
 
 ! This file is a part of SIS2. See LICENSE.md for the license.
 
-use SIS_hor_grid, only : SIS_hor_grid_type
-use ice_grid, only : ice_grid_type
-
-use MOM_coms, only : PE_here
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, is_root_pe
-use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
-use MOM_safe_alloc, only : safe_alloc_ptr, safe_alloc_alloc
-use MOM_string_functions, only : lowercase, uppercase, slasher
-use MOM_time_manager, only : time_type
-
-use diag_manager_mod, only : diag_manager_init, send_data, diag_axis_init
-use diag_manager_mod, only : register_diag_field_fms=>register_diag_field
-use diag_manager_mod, only : register_static_field_fms=>register_static_field
-use SIS_framework,    only : EAST, NORTH
+use ice_grid,               only : ice_grid_type
+use MOM_coms,               only : PE_here
+use MOM_diag_manager_infra, only : diag_manager_init=>MOM_diag_manager_init
+use MOM_diag_manager_infra, only : register_diag_field_infra, register_static_field_infra
+use MOM_diag_manager_infra, only : send_data_infra, diag_axis_init=>MOM_diag_axis_init, EAST, NORTH
+use MOM_error_handler,      only : SIS_error=>MOM_error, FATAL, is_root_pe
+use MOM_file_parser,        only : get_param, log_param, log_version, param_file_type
+use MOM_safe_alloc,         only : safe_alloc_ptr, safe_alloc_alloc
+use MOM_string_functions,   only : lowercase, uppercase, slasher
+use MOM_time_manager,       only : time_type
+use SIS_hor_grid,           only : SIS_hor_grid_type
 
 implicit none ; private
 
@@ -174,30 +171,23 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   endif
 
   id_xq = diag_axis_init('xB', G%gridLonB(G%isgB:G%iegB), G%x_axis_units, 'x', &
-            'Boundary point nominal longitude',set_name=set_name, &
-             Domain2=G%Domain%mpp_domain, domain_position=EAST)
+            'Boundary point nominal longitude', G%Domain, set_name=set_name, position=EAST)
   id_yq = diag_axis_init('yB', G%gridLatB(G%jsgB:G%jegB), G%y_axis_units, 'y', &
-            'Boundary point nominal latitude', set_name=set_name, &
-             Domain2=G%Domain%mpp_domain, domain_position=NORTH)
+            'Boundary point nominal latitude', G%Domain, set_name=set_name, position=NORTH)
 
   id_xhe = diag_axis_init('xTe', G%gridLonB(G%isg-1:G%ieg), G%x_axis_units, 'x', &
-            'T-cell edge nominal longitude', set_name=set_name, &
-             Domain2=G%Domain%mpp_domain, domain_position=EAST)
+            'T-cell edge nominal longitude', G%Domain, set_name=set_name, position=EAST)
   id_yhe = diag_axis_init('yTe', G%gridLatB(G%jsg-1:G%jeg), G%y_axis_units, 'y', &
-            'T-cell edge nominal latitude', set_name=set_name, &
-            Domain2=G%Domain%mpp_domain, domain_position=NORTH)
+            'T-cell edge nominal latitude', G%Domain, set_name=set_name, position=NORTH)
   id_xh = diag_axis_init('xT', G%gridLonT(G%isg:G%ieg), G%x_axis_units, 'x', &
-              'T point nominal longitude', set_name=set_name, edges=id_xhe, &
-              Domain2=G%Domain%mpp_domain)
+              'T point nominal longitude', G%Domain, set_name=set_name, edges=id_xhe)
   id_yh = diag_axis_init('yT', G%gridLatT(G%jsg:G%jeg), G%y_axis_units, 'y', &
-              'T point nominal latitude', set_name=set_name, edges=id_yhe, &
-              Domain2=G%Domain%mpp_domain)
+              'T point nominal latitude', G%Domain, set_name=set_name, edges=id_yhe)
 
   if (set_vert) then
     do k=1,IG%NkIce+1 ; zinter_ice(k) = real(k-1) / real(IG%NkIce) ; enddo
     do k=1,IG%NkIce ; zlev_ice(k) = (k-0.5) / real(IG%NkIce) ; enddo
-    id_zl = diag_axis_init('zl', zlev_ice, 'layer', 'z', 'Cell depth', &
-                           set_name=set_name)
+    id_zl = diag_axis_init('zl', zlev_ice, 'layer', 'z', 'Cell depth', set_name=set_name)
     id_zi = diag_axis_init('zi', zinter_ice, 'interface', 'z', &
                            'Cell interface depth', set_name=set_name)
   else
@@ -281,7 +271,7 @@ end subroutine set_SIS_diag_mediator_grid
 !> Offer a 2d diagnostic field for output or averaging
 subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
-                                              !! previous call to register_diag_field.
+                                              !! previous call to register_SIS_diag_field.
   real,    target,   intent(in) :: field(:,:) !< The 2-d array being offered for output or averaging.
   type(SIS_diag_ctrl), target, &
                      intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
@@ -366,35 +356,35 @@ subroutine post_data_2d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     elseif(i_data .and. associated(diag%mask2d)) then
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d)
     elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask2d_comp)
     else
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, mask=mask)
+                       time=diag_cs%time_end, weight=diag_cs%time_int, mask=mask)
     elseif(i_data .and. associated(diag%mask2d)) then
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, rmask=diag%mask2d)
+                       time=diag_cs%time_end, weight=diag_cs%time_int, rmask=diag%mask2d)
     elseif((.not.i_data) .and. associated(diag%mask2d_comp)) then
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, rmask=diag%mask2d_comp)
+                       time=diag_cs%time_end, weight=diag_cs%time_int, rmask=diag%mask2d_comp)
     else
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int)
+                       time=diag_cs%time_end, weight=diag_cs%time_int)
     endif
   endif
 
@@ -405,7 +395,7 @@ end subroutine post_data_2d
 !> Offer a 3d diagnostic field for output or averaging
 subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
   integer,           intent(in) :: diag_field_id !< the id for an output variable returned by a
-                                              !! previous call to register_diag_field.
+                                              !! previous call to register_SIS_diag_field.
   real,    target,   intent(in) :: field(:,:,:) !< The 3-d array being offered for output or averaging.
   type(SIS_diag_ctrl), target, &
                      intent(in) :: diag_cs !< A structure that is used to regulate diagnostic output
@@ -483,28 +473,28 @@ subroutine post_data_3d(diag_field_id, field, diag_cs, is_static, mask)
 
   if (is_stat) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, mask=mask)
     elseif(associated(diag%mask3d)) then
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, rmask=diag%mask3d)
     else
-      used = send_data(fms_diag_id, locfield, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev)
     endif
   elseif (diag_cs%ave_enabled) then
     if (present(mask)) then
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, mask=mask)
+                       time=diag_cs%time_end, weight=diag_cs%time_int, mask=mask)
     elseif(associated(diag%mask3d)) then
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int, rmask=diag%mask3d)
+                       time=diag_cs%time_end, weight=diag_cs%time_int, rmask=diag%mask3d)
     else
-      used = send_data(fms_diag_id, locfield, diag_cs%time_end, &
+      used = send_data_infra(fms_diag_id, locfield, &
                        is_in=isv, js_in=jsv, ie_in=iev, je_in=jev, &
-                       weight=diag_cs%time_int)
+                       time=diag_cs%time_end, weight=diag_cs%time_int)
     endif
   endif
 
@@ -585,20 +575,20 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
 
   ! Local variables
   character(len=240) :: mesg
-  real :: MOM_missing_value
+  real :: SIS_missing_value
   integer :: primary_id, fms_id
   type(SIS_diag_ctrl), pointer :: diag_cs => NULL() ! A structure that is used
                                                ! to regulate diagnostic output
   type(diag_type), pointer :: diag => NULL()
 
-  MOM_missing_value = axes%diag_cs%missing_value
-  if(present(missing_value)) MOM_missing_value = missing_value
+  SIS_missing_value = axes%diag_cs%missing_value
+  if(present(missing_value)) SIS_missing_value = missing_value
 
   diag_cs => axes%diag_cs
   primary_id = -1
 
-  fms_id = register_diag_field_fms(module_name, field_name, axes%handles, &
-         init_time, long_name=long_name, units=units, missing_value=MOM_missing_value, &
+  fms_id = register_diag_field_infra(module_name, field_name, axes%handles, &
+         init_time, long_name=long_name, units=units, missing_value=SIS_missing_value, &
          range=range, mask_variant=mask_variant, standard_name=standard_name, &
          verbose=verbose, do_not_log=do_not_log, err_msg=err_msg, &
          interp_method=interp_method, tile_count=tile_count)
@@ -664,7 +654,7 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
       elseif (axes%id == diag_cs%axesCvc0%id) then
         diag%mask3d =>  diag_cs%mask3dCvC(:,:,0:)
   !   else
-  !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
+  !       call SIS_error(FATAL, "SIS_diag_mediator:register_SIS_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     !2d masks
@@ -680,11 +670,11 @@ function register_SIS_diag_field(module_name, field_name, axes, init_time, &
       elseif (axes%id == diag_cs%axesCv1%id) then
         diag%mask2d =>  diag_cs%mask2dCv
   !   else
-  !       call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
+  !       call SIS_error(FATAL, "SIS_diag_mediator:register_SIS_diag_field: " // &
   !            "unknown axes for diagnostic variable "//trim(field_name))
       endif
     else
-      call SIS_error(FATAL, "SIS_diag_mediator:register_diag_field: " // &
+      call SIS_error(FATAL, "SIS_diag_mediator:register_SIS_diag_field: " // &
            "unknown axes for diagnostic variable "//trim(field_name))
     endif
   endif ! if (primary_id>-1)
@@ -715,18 +705,18 @@ function register_static_field(module_name, field_name, axes, &
 
   ! Local variables
   character(len=240) :: mesg
-  real :: MOM_missing_value
+  real :: SIS_missing_value
   integer :: primary_id, fms_id
   type(SIS_diag_ctrl), pointer :: diag_cs !< A structure that is used to regulate diagnostic output
 
-  MOM_missing_value = axes%diag_cs%missing_value
-  if(present(missing_value)) MOM_missing_value = missing_value
+  SIS_missing_value = axes%diag_cs%missing_value
+  if(present(missing_value)) SIS_missing_value = missing_value
 
   diag_cs => axes%diag_cs
   primary_id = -1
 
-  fms_id = register_static_field_fms(module_name, field_name, axes%handles, &
-       long_name=long_name, units=units, missing_value=MOM_missing_value, &
+  fms_id = register_static_field_infra(module_name, field_name, axes%handles, &
+       long_name=long_name, units=units, missing_value=SIS_missing_value, &
        range=range, mask_variant=mask_variant, standard_name=standard_name, &
        do_not_log=do_not_log, &
        interp_method=interp_method, tile_count=tile_count)
