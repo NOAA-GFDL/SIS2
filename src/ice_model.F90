@@ -75,6 +75,7 @@ use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
 use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
+use SIS_framework,     only : determine_is_new_run, is_new_run
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
 use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
@@ -1649,7 +1650,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, nCat_dflt
   character(len=120) :: restart_file, fast_rest_file
-  character(len=240) :: restart_path, fast_rest_path
   character(len=40)  :: mdl = "ice_model" ! This module's name.
   character(len=8)   :: nstr
   type(directories)  :: dirs   ! A structure containing several relevant directory paths.
@@ -1717,8 +1717,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                          ! answers at roundoff.
 
   integer :: CatIce, NkIce, isd, ied, jsd, jed
-  integer :: idr, id_sal
-  integer :: write_geom
+  integer :: write_geom     ! A flag indicating whether to write the grid geometry files only for
+                            ! new runs (1), both new runs and restarts (2) or neither (0).
   logical :: nudge_sea_ice  ! If true, nudge sea ice concentrations towards observations.
   logical :: transmute_ice  ! If true, allow ice to be transmuted directly into seawater with a
                             ! spatially varying rate as a form of outflow open boundary condition.
@@ -1728,6 +1728,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: do_ridging
   logical :: specified_ice    ! If true, the ice is specified and there is no dynamics.
   logical :: Cgrid_dyn
+  logical :: new_sim     ! If true, this is a new simulation, based on the contents of dirs and
+                         ! the presence or absence of a named restart file.
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
                          ! with effectively zero heat capacity of ice and snow.
   logical :: debug, debug_slow, debug_fast, bounds_check
@@ -1970,6 +1972,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If =1, write the geometry and vertical grid files only for "//&
                  "a new simulation. If =2, always write the geometry and "//&
                  "vertical grid files. Other values are invalid.", default=1)
+  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
+         "WRITE_GEOM must be equal to 0, 1 or 2.")
   call get_param(param_file, "MOM", "INTERPOLATE_FLUXES", interp_fluxes, &
                  "If true, interpolate a linearized version of the fast "//&
                  "fluxes into arealess categories.", default=.true.)
@@ -1977,10 +1981,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, recalculate the thermal updates from the fast "//&
                  "dynamics on the slowly evolving ice state, rather than "//&
                  "copying over the slow ice state to the fast ice state.", default=Concurrent)
-  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
-         "WRITE_GEOM must be equal to 0, 1 or 2.")
-  write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. &
-     ((dirs%input_filename(1:1)=='n') .and. (LEN_TRIM(dirs%input_filename)==1))))
 
   call get_param(param_file, mdl, "NUDGE_SEA_ICE", nudge_sea_ice, &
                  "If true, constrain the sea ice concentrations using observations.", &
@@ -2072,6 +2072,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call create_dyn_horgrid(dG, sHI) !, bathymetry_at_vel=bathy_at_vel)
     call clone_MOM_domain(sGD, dG%Domain)
 
+    ! Set up the restart file and determine whether this is a new simulation.
+    call set_domain(sGD%mpp_domain)
+    if (.not.associated(Ice%Ice_restart)) &
+      call SIS_restart_init(Ice%Ice_restart, restart_file, sGD, param_file)
+    new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_restart)
+    write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. new_sim))
+
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
     call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory)
 
@@ -2081,10 +2088,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%G%US => US
 
   ! Allocate and register fields for restarts.
-
-    call set_domain(sGD%mpp_domain)
-    if (.not.associated(Ice%Ice_restart)) &
-      call SIS_restart_init(Ice%Ice_restart, restart_file, sGD)
 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_restart)
@@ -2229,7 +2232,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
     if (split_restart_files) then
       if (.not.associated(Ice%Ice_fast_restart)) &
-        call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD)
+        call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD, param_file)
     else
       Ice%Ice_fast_restart => Ice%Ice_restart
     endif
@@ -2288,15 +2291,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   endif
 
 
-  ! Read the restart file, if it exists, and initialize the ice arrays to
-  ! to default values if it does not.
+  ! Read the restart file, if it exists and reading it is indicated by the value of dirs%input_filename,
+  ! and initialize the ice arrays to default values using other methods if it does not.
   if (slow_ice_PE) then
     ! Set some pointers for convenience.
     sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G
 
-    restart_path = trim(dirs%restart_input_dir)//trim(restart_file)
-
-    if (file_exists(restart_path)) then
+    new_sim = is_new_run(Ice%Ice_restart)
+    if (.not.new_sim) then
       call callTree_enter("ice_model_init():restore_from_restart_files "//trim(restart_file))
       ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
       ! file to be detected, and its difference from the value in this run to
@@ -2306,7 +2308,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       is_restart = .true.
       recategorize_ice = .false. ! Assume that the ice is already in the right thickness categories.
 
-      call restore_SIS_state(Ice%Ice_restart, directory=dirs%restart_input_dir)
+      call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, sG)
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
@@ -2360,7 +2362,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
 
       call callTree_leave("ice_model_init():restore_from_restart_files")
-    endif ! file_exists(restart_path)
+    endif ! End of (.not.new_sim)
 
     ! If there is not a restart file, initialize the ice another way, perhaps with no ice.
     ! If there is a restart file, the following two calls are just here to read and log parameters.
@@ -2533,12 +2535,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     fG => Ice%fCS%G ; fGD => Ice%fCS%G%Domain
 
     if ((.not.slow_ice_PE) .or. split_restart_files) then
-      ! Read the fast restart file, if it exists.
-      fast_rest_path = trim(dirs%restart_input_dir)//trim(fast_rest_file)
-      if (file_exists(fast_rest_path)) then
-        call restore_SIS_state(Ice%Ice_fast_restart, directory=dirs%restart_input_dir)
+      ! Read the fast restart file, if it exists and this is indicated by the value of dirs%input_filename.
+      new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_fast_restart)
+      if (.not.new_sim) then
+        call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, fG)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
-        init_Tskin = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
+        init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
         init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
                             query_initialized(Ice%Ice_fast_restart, 'rough_heat') .and. &
                             query_initialized(Ice%Ice_fast_restart, 'rough_moist'))
@@ -2555,7 +2557,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
 !  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
 !    call set_domain(fGD%mpp_domain)
-    call astronomy_init
+    call astronomy_init()
 !    call nullify_domain()
 !  endif
 
