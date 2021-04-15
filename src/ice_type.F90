@@ -153,6 +153,8 @@ type ice_data_type !  ice_public_type
           !< A pointer to the slow ice restart control structure
   type(SIS_restart_CS), pointer :: Ice_fast_restart => NULL()
           !< A pointer to the fast ice restart control structure
+  character(len=240) :: restart_output_dir = './RESTART/'
+          !< The directory into which to write restart files.
 end type ice_data_type !  ice_public_type
 
 contains
@@ -503,13 +505,16 @@ subroutine ice_model_restart(Ice, time_stamp)
   character(len=*), optional, intent(in)    :: time_stamp !< A date stamp to include in the restart file name
 
   if (associated(Ice%Ice_restart)) then
-    call save_restart(Ice%Ice_restart, time_stamp)
+    call save_restart(Ice%restart_output_dir, Ice%Time, Ice%sCS%G, Ice%Ice_restart, IG=Ice%sCS%IG, &
+                      time_stamp=time_stamp)
     if (associated(Ice%Ice_fast_restart)) then
-      if (.not.associated(Ice%Ice_fast_restart,Ice%Ice_restart)) &
-        call save_restart(Ice%Ice_fast_restart, time_stamp)
+      if (.not.associated(Ice%Ice_fast_restart, Ice%Ice_restart)) &
+        call save_restart(Ice%restart_output_dir, Ice%Time, Ice%fCS%G, Ice%Ice_fast_restart, &
+                          IG=Ice%fCS%IG, time_stamp=time_stamp)
     endif
   elseif (associated(Ice%Ice_fast_restart)) then
-    call save_restart(Ice%Ice_fast_restart, time_stamp)
+    call save_restart(Ice%restart_output_dir, Ice%Time, Ice%fCS%G, Ice%Ice_fast_restart, &
+                      IG=Ice%fCS%IG, time_stamp=time_stamp)
   endif
   call icebergs_save_restart(Ice%icebergs, time_stamp)
 

@@ -13,6 +13,9 @@ use fms_io_mod,        only : save_restart_FMS1=>save_restart, FMS1_restore_stat
 use fms_io_mod,        only : FMS1_query_initialized=>query_initialized
 ! use fms2_io_mod,       only : query_initialized=>is_registered_to_restart
 
+use ice_grid,          only : ice_grid_type
+use SIS_hor_grid,      only : SIS_hor_grid_type
+
 use MOM_coms_infra,    only : SIS_chksum=>field_chksum
 use MOM_coupler_types, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use MOM_coupler_types, only : coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
@@ -23,10 +26,14 @@ use MOM_domain_infra,  only : MOM_domain_type, domain2D, get_domain_extent
 use MOM_domain_infra,  only : global_field, redistribute_data=>redistribute_array, broadcast_domain
 use MOM_domain_infra,  only : CENTER, CORNER, EAST=>EAST_FACE, NORTH=>NORTH_FACE, EAST_FACE, NORTH_FACE
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE
+use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, is_root_pe, SIS_mesg=>MOM_mesg
+use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_io,            only : create_file, file_type, fieldtype, file_exists, open_file, close_file
+use MOM_io,            only : get_filename_appendix
+use MOM_io,            only : MULTIPLE, READONLY_FILE, SINGLE_FILE
 use MOM_safe_alloc,    only : safe_alloc=>safe_alloc_alloc, safe_alloc_ptr
 use MOM_string_functions, only : slasher
-use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
+use MOM_time_manager,  only : time_type
 
 implicit none ; private
 
@@ -38,6 +45,7 @@ public :: coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
 public :: coupler_type_redistribute_data, coupler_type_copy_data, coupler_type_rescale_data
 public :: coupler_type_increment_data, coupler_type_write_chksums, coupler_type_set_diags
 public :: query_initialized, SIS_restart_init, SIS_restart_end, only_read_from_restarts
+public :: determine_is_new_run, is_new_run
 public :: SIS_initialize_framework, safe_alloc, safe_alloc_ptr
 ! These encoding constants are used to indicate the discretization position of a variable
 public :: CENTER, CORNER, EAST, NORTH, EAST_FACE, NORTH_FACE
@@ -47,7 +55,10 @@ public :: CENTER, CORNER, EAST, NORTH, EAST_FACE, NORTH_FACE
 type, public :: SIS_restart_CS ; private
   type(restart_file_type), pointer :: fms_restart => NULL() !< The FMS restart file type to use
   type(domain2d), pointer :: mpp_domain => NULL() !< The mpp domain to use for read of decomposed fields.
-  character(len=240) :: restart_file !< The name or name root for MOM restart files.
+  character(len=240) :: restartfile !< The name or name root for MOM restart files.
+  logical :: new_run                !< If true, the input filenames and restart file existence will
+                                    !! result in a new run that is not initialized from restart files.
+  logical :: new_run_set = .false.  !< If true, new_run has been determined for this restart_CS.
   logical :: use_FMS2 = .false.      !< If true use the FMS2 interfaces for restarts.
 end type SIS_restart_CS
 
@@ -62,7 +73,7 @@ interface register_restart_field
   module procedure register_restart_coupler_type_2d
 end interface
 
-!> Register fields for restarts
+!> Read optional variables from restart files.
 interface only_read_from_restarts
   module procedure only_read_restart_field_4d
   module procedure only_read_restart_field_3d
@@ -96,11 +107,232 @@ subroutine SIS_initialize_framework(PF)
 end subroutine SIS_initialize_framework
 
 
+!> restart_files_exist determines whether any restart files exist.
+function restart_files_exist(filename, directory, CS)
+  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
+                                                  !! character 'r' to read automatically named files
+  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
+                                                  !! call to SIS_restart_init
+  logical :: restart_files_exist                  !< The function result, which indicates whether
+                                                  !! any of the explicitly or automatically named
+                                                  !! restart files exist in directory
+  integer :: num_files
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "restart_files_exist: Module must be initialized before it is used.")
+
+  if ((LEN_TRIM(filename) == 1) .and. (filename(1:1) == 'F')) then
+    num_files = get_num_restart_files('r', directory, CS)
+  else
+    num_files = get_num_restart_files(filename, directory, CS)
+  endif
+  restart_files_exist = (num_files > 0)
+
+end function restart_files_exist
+
+!> determine_is_new_run determines from the value of filename and the existence of
+!! automatically named restart files in directory whether this would be a new,
+!! and as a side effect stores this information in CS.
+function determine_is_new_run(filename, directory, CS) result(is_new_run)
+  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
+                                                  !! character 'r' to read automatically named files
+  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
+                                                  !! call to SIS_restart_init
+  logical :: is_new_run                           !< The function result, which indicates whether
+                                                  !! this is a new run, based on the value of
+                                                  !! filename and whether restart files exist
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "determine_is_new_run: Module must be initialized before it is used.")
+  if (LEN_TRIM(filename) > 1) then
+    CS%new_run = .false.
+  elseif (LEN_TRIM(filename) == 0) then
+    CS%new_run = .true.
+  elseif (filename(1:1) == 'n') then
+    CS%new_run = .true.
+  elseif (filename(1:1) == 'F') then
+    CS%new_run = (get_num_restart_files('r', directory, CS) == 0)
+  else
+    CS%new_run = .false.
+  endif
+
+  CS%new_run_set = .true.
+  is_new_run = CS%new_run
+end function determine_is_new_run
+
+!> is_new_run returns whether this is going to be a new run based on the
+!! information stored in CS by a previous call to determine_is_new_run.
+function is_new_run(CS)
+  type(SIS_restart_CS),  pointer :: CS !< The control structure returned by a previous
+                                       !! call to SIS_restart_init
+  logical :: is_new_run                !< The function result, which had been stored in CS during
+                                       !! a previous call to determine_is_new_run
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "is_new_run: Module must be initialized before it is used.")
+  if (.not.CS%new_run_set) call SIS_error(FATAL, "SIS_restart " // &
+      "determine_is_new_run must be called for a restart file before is_new_run.")
+
+  is_new_run = CS%new_run
+end function is_new_run
+
+!> open_restart_units determines the number of existing restart files and optionally opens
+!! them and returns unit ids, paths and whether the files are global or spatially decomposed.
+function open_restart_units(filename, directory, CS, IO_handles, file_paths) result(num_files)
+  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
+                                                  !! character 'r' to read automatically named files
+  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
+                                                  !! call to SIS_restart_init
+  type(file_type), dimension(:), &
+               optional, intent(out) :: IO_handles !< The I/O handles of all opened files
+  character(len=*), dimension(:), &
+               optional, intent(out) :: file_paths !< The full paths to the restart files
+  integer :: num_files  !< The number of files (both automatically named restart
+                        !! files and others explicitly in filename) that have been opened.
+
+  ! Local variables
+  character(len=256) :: filepath  ! The path (dir/file) to the file being opened.
+  character(len=256) :: fname     ! The name of the current file.
+  character(len=8)   :: suffix    ! A suffix (like "_2") that is added to any
+                                  ! additional restart files.
+  integer :: num_restart     ! The number of restart files that have already
+                             ! been opened using their numbered suffix.
+  integer :: start_char      ! The location of the starting character in the
+                             ! current file name.
+  integer :: nf              ! The number of files that have been found so far
+  integer :: m, length
+  logical :: still_looking   ! If true, the code is still looking for automatically named files
+  logical :: fexists         ! True if a file has been found
+  character(len=32) :: filename_appendix = '' ! Filename appendix for ensemble runs
+  character(len=80) :: restartname
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "open_restart_units: Module must be initialized before it is used.")
+
+  ! Get NetCDF ids for all of the restart files.
+  num_restart = 0 ; nf = 0 ; start_char = 1
+  do while (start_char <= len_trim(filename) )
+    do m=start_char,len_trim(filename)
+      if (filename(m:m) == ' ') exit
+    enddo
+    fname = filename(start_char:m-1)
+    start_char = m
+    do while (start_char <= len_trim(filename))
+      if (filename(start_char:start_char) == ' ') then
+        start_char = start_char + 1
+      else
+        exit
+      endif
+    enddo
+
+    if (((fname(1:1)=='r') .or. (fname(1:1)=='F')) .and. ( len_trim(fname) == 1)) then
+      still_looking = (num_restart <= 0) ! Avoid going through the file list twice.
+      do while (still_looking)
+        restartname = trim(CS%restartfile)
+
+        ! Determine if there is a filename_appendix (used for ensemble runs).
+        call get_filename_appendix(filename_appendix)
+        if (len_trim(filename_appendix) > 0) then
+          length = len_trim(restartname)
+          if (restartname(length-2:length) == ".nc") then
+            restartname = restartname(1:length-3)//'.'//trim(filename_appendix)//".nc"
+          else
+            restartname = restartname(1:length)  //'.'//trim(filename_appendix)
+          endif
+        endif
+        filepath = trim(directory) // trim(restartname)
+
+        if (num_restart < 10) then
+          write(suffix,'("_",I1)') num_restart
+        else
+          write(suffix,'("_",I2)') num_restart
+        endif
+        length = len_trim(filepath)
+        if (length < 3) then
+          if (num_restart > 0) filepath = trim(filepath) // suffix
+          filepath = trim(filepath)//".nc"
+        elseif (filepath(length-2:length) == ".nc") then
+          if (num_restart > 0) filepath = filepath(1:length-3)//trim(suffix)//".nc"
+        else
+          if (num_restart > 0) filepath = trim(filepath) // suffix
+          filepath = trim(filepath)//".nc"
+        endif
+
+        num_restart = num_restart + 1
+        ! Look for a global netCDF file.
+        inquire(file=filepath, exist=fexists)
+        if (fexists) then
+          nf = nf + 1
+          if (present(IO_handles)) &
+            call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
+                           threading=MULTIPLE, fileset=SINGLE_FILE)
+          if (present(file_paths)) file_paths(nf) = filepath
+        endif
+
+        if (fexists) then
+          if (is_root_pe() .and. (present(IO_handles))) &
+            call SIS_mesg("SIS_restart: MOM run restarted using : "//trim(filepath))
+        else
+          still_looking = .false. ; exit
+        endif
+      enddo ! while (still_looking) loop
+    else
+      filepath = trim(directory)//trim(fname)
+      inquire(file=filepath, exist=fexists)
+      if (.not. fexists) then
+        filepath = trim(filepath)//".nc"
+        inquire(file=filepath, exist=fexists)
+      endif
+      if (fexists) then
+        nf = nf + 1
+        if (present(IO_handles)) &
+          call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
+                       threading=MULTIPLE, fileset=SINGLE_FILE)
+        if (present(file_paths)) file_paths(nf) = filepath
+        if (is_root_pe() .and. (present(IO_handles))) &
+          call SIS_mesg("SIS_restart: MOM run restarted using : "//trim(filepath))
+      else
+        if (present(IO_handles)) &
+          call SIS_error(WARNING,"SIS_restart: Unable to find restart file : "//trim(filepath))
+      endif
+
+    endif
+  enddo ! while (start_char < len_trim(filename)) loop
+  num_files = nf
+
+end function open_restart_units
+
+!> get_num_restart_files returns the number of existing restart files that match the provided
+!! directory structure and other information stored in the control structure and optionally
+!! also provides the full paths to these files.
+function get_num_restart_files(filenames, directory, CS) result(num_files)
+  character(len=*),      intent(in)  :: filenames !< The list of restart file names or a single
+                                                  !! character 'r' to read automatically named files
+  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
+                                                  !! call to SIS_restart_init
+  integer :: num_files  !< The function result, the number of files (both automatically named
+                        !! restart files and others explicitly in filename) that have been opened
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "get_num_restart_files: Module must be initialized before it is used.")
+
+  ! This call uses open_restart_units without the optional arguments needed to actually
+  ! open the files to determine the number of restart files.
+  num_files = open_restart_units(filenames, directory, CS)
+
+end function get_num_restart_files
+
+
 !> Initialize and set up a restart control structure.
-subroutine SIS_restart_init(CS, filename, domain, use_FMS2)
-  type(SIS_restart_CS),  pointer    :: CS !< A pointer to a MOM_restart_CS object that is allocated here
+subroutine SIS_restart_init(CS, filename, domain, param_file, use_FMS2)
+  type(SIS_restart_CS),  pointer    :: CS !< A pointer to a SIS_restart_CS object that is allocated here
   character(len=*),      intent(in) :: filename !< The path to the restart file.
   type(MOM_domain_type), intent(in) :: domain   !< The MOM domain descriptor being used
+  type(param_file_type), intent(in) :: param_file !< A structure to parse for run-time parameters
   logical,     optional, intent(in) :: use_FMS2 !< If true use the FMS2 variant of calls.
 
   if (associated(CS)) then
@@ -110,7 +342,7 @@ subroutine SIS_restart_init(CS, filename, domain, use_FMS2)
   allocate(CS)
 
   allocate(CS%fms_restart)
-  CS%restart_file = trim(filename)
+  CS%restartfile = trim(filename)
   CS%mpp_domain => domain%mpp_domain
   CS%use_FMS2 = .false. ; if (present(use_FMS2)) CS%use_FMS2 = use_FMS2
 
@@ -152,7 +384,7 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position,
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+    idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, &
                                 domain=CS%mpp_domain, position=position)
   else
@@ -202,7 +434,7 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position,
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+    idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, &
                                 domain=CS%mpp_domain, position=position)
   else
@@ -246,7 +478,7 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+    idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, &
                                 domain=CS%mpp_domain, position=position)
 
@@ -284,7 +516,7 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name,
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+    idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, no_domain=.true.)
   else
     call SIS_error(FATAL, "register_restart_field_1d: The SIS_framework code does not work with FMS2 yet.")
@@ -322,7 +554,7 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, longname=longname, &
+    idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, longname=longname, &
                                 units=units, mandatory=mandatory, no_domain=.true.)
   else
     call SIS_error(FATAL, "register_restart_field_0d: The SIS_framework code does not work with FMS2 yet.")
@@ -357,12 +589,12 @@ subroutine register_restart_coupler_type_3d(CS, bc_ptr, varname_prefix, mandator
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+    call coupler_type_register_restarts(bc_ptr, CS%restartfile, CS%fms_restart, mpp_domain=CS%mpp_domain, &
                                         varname_prefix=varname_prefix)
   else
     call SIS_error(FATAL, "register_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
-    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+    call coupler_type_register_restarts(bc_ptr, CS%restartfile, CS%fms_restart, mpp_domain=CS%mpp_domain, &
                                         varname_prefix=varname_prefix)
   endif
 
@@ -390,12 +622,12 @@ subroutine register_restart_coupler_type_2d(CS, bc_ptr, varname_prefix, mandator
 
   if (.not.CS%use_FMS2) then
     ! This is the FMS1 variant of this call.
-    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+    call coupler_type_register_restarts(bc_ptr, CS%restartfile, CS%fms_restart, mpp_domain=CS%mpp_domain, &
                                         varname_prefix=varname_prefix)
   else
     call SIS_error(FATAL, "register_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
     ! This is the FMS2 variant of this call.
-    call coupler_type_register_restarts(bc_ptr, CS%restart_file, CS%fms_restart, mpp_domain=CS%mpp_domain, &
+    call coupler_type_register_restarts(bc_ptr, CS%restartfile, CS%fms_restart, mpp_domain=CS%mpp_domain, &
                                         varname_prefix=varname_prefix)
   endif
 
@@ -424,10 +656,10 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, position, directory, doma
 
   if (.not.CS%use_FMS2) then
     if (present(domain)) then
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=domain%mpp_domain, mandatory=.false., position=position)
     else
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=CS%mpp_domain, mandatory=.false., position=position)
     endif
     call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
@@ -437,8 +669,8 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, position, directory, doma
     if (present(success)) success = .false.
     call SIS_error(FATAL, "only_read_restart_field_4d: The SIS_framework code does not work with FMS2 yet.")
 
-    full_path = trim(CS%restart_file)
-    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    full_path = trim(CS%restartfile)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restartfile
     ! if (present(domain)) then
     !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
     ! else
@@ -473,10 +705,10 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, position, directory, doma
 
   if (.not.CS%use_FMS2) then
     if (present(domain)) then
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=domain%mpp_domain, mandatory=.false., position=position)
     else
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=CS%mpp_domain, mandatory=.false., position=position)
     endif
     call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
@@ -486,8 +718,8 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, position, directory, doma
     if (present(success)) success = .false.
     call SIS_error(FATAL, "only_read_restart_field_3d: The SIS_framework code does not work with FMS2 yet.")
 
-    full_path = trim(CS%restart_file)
-    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    full_path = trim(CS%restartfile)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restartfile
     ! if (present(domain)) then
     !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
     ! else
@@ -522,10 +754,10 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
 
   if (.not.CS%use_FMS2) then
     if (present(domain)) then
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=domain%mpp_domain, mandatory=.false., position=position)
     else
-      idr = FMS1_register_restart(CS%fms_restart, CS%restart_file, name, f_ptr, read_only=.true., &
+      idr = FMS1_register_restart(CS%fms_restart, CS%restartfile, name, f_ptr, read_only=.true., &
                                   domain=CS%mpp_domain, mandatory=.false., position=position)
     endif
     call FMS1_restore_state(CS%fms_restart, idr, directory=directory)
@@ -535,8 +767,8 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
     if (present(success)) success = .false.
     call SIS_error(FATAL, "only_read_restart_field_2d: The SIS_framework code does not work with FMS2 yet.")
 
-    full_path = trim(CS%restart_file)
-    if (present(directory)) full_path = trim(slasher(directory))//CS%restart_file
+    full_path = trim(CS%restartfile)
+    if (present(directory)) full_path = trim(slasher(directory))//CS%restartfile
     ! if (present(domain)) then
     !   opened = open_file(file_ptr, full_path, "read", domain%mpp_domain)
     ! else
@@ -550,31 +782,10 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, position, directory, doma
 
 end subroutine only_read_restart_field_2d
 
-!> query_initialized_name determines whether a named field has been successfully
-!! read from a restart file yet.
-function query_initialized(CS, name) result(query_init)
+!> query_initialized determines whether a named field has been successfully read from a restart file yet.
+logical function query_initialized(CS, name)
   type(SIS_restart_CS), pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
   character(len=*),     intent(in) :: name !< The name of the field that is being queried
-  logical :: query_init        !< The returned value, set to true if the named field has been
-                               !! read from a restart file
-  !   This subroutine returns .true. if the field referred to by name has
-  ! initialized from a restart file, and .false. otherwise.
-
-  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
-      "query_initialized: Module must be initialized before it is used.")
-
-  query_init = FMS1_query_initialized(CS%fms_restart, name)
-
-end function query_initialized
-
-!> query_inited determines whether a named field has been successfully read from a restart file yet.
-!! It is identical to query_initialized, but has a separate name to deal with an unexplained
-!! problem that the pgi compiler has with reused function names between modules.
-function query_inited(CS, name) result(query_initialized)
-  type(SIS_restart_CS), pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
-  character(len=*),     intent(in) :: name !< The name of the field that is being queried
-  logical :: query_initialized !< The returned value, set to true if the named field has been
-                               !! read from a restart file
   !   This subroutine returns .true. if the field referred to by name has
   ! initialized from a restart file, and .false. otherwise.
 
@@ -582,6 +793,20 @@ function query_inited(CS, name) result(query_initialized)
       "query_initialized: Module must be initialized before it is used.")
 
   query_initialized = FMS1_query_initialized(CS%fms_restart, name)
+
+end function query_initialized
+
+!> query_inited determines whether a named field has been successfully read from a restart file yet.
+!! It is identical to query_initialized, but has a separate name to deal with an unexplained
+!! problem that the pgi compiler has with reused function names between modules.
+logical function query_inited(CS, name)
+  type(SIS_restart_CS), pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
+  character(len=*),     intent(in) :: name !< The name of the field that is being queried
+
+  if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
+      "query_inited: Module must be initialized before it is used.")
+
+  query_inited = FMS1_query_initialized(CS%fms_restart, name)
 
 end function query_inited
 
@@ -609,31 +834,47 @@ end subroutine axis_names_from_pos
 
 
 !> save_restart saves all registered variables to restart files.
-subroutine save_restart(CS, time_stamp)
-  type(SIS_restart_CS),        pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
-  character(len=*), optional , intent(in) :: time_stamp !< A date stamp to use in the restart file name
+subroutine save_restart(directory, time, G, CS, IG, time_stamp)
+  character(len=*),           intent(in)    :: directory !< The directory where the restart files
+                                                     !! are to be written
+  type(time_type),            intent(in)    :: time  !< The current model time
+  type(SIS_hor_grid_type),    intent(inout) :: G     !< The horizontal grid type
+  type(SIS_restart_CS),       pointer       :: CS    !< The control structure returned by a previous
+                                                     !! call to SIS_restart_init
+  type(ice_grid_type), &
+                    optional, intent(in)    :: IG    !< The sea-ice grid type
+  character(len=*), optional, intent(in)    :: time_stamp !< A date stamp to include in the restart file name
 
-  call save_restart_FMS1(CS%fms_restart, time_stamp)
+  ! Several of the arguments are not needed here, but they will be needed with the new stand-alone SIS2
+  ! restart capabilities.
+  call save_restart_FMS1(CS%fms_restart, time_stamp=time_stamp, directory=directory)
 
 end subroutine save_restart
 
 !> Restore the entire state of the sea ice or a single varable using a SIS_restart control structure.
-subroutine restore_SIS_state(CS, directory)
-  type(SIS_restart_CS),       pointer    :: CS !< A pointer to a SIS_restart_CS object (intent in)
-  character(len=*), optional, intent(in) :: directory !< The directory in which to seek restart files.
+subroutine restore_SIS_state(CS, directory, filelist, G)
+  type(SIS_restart_CS),    pointer     :: CS        !< The control structure returned by a previous
+                                                    !! call to SIS_restart_init with restart fields
+                                                    !! already set by calls to register_restart_field
+  character(len=*),        intent(in)  :: directory !< The directory in which to find restart files
+  character(len=*),        intent(in)  :: filelist  !< The list of restart file names or just
+                                                    !! 'r' or 'F' to read automatically named files
+  type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
+
+  if ((len_trim(filelist) == 1) .and. (filelist(1:1) == 'n')) &
+    call SIS_error(FATAL, "restore_SIS_state called for a new run.")
 
   call FMS1_restore_state(CS%fms_restart, directory=directory)
 
 end subroutine restore_SIS_state
 
-!> Deallocate memory associated with a MOM_restart_CS variable.
+!> Deallocate memory associated with a SIS_restart_CS variable.
 subroutine SIS_restart_end(CS)
-  type(SIS_restart_CS),  pointer    :: CS !< A pointer to a MOM_restart_CS object
+  type(SIS_restart_CS),  pointer    :: CS !< A pointer to a SIS_restart_CS object
 
   if (associated(CS%fms_restart)) deallocate(CS%fms_restart)
   deallocate(CS)
 
 end subroutine SIS_restart_end
-
 
 end module SIS_framework
