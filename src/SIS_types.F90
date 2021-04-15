@@ -17,8 +17,8 @@ use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_debugging,     only : chksum, Bchksum, Bchksum_pair, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
 use SIS_framework,     only : domain2D, CORNER, EAST_FACE, NORTH_FACE, redistribute_data
-use SIS_framework,     only : register_restart_field, SIS_restart_CS, restore_SIS_state
-use SIS_framework,     only : query_initialized=>query_inited, only_read_from_restarts
+use SIS_restart,       only : register_restart_field, SIS_restart_CS, restore_SIS_state
+use SIS_restart,       only : query_initialized=>query_inited, only_read_from_restarts
 use SIS_framework,     only : safe_alloc, safe_alloc_ptr
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
@@ -604,10 +604,10 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
       call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
-      call only_read_from_restarts(Ice_restart, 'u_ice_C', u_tmp, position=EAST_FACE, &
-                   directory=restart_dir, domain=domain_tmp, success=read_u)
-      call only_read_from_restarts(Ice_restart, 'v_ice_C', v_tmp, position=NORTH_FACE, &
-                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      call only_read_from_restarts(Ice_restart, 'u_ice_C', u_tmp, domain_tmp, position=EAST_FACE, &
+                   directory=restart_dir, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'v_ice_C', v_tmp, domain_tmp, position=NORTH_FACE, &
+                   directory=restart_dir, success=read_v)
       if (read_u .and. read_v) then
         ! The non-symmetric variant of this vector has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=CGRID_NE)
@@ -622,10 +622,10 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
       call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
-      call only_read_from_restarts(Ice_restart, 'u_ice', u_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_u)
-      call only_read_from_restarts(Ice_restart, 'v_ice', v_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      call only_read_from_restarts(Ice_restart, 'u_ice', u_tmp, domain_tmp, position=CORNER, &
+                                   directory=restart_dir, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'v_ice', v_tmp, domain_tmp, position=CORNER, &
+                                   directory=restart_dir, success=read_v)
       if (read_u .and. read_v) then
         ! The non-symmetric variant of this variable has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=BGRID_NE)
@@ -655,10 +655,10 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
       call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd-1, G%jed)
-      call only_read_from_restarts(Ice_restart, 'sym_u_ice_C', u_tmp, position=EAST_FACE, &
-                   directory=restart_dir, domain=domain_tmp, success=read_u)
-      call only_read_from_restarts(Ice_restart, 'sym_v_ice_C', v_tmp, position=NORTH_FACE, &
-                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      call only_read_from_restarts(Ice_restart, 'sym_u_ice_C', u_tmp, domain_tmp, &
+                                   position=EAST_FACE, directory=restart_dir, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'sym_v_ice_C', v_tmp, domain_tmp, &
+                                   position=NORTH_FACE, directory=restart_dir, success=read_v)
       if (read_u .and. read_v) then
         ! The symmetric variant of this vector has been successfully read.
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
@@ -672,10 +672,10 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
     if ((.not.IST%Cgrid_dyn) .and. (.not.u_set)) then
       call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
       call safe_alloc(v_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
-      call only_read_from_restarts(Ice_restart, 'sym_u_ice_B', u_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_u)
-      call only_read_from_restarts(Ice_restart, 'sym_v_ice_B', v_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_v)
+      call only_read_from_restarts(Ice_restart, 'sym_u_ice_B', u_tmp, domain_tmp, position=CORNER, &
+                                   directory=restart_dir, success=read_u)
+      call only_read_from_restarts(Ice_restart, 'sym_v_ice_B', v_tmp, domain_tmp, position=CORNER, &
+                                   directory=restart_dir, success=read_v)
       if (read_u .and. read_v) then
         ! The symmetric variant of this variable has been successfully read.
         do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec

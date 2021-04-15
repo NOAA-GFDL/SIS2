@@ -15,7 +15,7 @@ use SIS_ctrl_types,    only : SIS_fast_CS, SIS_slow_CS
 use SIS_debugging,     only : chksum
 use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data, register_SIS_diag_field
 use SIS_framework,     only : domain2D, SIS_chksum, get_domain_extent, safe_alloc, safe_alloc_ptr
-use SIS_framework,     only : register_restart_field, save_restart, SIS_restart_CS, query_initialized
+use SIS_restart,       only : register_restart_field, save_restart, SIS_restart_CS, query_initialized
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type

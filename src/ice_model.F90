@@ -74,8 +74,8 @@ use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, tota
 use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
-use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
-use SIS_framework,     only : determine_is_new_run, is_new_run
+use SIS_restart,       only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
+use SIS_restart,       only : determine_is_new_run, is_new_run
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
 use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data

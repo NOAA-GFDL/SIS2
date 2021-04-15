@@ -21,8 +21,8 @@ use MOM_hor_index,     only : hor_index_type, hor_index_init
 use MOM_io,            only : file_exists, MOM_read_data, slasher
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_unit_scaling,  only : unit_scale_type
-use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited
-use SIS_framework,     only : register_restart_field, only_read_from_restarts
+use SIS_restart,       only : restore_SIS_state, query_initialized=>query_inited
+use SIS_restart,       only : register_restart_field, only_read_from_restarts
 use SIS_get_input,     only : directories
 use SIS_types,         only : ice_state_type
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
@@ -962,7 +962,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 'sal_ice'//trim(nstr), sal_ice_tmp(:,:,:), &
-                                   directory=dirs%restart_input_dir, success=read_values)
+                                   G%domain, directory=dirs%restart_input_dir, success=read_values)
       if (read_values) then
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k)
@@ -985,7 +985,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n), &
-                                   directory=dirs%restart_input_dir, success=read_values)
+                                   G%domain, directory=dirs%restart_input_dir, success=read_values)
       read_t_ice(n) = read_values
     enddo
   endif
@@ -1022,8 +1022,8 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     ! Try to initialize the snow enthalpy from separate temperature variables for each layer,
     ! perhaps from a SIS1 restart.
     allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
-    call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, &
-                                   directory=dirs%restart_input_dir, success=read_values)
+    call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, G%domain, &
+                                 directory=dirs%restart_input_dir, success=read_values)
     if (.not.read_values) then ! Try reading the ice temperature if snow is not available.
       if (read_t_ice(1)) then
         t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
