@@ -9,7 +9,11 @@ module combined_ice_ocean_driver
 ! This module provides a common interface for jointly stepping SIS2 and MOM6, and
 ! will evolve as a platform for tightly integrating the ocean and sea ice models.
 
+use MOM_coupler_types, only : coupler_type_copy_data, coupler_type_data_override
+use MOM_coupler_types, only : coupler_type_send_data
 use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end, CLOCK_COMPONENT
+use MOM_data_override, only : data_override
+use MOM_domains,       only : domain2D, same_domain
 use MOM_error_handler, only : MOM_error, FATAL, WARNING, callTree_enter, callTree_leave
 use MOM_file_parser,   only : param_file_type, open_param_file, close_param_file
 use MOM_file_parser,   only : read_param, get_param, log_param, log_version
@@ -17,16 +21,11 @@ use MOM_io,            only : file_exists, close_file, slasher, ensembler
 use MOM_io,            only : open_namelist_file, check_nml_error
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time_type
 use MOM_time_manager,  only : operator(+), operator(-), operator(>)
-use SIS_framework,     only : domain2D, get_layout, get_compute_domain
 
 use ice_model_mod,     only : ice_data_type, ice_model_end
 use ice_model_mod,     only : update_ice_slow_thermo, update_ice_dynamics_trans
 use ocean_model_mod,   only : update_ocean_model, ocean_model_end
 use ocean_model_mod,   only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
-
-use coupler_types_mod, only : coupler_type_send_data, coupler_type_data_override
-use coupler_types_mod, only : coupler_type_copy_data
-use data_override_mod, only : data_override
 
 implicit none ; private
 
@@ -241,29 +240,6 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
 
   call callTree_leave("update_ice_and_ocean()")
 end subroutine update_slow_ice_and_ocean
-
-!> same_domain returns true if two domains use the same list of PEs and have
-!! the same size computational domains.
-function same_domain(a, b)
-  type(domain2D), intent(in) :: a !< The first domain in the comparison
-  type(domain2D), intent(in) :: b !< The second domain in the comparison
-  integer :: isize_a, jsize_a, isize_b, jsize_b
-  integer :: layout_a(2), layout_b(2)
-  logical :: same_domain
-
-  ! This does a limited number of checks for consistent domain sizes.
-
-  call get_layout(a, layout_a)
-  call get_layout(b, layout_b)
-  same_domain = ((layout_a(1) == layout_b(1)) .and. (layout_a(2) == layout_b(2)))
-
-  call get_compute_domain(a, xsize=isize_a, ysize=jsize_a)
-  call get_compute_domain(b, xsize=isize_b, ysize=jsize_b)
-
-  same_domain = same_domain .and. ((layout_a(1) == layout_b(1)) .and. &
-                                   (layout_a(2) == layout_b(2)))
-
-end function same_domain
 
 !> This subroutine does a direct copy of the fluxes from the ice data type into
 !! a ice-ocean boundary type on the same grid.

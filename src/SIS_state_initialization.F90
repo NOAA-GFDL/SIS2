@@ -9,10 +9,10 @@ module SIS_state_initialization
 ! routines have options that just read and log their input parameters.         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
-use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
 use ice_grid,          only : ice_grid_type
 use ice_type_mod,      only : ice_data_type, dealloc_ice_arrays
 use ice_type_mod,      only : ice_type_slow_reg_restarts
+use MOM_data_override, only : data_override, data_override_init, data_override_unset_domains
 use MOM_domains,       only : MOM_domain_type
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
