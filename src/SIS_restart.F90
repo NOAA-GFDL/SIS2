@@ -34,6 +34,8 @@ type, public :: SIS_restart_CS ; private
   type(restart_file_type), pointer :: fms_restart => NULL() !< The FMS restart file type to use
   type(domain2d), pointer :: mpp_domain => NULL() !< The mpp domain to use for read of decomposed fields.
   character(len=240) :: restartfile !< The name or name root for MOM restart files.
+  logical :: parallel_restartfiles = .true. !< If true, each PE writes its own restart file,
+                                    !! otherwise they are combined internally.
   logical :: new_run                !< If true, the input filenames and restart file existence will
                                     !! result in a new run that is not initialized from restart files.
   logical :: new_run_set = .false.  !< If true, new_run has been determined for this restart_CS.
@@ -62,24 +64,25 @@ end interface
 contains
 
 !> restart_files_exist determines whether any restart files exist.
-function restart_files_exist(filename, directory, CS)
-  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
-                                                  !! character 'r' to read automatically named files
-  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
-  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
-                                                  !! call to SIS_restart_init
-  logical :: restart_files_exist                  !< The function result, which indicates whether
-                                                  !! any of the explicitly or automatically named
-                                                  !! restart files exist in directory
+function restart_files_exist(filename, directory, G, CS)
+  character(len=*),        intent(in)  :: filename  !< The list of restart file names or a single
+                                                    !! character 'r' to read automatically named files
+  character(len=*),        intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
+  type(SIS_restart_CS),    pointer     :: CS        !< The control structure returned by a previous
+                                                    !! call to SIS_restart_init
+  logical :: restart_files_exist                    !< The function result, which indicates whether
+                                                    !! any of the explicitly or automatically named
+                                                    !! restart files exist in directory
   integer :: num_files
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
       "restart_files_exist: Module must be initialized before it is used.")
 
   if ((LEN_TRIM(filename) == 1) .and. (filename(1:1) == 'F')) then
-    num_files = get_num_restart_files('r', directory, CS)
+    num_files = get_num_restart_files('r', directory, G, CS)
   else
-    num_files = get_num_restart_files(filename, directory, CS)
+    num_files = get_num_restart_files(filename, directory, G, CS)
   endif
   restart_files_exist = (num_files > 0)
 
@@ -88,15 +91,16 @@ end function restart_files_exist
 !> determine_is_new_run determines from the value of filename and the existence of
 !! automatically named restart files in directory whether this would be a new,
 !! and as a side effect stores this information in CS.
-function determine_is_new_run(filename, directory, CS) result(is_new_run)
-  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
-                                                  !! character 'r' to read automatically named files
-  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
-  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
-                                                  !! call to SIS_restart_init
-  logical :: is_new_run                           !< The function result, which indicates whether
-                                                  !! this is a new run, based on the value of
-                                                  !! filename and whether restart files exist
+function determine_is_new_run(filename, directory, G, CS) result(is_new_run)
+  character(len=*),        intent(in)  :: filename  !< The list of restart file names or a single
+                                                    !! character 'r' to read automatically named files
+  character(len=*),        intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
+  type(SIS_restart_CS),    pointer     :: CS        !< The control structure returned by a previous
+                                                    !! call to SIS_restart_init
+  logical :: is_new_run                             !< The function result, which indicates whether
+                                                    !! this is a new run, based on the value of
+                                                    !! filename and whether restart files exist
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
       "determine_is_new_run: Module must be initialized before it is used.")
@@ -107,7 +111,7 @@ function determine_is_new_run(filename, directory, CS) result(is_new_run)
   elseif (filename(1:1) == 'n') then
     CS%new_run = .true.
   elseif (filename(1:1) == 'F') then
-    CS%new_run = (get_num_restart_files('r', directory, CS) == 0)
+    CS%new_run = (get_num_restart_files('r', directory, G, CS) == 0)
   else
     CS%new_run = .false.
   endif
@@ -134,16 +138,20 @@ end function is_new_run
 
 !> open_restart_units determines the number of existing restart files and optionally opens
 !! them and returns unit ids, paths and whether the files are global or spatially decomposed.
-function open_restart_units(filename, directory, CS, IO_handles, file_paths) result(num_files)
-  character(len=*),      intent(in)  :: filename  !< The list of restart file names or a single
+function open_restart_units(filename, directory, G, CS, IO_handles, file_paths, &
+                            global_files) result(num_files)
+  character(len=*),        intent(in)  :: filename  !< The list of restart file names or a single
                                                   !! character 'r' to read automatically named files
-  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
-  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
+  character(len=*),        intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_hor_grid_type), intent(in)  :: G       !< The horizontal grid type
+  type(SIS_restart_CS),    pointer     :: CS      !< The control structure returned by a previous
                                                   !! call to SIS_restart_init
   type(file_type), dimension(:), &
-               optional, intent(out) :: IO_handles !< The I/O handles of all opened files
+                 optional, intent(out) :: IO_handles !< The I/O handles of all opened files
   character(len=*), dimension(:), &
-               optional, intent(out) :: file_paths !< The full paths to the restart files
+                 optional, intent(out) :: file_paths !< The full paths to the restart files
+  logical, dimension(:), &
+               optional, intent(out) :: global_files !< True if a file is global
   integer :: num_files  !< The number of files (both automatically named restart
                         !! files and others explicitly in filename) that have been opened.
 
@@ -162,6 +170,7 @@ function open_restart_units(filename, directory, CS, IO_handles, file_paths) res
   logical :: fexists         ! True if a file has been found
   character(len=32) :: filename_appendix = '' ! Filename appendix for ensemble runs
   character(len=80) :: restartname
+  character(len=32) :: count_msg
 
   if (.not.associated(CS)) call SIS_error(FATAL, "SIS_restart " // &
       "open_restart_units: Module must be initialized before it is used.")
@@ -223,7 +232,18 @@ function open_restart_units(filename, directory, CS, IO_handles, file_paths) res
           if (present(IO_handles)) &
             call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
                            threading=MULTIPLE, fileset=SINGLE_FILE)
+          if (present(global_files)) global_files(nf) = .true.
           if (present(file_paths)) file_paths(nf) = filepath
+        elseif (CS%parallel_restartfiles) then
+          ! Look for decomposed files using the I/O Layout.
+          fexists = file_exists(filepath, G%Domain)
+          if (fexists) then
+            nf = nf + 1
+            if (present(IO_handles)) &
+              call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, MOM_domain=G%Domain)
+            if (present(global_files)) global_files(nf) = .false.
+            if (present(file_paths)) file_paths(nf) = filepath
+          endif
         endif
 
         if (fexists) then
@@ -245,6 +265,7 @@ function open_restart_units(filename, directory, CS, IO_handles, file_paths) res
         if (present(IO_handles)) &
           call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
                        threading=MULTIPLE, fileset=SINGLE_FILE)
+        if (present(global_files)) global_files(nf) = .true.
         if (present(file_paths)) file_paths(nf) = filepath
         if (is_root_pe() .and. (present(IO_handles))) &
           call SIS_mesg("SIS_restart: MOM run restarted using : "//trim(filepath))
@@ -255,6 +276,11 @@ function open_restart_units(filename, directory, CS, IO_handles, file_paths) res
 
     endif
   enddo ! while (start_char < len_trim(filename)) loop
+
+  write(count_msg, '(I)') nf
+  call SIS_mesg("SIS2: open_restart_units found "//trim(count_msg)//" files using "//&
+                trim(filename)//" in directory "//trim(directory))
+
   num_files = nf
 
 end function open_restart_units
@@ -262,12 +288,13 @@ end function open_restart_units
 !> get_num_restart_files returns the number of existing restart files that match the provided
 !! directory structure and other information stored in the control structure and optionally
 !! also provides the full paths to these files.
-function get_num_restart_files(filenames, directory, CS) result(num_files)
-  character(len=*),      intent(in)  :: filenames !< The list of restart file names or a single
-                                                  !! character 'r' to read automatically named files
-  character(len=*),      intent(in)  :: directory !< The directory in which to find restart files
-  type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
-                                                  !! call to SIS_restart_init
+function get_num_restart_files(filenames, directory, G, CS) result(num_files)
+  character(len=*),        intent(in)  :: filenames !< The list of restart file names or a single
+                                                    !! character 'r' to read automatically named files
+  character(len=*),        intent(in)  :: directory !< The directory in which to find restart files
+  type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
+  type(SIS_restart_CS),    pointer     :: CS        !< The control structure returned by a previous
+                                                    !! call to SIS_restart_init
   integer :: num_files  !< The function result, the number of files (both automatically named
                         !! restart files and others explicitly in filename) that have been opened
 
@@ -276,7 +303,7 @@ function get_num_restart_files(filenames, directory, CS) result(num_files)
 
   ! This call uses open_restart_units without the optional arguments needed to actually
   ! open the files to determine the number of restart files.
-  num_files = open_restart_units(filenames, directory, CS)
+  num_files = open_restart_units(filenames, directory, G, CS)
 
 end function get_num_restart_files
 

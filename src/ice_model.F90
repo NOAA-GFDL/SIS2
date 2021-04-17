@@ -2076,7 +2076,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call set_domain(sGD%mpp_domain)
     if (.not.associated(Ice%Ice_restart)) &
       call SIS_restart_init(Ice%Ice_restart, restart_file, sGD, param_file)
-    new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_restart)
+    new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, sG, Ice%Ice_restart)
     write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. new_sim))
 
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
@@ -2536,7 +2536,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if ((.not.slow_ice_PE) .or. split_restart_files) then
       ! Read the fast restart file, if it exists and this is indicated by the value of dirs%input_filename.
-      new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_fast_restart)
+      new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, fG, Ice%Ice_fast_restart)
       if (.not.new_sim) then
         call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, fG)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
