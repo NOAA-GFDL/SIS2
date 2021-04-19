@@ -74,8 +74,8 @@ use SIS_fast_thermo,   only : do_update_ice_model_fast, avg_top_quantities, tota
 use SIS_fast_thermo,   only : redo_update_ice_model_fast, find_excess_fluxes
 use SIS_fast_thermo,   only : infill_array, SIS_fast_thermo_init, SIS_fast_thermo_end
 use SIS_framework,     only : set_domain, nullify_domain, broadcast_domain
-use SIS_framework,     only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
-use SIS_framework,     only : determine_is_new_run, is_new_run
+use SIS_restart,       only : restore_SIS_state, query_initialized=>query_inited, SIS_restart_init
+use SIS_restart,       only : determine_is_new_run, is_new_run
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
 use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
@@ -2076,7 +2076,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call set_domain(sGD%mpp_domain)
     if (.not.associated(Ice%Ice_restart)) &
       call SIS_restart_init(Ice%Ice_restart, restart_file, sGD, param_file)
-    new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_restart)
+    new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, sG, Ice%Ice_restart)
     write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. new_sim))
 
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
@@ -2536,7 +2536,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if ((.not.slow_ice_PE) .or. split_restart_files) then
       ! Read the fast restart file, if it exists and this is indicated by the value of dirs%input_filename.
-      new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, Ice%Ice_fast_restart)
+      new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, fG, Ice%Ice_fast_restart)
       if (.not.new_sim) then
         call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, fG)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
