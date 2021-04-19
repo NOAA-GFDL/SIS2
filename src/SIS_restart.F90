@@ -277,7 +277,7 @@ function open_restart_units(filename, directory, G, CS, IO_handles, file_paths, 
     endif
   enddo ! while (start_char < len_trim(filename)) loop
 
-  write(count_msg, '(I)') nf
+  write(count_msg, '(I0)') nf
   call SIS_mesg("SIS2: open_restart_units found "//trim(count_msg)//" files using "//&
                 trim(filename)//" in directory "//trim(directory))
 
