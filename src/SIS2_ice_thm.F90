@@ -3,12 +3,12 @@ module SIS2_ice_thm
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
-use ice_thm_mod, only : get_thermo_coefs
-use MOM_EOS, only : EOS_type, EOS_init, EOS_end
-use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_file_parser,  only : get_param, log_param, read_param, log_version, param_file_type
+use ice_thm_mod,         only : get_thermo_coefs
+use MOM_EOS,             only : EOS_type, EOS_init, EOS_end
+use MOM_error_handler,   only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_file_parser,     only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
-use MOM_unit_scaling, only : unit_scale_type
+use MOM_unit_scaling,    only : unit_scale_type
 
 implicit none ; private
 
@@ -360,14 +360,19 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   !
   ! Quasi-conservative iterative pass going UP the ice column
   !
-  temp_est(NkIce) = laytemp_SIS2(mL_ice, tfi(NkIce), sol(NkIce) + kk*(2*tfw+temp_est(NkIce-1)), &
-                                 3*kk, temp_IC(NkIce), enthalpy(NkIce), sice(NkIce), dtt, ITV, US)
-  do k=NkIce-1,2,-1
-    temp_est(k) = laytemp_SIS2(mL_ice, tfi(k), sol(k) + kk*(temp_est(k-1)+temp_est(k+1)), &
-                               2*kk, temp_IC(k), enthalpy(k), sice(k), dtt, ITV, US)
-  enddo
-  temp_est(1) = laytemp_SIS2(mL_ice, tfi(1), sol(1) + (kk*temp_est(2) + k10*temp_est(0)), &
-                             kk + k10, temp_IC(1), enthalpy(1), sice(1), dtt, ITV, US)
+  if (NkIce == 1) then
+    temp_est(1) = laytemp_SIS2(mL_ice, tfi(1), sol(1) + (2*kk*tfw + k10*temp_est(0)), &
+                               2*kk + k10, temp_IC(1), enthalpy(1), sice(1), dtt, ITV, US)
+  else
+    temp_est(NkIce) = laytemp_SIS2(mL_ice, tfi(NkIce), sol(NkIce) + kk*(2*tfw+temp_est(NkIce-1)), &
+                                   3*kk, temp_IC(NkIce), enthalpy(NkIce), sice(NkIce), dtt, ITV, US)
+    do k=NkIce-1,2,-1
+      temp_est(k) = laytemp_SIS2(mL_ice, tfi(k), sol(k) + kk*(temp_est(k-1)+temp_est(k+1)), &
+                                 2*kk, temp_IC(k), enthalpy(k), sice(k), dtt, ITV, US)
+    enddo
+    temp_est(1) = laytemp_SIS2(mL_ice, tfi(1), sol(1) + (kk*temp_est(2) + k10*temp_est(0)), &
+                               kk + k10, temp_IC(1), enthalpy(1), sice(1), dtt, ITV, US)
+  endif
 
   ! Calculate the bulk snow temperature and surface skin temperature together.
   temp_est(0) = laytemp_SIS2(mL_snow, 0.0, sol(0) + (k10*temp_est(1)-k0a_x_ta), &
