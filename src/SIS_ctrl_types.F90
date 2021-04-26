@@ -299,6 +299,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'surface temperature', 'C', missing_value=missing)
   FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
+  FIA%id_sitemptop_CMOR = register_SIS_diag_field('ice_model', 'sitemptop_CMOR', diag%axesT1, Time, &
+               'Surface Temperature of Sea ice', 'Kelvin', missing_value=missing, &
+               standard_name="SeaIceSurfaceTemperature")
 
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
