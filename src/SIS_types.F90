@@ -257,7 +257,7 @@ type fast_ice_avg_type
   integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1, id_sw_dn=-1, id_albedo=-1
   integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
   integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
-  integer :: id_tsfc=-1, id_sitemptop=-1
+  integer :: id_tsfc=-1, id_sitemptop=-1, id_sitemptop_CMOR=-1
 
   integer :: id_evap_cat=-1, id_lw_cat=-1, id_sh_cat=-1, id_tsfc_cat=-1
   integer :: id_evap0=-1, id_lw0=-1, id_sh0=-1
