@@ -1,10 +1,10 @@
 !> sea ice and SST specified from data as per GFDL climate group
 module ice_spec_mod
 
-use data_override_mod, only : data_override, data_override_init, data_override_unset_domains
 use fms_mod, only : write_version_number
 use mpp_mod, only : input_nml_file
 
+use MOM_data_override, only : data_override, data_override_init, data_override_unset_domains
 use MOM_error_handler, only : stdlog, stdout
 use MOM_hor_index,     only : hor_index_type
 use MOM_io,            only : open_namelist_file, check_nml_error, close_file

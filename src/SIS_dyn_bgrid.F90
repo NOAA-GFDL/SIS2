@@ -19,7 +19,8 @@ use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_di
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
 use SIS_debugging,     only : chksum, Bchksum, hchksum, check_redundant_B
 use SIS_debugging,     only : Bchksum_pair
-use SIS_framework,     only : register_restart_field, SIS_restart_CS, safe_alloc_ptr
+use SIS_restart,       only : register_restart_field, SIS_restart_CS
+use SIS_framework,     only : safe_alloc_ptr
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use ice_ridging_mod,   only : ridge_rate
 

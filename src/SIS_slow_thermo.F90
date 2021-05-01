@@ -21,13 +21,13 @@ module SIS_slow_thermo
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 
-use data_override_mod, only : data_override
 
 use ice_grid,          only : ice_grid_type
 use ice_spec_mod,      only : get_sea_surface
 
 use MOM_cpu_clock,     only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
 use MOM_cpu_clock,     only : CLOCK_COMPONENT, CLOCK_LOOP, CLOCK_ROUTINE
+use MOM_data_override, only : data_override
 use MOM_EOS,           only : EOS_type, calculate_density_derivs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
@@ -163,6 +163,8 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn ! Shortwave fluxes[Q R Z T-1 ~> W m-2]
   real :: sw_cat ! [Q R Z T-1 ~> W m-2]
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real, parameter :: missing = -1e34  ! A missing data fill value
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -223,6 +225,13 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
   endif
   if (FIA%id_tsfc>0) call post_data(FIA%id_tsfc, FIA%Tskin_avg, CS%diag)
   if (FIA%id_sitemptop>0) call post_data(FIA%id_sitemptop, FIA%Tskin_avg, CS%diag)
+  if (FIA%id_sitemptop_CMOR>0) then
+    tmp2d(:,:) = missing
+    do j=jsc,jec ; do i=isc,iec
+      if (FIA%Tskin_avg(i,j) /= missing) tmp2d(i,j) = FIA%Tskin_avg(i,j) + T_0degC
+    enddo ; enddo
+    call post_data(FIA%id_sitemptop_CMOR, tmp2d, CS%diag)
+  endif
 
   if (FIA%id_sh0>0) call post_data(FIA%id_sh0, FIA%flux_sh0, CS%diag)
   if (FIA%id_evap0>0) call post_data(FIA%id_evap0, FIA%evap0, CS%diag)

@@ -29,8 +29,9 @@ use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
-use SIS_framework,     only : register_restart_field, only_read_from_restarts, SIS_restart_CS
-use SIS_framework,     only : query_initialized=>query_inited, safe_alloc
+use SIS_restart,       only : register_restart_field, only_read_from_restarts, SIS_restart_CS
+use SIS_restart,       only : query_initialized=>query_inited
+use SIS_framework,     only : safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 
 implicit none ; private
@@ -1781,8 +1782,8 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
                           domain_name="ice temporary domain")
     allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed)) ; str_tmp(:,:) = 0.0
 
-    call only_read_from_restarts(Ice_restart, 'str_s', str_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_values)
+    call only_read_from_restarts(Ice_restart, 'str_s', str_tmp, domain_tmp, position=CORNER, &
+                                 directory=restart_dir, success=read_values)
     if (read_values) then
       ! The non-symmetric variant of this variable has been successfully read.
       call pass_var(str_tmp, domain_tmp, position=CORNER)
@@ -1797,8 +1798,8 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
                           domain_name="ice temporary domain")
     allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; str_tmp(:,:) = 0.0
 
-    call only_read_from_restarts(Ice_restart, 'sym_str_s', str_tmp, position=CORNER, &
-                   directory=restart_dir, domain=domain_tmp, success=read_values)
+    call only_read_from_restarts(Ice_restart, 'sym_str_s', str_tmp, domain_tmp, position=CORNER, &
+                                 directory=restart_dir, success=read_values)
     if (read_values) then
       ! The symmetric variant of this variable has been successfully read.
       do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec

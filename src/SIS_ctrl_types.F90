@@ -12,8 +12,7 @@ use SIS_diag_mediator, only : SIS_diag_ctrl, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_SIS_diag_field, register_static_field
 use SIS_dyn_trans,     only : dyn_trans_CS
 use SIS_fast_thermo,   only : fast_thermo_CS
-use SIS_framework,     only : domain2D, CORNER, EAST, NORTH
-use SIS_framework,     only : coupler_2d_bc_type, coupler_3d_bc_type
+use SIS_framework,     only : domain2D, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_initialized, coupler_type_set_diags
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_optics,        only : SIS_optics_CS
@@ -300,6 +299,9 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'surface temperature', 'C', missing_value=missing)
   FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
                'surface temperature', 'C', missing_value=missing)
+  FIA%id_sitemptop_CMOR = register_SIS_diag_field('ice_model', 'sitemptop_CMOR', diag%axesT1, Time, &
+               'Surface Temperature of Sea ice', 'Kelvin', missing_value=missing, &
+               standard_name="SeaIceSurfaceTemperature")
 
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &

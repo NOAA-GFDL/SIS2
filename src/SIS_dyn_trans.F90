@@ -42,8 +42,8 @@ use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts, basal_stress_coeff_C
-use SIS_framework,     only : SIS_restart_CS, safe_alloc
-use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data
+use SIS_restart,       only : SIS_restart_CS
+use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
 use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
