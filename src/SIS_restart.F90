@@ -1047,14 +1047,15 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
   if (PRESENT(time_stamp)) restartname = trim(CS%restartfile)//trim(time_stamp)
 
   if (present(IG)) then
-    call set_axis_info(extra_axes(1), "cat", longname="Ice thickness categories", ax_size=IG%CatIce)
-    call set_axis_info(extra_axes(2), "cat0", longname="Ice thickness categories with open water", ax_size=IG%CatIce+1)
-    call set_axis_info(extra_axes(3), "z_ice", longname="Ice vertical layers", &
+    call set_axis_info(extra_axes(1), "cat", longname="Ice thickness categories", units="None", ax_size=IG%CatIce)
+    call set_axis_info(extra_axes(2), "cat0", longname="Ice thickness categories with open water", units="None", &
+                       ax_size=IG%CatIce+1)
+    call set_axis_info(extra_axes(3), "z_ice", longname="Ice vertical layers", units="None", &
                        cartesian='Z', sense=-1, ax_size=IG%NkIce)
-    call set_axis_info(extra_axes(4), "z_snow", longname="Snow vertical layers", &
+    call set_axis_info(extra_axes(4), "z_snow", longname="Snow vertical layers", units="None", &
                        cartesian='Z', sense=-1, ax_size=IG%NkSnow)
     call set_axis_info(extra_axes(5), "band", longname="Frequency and angular band of shortwave radiation", &
-                       cartesian='Z', sense=-1, ax_size=4) !### This size is hard-coded for now.
+                       units="None", cartesian='Z', sense=-1, ax_size=4) !### This size is hard-coded for now.
   endif
 
   call create_dyn_horgrid(dG, G%HI)
