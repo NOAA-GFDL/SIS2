@@ -12,6 +12,8 @@
 
       private
       public :: icepack_init_tracer_indices
+      public :: icepack_init_tracer_sizes
+      public :: icepack_query_tracer_sizes
 
       real(kind=dbl_kind), parameter, public :: n_iso=0,n_aero=0
 
@@ -113,6 +115,75 @@
 
       end subroutine icepack_init_tracer_indices
 
+      subroutine icepack_init_tracer_sizes(&
+         ncat_in, nilyr_in, nslyr_in, nblyr_in, nfsd_in  , &
+         n_algae_in, n_DOC_in, n_aero_in, n_iso_in, &
+         n_DON_in, n_DIC_in, n_fed_in, n_fep_in, n_zaero_in, &
+         ntrcr_in, ntrcr_o_in, nbtrcr_in, nbtrcr_sw_in)
+
+      integer (kind=int_kind), intent(in), optional :: &
+         ncat_in   , & ! Categories
+         nfsd_in   , & !
+         nilyr_in  , & ! Layers
+         nslyr_in  , & !
+         nblyr_in  , & !
+         n_algae_in, & ! Dimensions
+         n_DOC_in  , & !
+         n_DON_in  , & !
+         n_DIC_in  , & !
+         n_fed_in  , & !
+         n_fep_in  , & !
+         n_zaero_in, & !
+         n_iso_in  , & !
+         n_aero_in , & !
+         ntrcr_in  , & ! number of tracers in use
+         ntrcr_o_in, & ! number of non-bio tracers in use
+         nbtrcr_in , & ! number of bio tracers in use
+         nbtrcr_sw_in  ! number of shortwave bio tracers in use
+
+      end subroutine icepack_init_tracer_sizes
+
+            subroutine icepack_query_tracer_sizes(&
+         max_algae_out  , max_dic_out    , max_doc_out      , &
+         max_don_out    , max_fe_out     , nmodal1_out      , &
+         nmodal2_out    , max_aero_out   , max_nbtrcr_out   , &
+         ncat_out, nilyr_out, nslyr_out, nblyr_out, nfsd_out, &
+         n_algae_out, n_DOC_out, n_aero_out, n_iso_out, &
+         n_DON_out, n_DIC_out, n_fed_out, n_fep_out, n_zaero_out, &
+         ntrcr_out, ntrcr_o_out, nbtrcr_out, nbtrcr_sw_out)
+
+      integer (kind=int_kind), intent(out), optional :: &
+         max_algae_out  , & ! maximum number of algal types
+         max_dic_out    , & ! maximum number of dissolved inorganic carbon types
+         max_doc_out    , & ! maximum number of dissolved organic carbon types
+         max_don_out    , & ! maximum number of dissolved organic nitrogen types
+         max_fe_out     , & ! maximum number of iron types
+         nmodal1_out    , & ! dimension for modal aerosol radiation parameters
+         nmodal2_out    , & ! dimension for modal aerosol radiation parameters
+         max_aero_out   , & ! maximum number of aerosols
+         max_nbtrcr_out     ! algal nitrogen and chlorophyll
+
+      integer (kind=int_kind), intent(out), optional :: &
+         ncat_out   , & ! Categories
+         nfsd_out   , & !
+         nilyr_out  , & ! Layers
+         nslyr_out  , & !
+         nblyr_out  , & !
+         n_algae_out, & ! Dimensions
+         n_DOC_out  , & !
+         n_DON_out  , & !
+         n_DIC_out  , & !
+         n_fed_out  , & !
+         n_fep_out  , & !
+         n_zaero_out, & !
+         n_iso_out  , & !
+         n_aero_out , & !
+         ntrcr_out  , & ! number of tracers in use
+         ntrcr_o_out, & ! number of non-bio tracers in use
+         nbtrcr_out , & ! number of bio tracers in use
+         nbtrcr_sw_out  ! number of shortwave bio tracers in use
+
+      end subroutine icepack_query_tracer_sizes
 
       end module icepack_tracers
 
