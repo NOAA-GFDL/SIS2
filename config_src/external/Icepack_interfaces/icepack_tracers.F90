@@ -15,7 +15,7 @@
       public :: icepack_init_tracer_sizes
       public :: icepack_query_tracer_sizes
 
-      real(kind=dbl_kind), parameter, public :: n_iso=0,n_aero=0
+      real(kind=int_kind), parameter, public :: n_iso=0,n_aero=0
 
       contains
 
