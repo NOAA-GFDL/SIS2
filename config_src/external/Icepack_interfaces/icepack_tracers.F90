@@ -13,7 +13,7 @@
       private
       public :: icepack_init_tracer_indices
 
-      real(kind=dbl_kind), parameter, public :: n_iso=0,n_aero=0
+      integer, parameter, public :: n_iso=0,n_aero=0
 
       contains
 
