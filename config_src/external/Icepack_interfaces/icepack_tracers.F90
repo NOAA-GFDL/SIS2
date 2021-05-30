@@ -12,8 +12,9 @@
 
       private
       public :: icepack_init_tracer_indices
+      public :: icepack_init_tracer_sizes
 
-      integer, parameter, public :: n_iso=0,n_aero=0
+      integer (kind=int_kind), parameter, public :: n_iso=0,n_aero=0
 
       contains
 
@@ -113,6 +114,56 @@
 
       end subroutine icepack_init_tracer_indices
 
+      subroutine icepack_init_tracer_sizes(&
+         ncat_in, nilyr_in, nslyr_in, nblyr_in, nfsd_in  , &
+         n_algae_in, n_DOC_in, n_aero_in, n_iso_in, &
+         n_DON_in, n_DIC_in, n_fed_in, n_fep_in, n_zaero_in, &
+         ntrcr_in, ntrcr_o_in, nbtrcr_in, nbtrcr_sw_in)
+
+      integer (kind=int_kind), intent(in), optional :: &
+         ncat_in   , & ! Categories
+         nfsd_in   , & !
+         nilyr_in  , & ! Layers
+         nslyr_in  , & !
+         nblyr_in  , & !
+         n_algae_in, & ! Dimensions
+         n_DOC_in  , & !
+         n_DON_in  , & !
+         n_DIC_in  , & !
+         n_fed_in  , & !
+         n_fep_in  , & !
+         n_zaero_in, & !
+         n_iso_in  , & !
+         n_aero_in , & !
+         ntrcr_in  , & ! number of tracers in use
+         ntrcr_o_in, & ! number of non-bio tracers in use
+         nbtrcr_in , & ! number of bio tracers in use
+         nbtrcr_sw_in  ! number of shortwave bio tracers in use
+
+        character(len=*),parameter :: subname='(icepack_init_tracer_sizes)'
+
+        if (present(ncat_in)     ) ncat      = ncat_in
+        if (present(nilyr_in)    ) nilyr     = nilyr_in
+        if (present(nslyr_in)    ) nslyr     = nslyr_in
+        if (present(nblyr_in)    ) nblyr     = nblyr_in
+        if (present(nfsd_in)     ) nfsd      = nfsd_in
+
+        if (present(n_algae_in)  ) n_algae   = n_algae_in
+        if (present(n_DOC_in)    ) n_DOC     = n_DOC_in
+        if (present(n_DON_in)    ) n_DON     = n_DON_in
+        if (present(n_DIC_in)    ) n_DIC     = n_DIC_in
+        if (present(n_fed_in)    ) n_fed     = n_fed_in
+        if (present(n_fep_in)    ) n_fep     = n_fep_in
+        if (present(n_zaero_in)  ) n_zaero   = n_zaero_in
+        if (present(n_iso_in)    ) n_iso     = n_iso_in
+        if (present(n_aero_in)   ) n_aero    = n_aero_in
+
+        if (present(ntrcr_in)    ) ntrcr     = ntrcr_in
+        if (present(ntrcr_o_in)  ) ntrcr_o   = ntrcr_o_in
+        if (present(nbtrcr_in)   ) nbtrcr    = nbtrcr_in
+        if (present(nbtrcr_sw_in)) nbtrcr_sw = nbtrcr_sw_in
+
+      end subroutine icepack_init_tracer_sizes
 
       end module icepack_tracers
 
