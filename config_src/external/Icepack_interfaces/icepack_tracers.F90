@@ -13,6 +13,7 @@
       private
       public :: icepack_init_tracer_indices
       public :: icepack_init_tracer_sizes
+      public :: icepack_query_tracer_sizes
 
       integer (kind=int_kind), parameter, public :: n_iso=0,n_aero=0
 
@@ -140,8 +141,6 @@
          nbtrcr_in , & ! number of bio tracers in use
          nbtrcr_sw_in  ! number of shortwave bio tracers in use
 
-        character(len=*),parameter :: subname='(icepack_init_tracer_sizes)'
-
         if (present(ncat_in)     ) ncat      = ncat_in
         if (present(nilyr_in)    ) nilyr     = nilyr_in
         if (present(nslyr_in)    ) nslyr     = nslyr_in
@@ -164,6 +163,79 @@
         if (present(nbtrcr_sw_in)) nbtrcr_sw = nbtrcr_sw_in
 
       end subroutine icepack_init_tracer_sizes
+
+      subroutine icepack_query_tracer_sizes(&
+         max_algae_out  , max_dic_out    , max_doc_out      , &
+         max_don_out    , max_fe_out     , nmodal1_out      , &
+         nmodal2_out    , max_aero_out   , max_nbtrcr_out   , &
+         ncat_out, nilyr_out, nslyr_out, nblyr_out, nfsd_out, &
+         n_algae_out, n_DOC_out, n_aero_out, n_iso_out, &
+         n_DON_out, n_DIC_out, n_fed_out, n_fep_out, n_zaero_out, &
+         ntrcr_out, ntrcr_o_out, nbtrcr_out, nbtrcr_sw_out)
+
+      integer (kind=int_kind), intent(out), optional :: &
+         max_algae_out  , & ! maximum number of algal types
+         max_dic_out    , & ! maximum number of dissolved inorganic carbon types
+         max_doc_out    , & ! maximum number of dissolved organic carbon types
+         max_don_out    , & ! maximum number of dissolved organic nitrogen types
+         max_fe_out     , & ! maximum number of iron types
+         nmodal1_out    , & ! dimension for modal aerosol radiation parameters
+         nmodal2_out    , & ! dimension for modal aerosol radiation parameters
+         max_aero_out   , & ! maximum number of aerosols
+         max_nbtrcr_out     ! algal nitrogen and chlorophyll
+
+      integer (kind=int_kind), intent(out), optional :: &
+         ncat_out   , & ! Categories
+         nfsd_out   , & !
+         nilyr_out  , & ! Layers
+         nslyr_out  , & !
+         nblyr_out  , & !
+         n_algae_out, & ! Dimensions
+         n_DOC_out  , & !
+         n_DON_out  , & !
+         n_DIC_out  , & !
+         n_fed_out  , & !
+         n_fep_out  , & !
+         n_zaero_out, & !
+         n_iso_out  , & !
+         n_aero_out , & !
+         ntrcr_out  , & ! number of tracers in use
+         ntrcr_o_out, & ! number of non-bio tracers in use
+         nbtrcr_out , & ! number of bio tracers in use
+         nbtrcr_sw_out  ! number of shortwave bio tracers in use
+
+        if (present(max_algae_out))  max_algae_out = max_algae
+        if (present(max_dic_out))    max_dic_out   = max_dic
+        if (present(max_doc_out))    max_doc_out   = max_doc
+        if (present(max_don_out))    max_don_out   = max_don
+        if (present(max_fe_out))     max_fe_out    = max_fe
+        if (present(nmodal1_out))    nmodal1_out   = nmodal1
+        if (present(nmodal2_out))    nmodal2_out   = nmodal2
+        if (present(max_aero_out))   max_aero_out  = max_aero
+        if (present(max_nbtrcr_out)) max_nbtrcr_out= max_nbtrcr
+
+        if (present(ncat_out)     ) ncat_out      = ncat
+        if (present(nilyr_out)    ) nilyr_out     = nilyr
+        if (present(nslyr_out)    ) nslyr_out     = nslyr
+        if (present(nblyr_out)    ) nblyr_out     = nblyr
+        if (present(nfsd_out)     ) nfsd_out      = nfsd
+
+        if (present(n_algae_out)  ) n_algae_out   = n_algae
+        if (present(n_DOC_out)    ) n_DOC_out     = n_DOC
+        if (present(n_DON_out)    ) n_DON_out     = n_DON
+        if (present(n_DIC_out)    ) n_DIC_out     = n_DIC
+        if (present(n_fed_out)    ) n_fed_out     = n_fed
+        if (present(n_fep_out)    ) n_fep_out     = n_fep
+        if (present(n_zaero_out)  ) n_zaero_out   = n_zaero
+        if (present(n_aero_out)   ) n_aero_out    = n_aero
+        if (present(n_iso_out)    ) n_iso_out     = n_iso
+
+        if (present(ntrcr_out)    ) ntrcr_out     = ntrcr
+        if (present(ntrcr_o_out)  ) ntrcr_o_out   = ntrcr_o
+        if (present(nbtrcr_out)   ) nbtrcr_out    = nbtrcr
+        if (present(nbtrcr_sw_out)) nbtrcr_sw_out = nbtrcr_sw
+
+      end subroutine icepack_query_tracer_sizes
 
       end module icepack_tracers
 
