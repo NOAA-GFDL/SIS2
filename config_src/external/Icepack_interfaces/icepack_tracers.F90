@@ -15,7 +15,7 @@
       public :: icepack_init_tracer_sizes
       public :: icepack_query_tracer_sizes
 
-      real(kind=int_kind), parameter, public :: n_iso=0,n_aero=0
+      integer (kind=int_kind), parameter, public :: n_iso=0,n_aero=0
 
       contains
 
@@ -141,9 +141,30 @@
          nbtrcr_in , & ! number of bio tracers in use
          nbtrcr_sw_in  ! number of shortwave bio tracers in use
 
+        if (present(ncat_in)     ) ncat      = ncat_in
+        if (present(nilyr_in)    ) nilyr     = nilyr_in
+        if (present(nslyr_in)    ) nslyr     = nslyr_in
+        if (present(nblyr_in)    ) nblyr     = nblyr_in
+        if (present(nfsd_in)     ) nfsd      = nfsd_in
+
+        if (present(n_algae_in)  ) n_algae   = n_algae_in
+        if (present(n_DOC_in)    ) n_DOC     = n_DOC_in
+        if (present(n_DON_in)    ) n_DON     = n_DON_in
+        if (present(n_DIC_in)    ) n_DIC     = n_DIC_in
+        if (present(n_fed_in)    ) n_fed     = n_fed_in
+        if (present(n_fep_in)    ) n_fep     = n_fep_in
+        if (present(n_zaero_in)  ) n_zaero   = n_zaero_in
+        if (present(n_iso_in)    ) n_iso     = n_iso_in
+        if (present(n_aero_in)   ) n_aero    = n_aero_in
+
+        if (present(ntrcr_in)    ) ntrcr     = ntrcr_in
+        if (present(ntrcr_o_in)  ) ntrcr_o   = ntrcr_o_in
+        if (present(nbtrcr_in)   ) nbtrcr    = nbtrcr_in
+        if (present(nbtrcr_sw_in)) nbtrcr_sw = nbtrcr_sw_in
+
       end subroutine icepack_init_tracer_sizes
 
-            subroutine icepack_query_tracer_sizes(&
+      subroutine icepack_query_tracer_sizes(&
          max_algae_out  , max_dic_out    , max_doc_out      , &
          max_don_out    , max_fe_out     , nmodal1_out      , &
          nmodal2_out    , max_aero_out   , max_nbtrcr_out   , &
