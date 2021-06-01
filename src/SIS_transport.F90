@@ -222,11 +222,12 @@ end subroutine ice_cat_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> finish_ice_transport completes the ice transport and thickness class redistribution
-subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
+subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice specific grid type
+  real,                              intent(in)    :: dt  !< The timestep used for ridging [T -> s].
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
@@ -259,12 +260,19 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, CS, rdg_rate)
   !  Convert the ocean-cell averaged properties back into the ice_state_type.
   call cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
 
+  if (CS%do_ridging) then
+    ! Compress the ice using the ridging scheme taken from the CICE-Icepack module
+    call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, US, dt, IST%rdg_rate)
+    ! Clean up any residuals
+    call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
+  else
+
   ! Compress the ice where the fractional coverage exceeds 1, starting with the
   ! thinnest category, in what amounts to a minimalist version of a sea-ice
   ! ridging scheme.  A more complete ridging scheme would also compress
   ! thicker ice and allow the fractional ice coverage to drop below 1.
-  call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
-
+    call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
+  endif
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "After compress_ice")
 
   if (CS%readjust_categories) then
