@@ -141,27 +141,6 @@
          nbtrcr_in , & ! number of bio tracers in use
          nbtrcr_sw_in  ! number of shortwave bio tracers in use
 
-        if (present(ncat_in)     ) ncat      = ncat_in
-        if (present(nilyr_in)    ) nilyr     = nilyr_in
-        if (present(nslyr_in)    ) nslyr     = nslyr_in
-        if (present(nblyr_in)    ) nblyr     = nblyr_in
-        if (present(nfsd_in)     ) nfsd      = nfsd_in
-
-        if (present(n_algae_in)  ) n_algae   = n_algae_in
-        if (present(n_DOC_in)    ) n_DOC     = n_DOC_in
-        if (present(n_DON_in)    ) n_DON     = n_DON_in
-        if (present(n_DIC_in)    ) n_DIC     = n_DIC_in
-        if (present(n_fed_in)    ) n_fed     = n_fed_in
-        if (present(n_fep_in)    ) n_fep     = n_fep_in
-        if (present(n_zaero_in)  ) n_zaero   = n_zaero_in
-        if (present(n_iso_in)    ) n_iso     = n_iso_in
-        if (present(n_aero_in)   ) n_aero    = n_aero_in
-
-        if (present(ntrcr_in)    ) ntrcr     = ntrcr_in
-        if (present(ntrcr_o_in)  ) ntrcr_o   = ntrcr_o_in
-        if (present(nbtrcr_in)   ) nbtrcr    = nbtrcr_in
-        if (present(nbtrcr_sw_in)) nbtrcr_sw = nbtrcr_sw_in
-
       end subroutine icepack_init_tracer_sizes
 
       subroutine icepack_query_tracer_sizes(&
