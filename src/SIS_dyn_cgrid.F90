@@ -107,23 +107,23 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: max_writes       !< The maximum number of times any PE can write out
                               !! a column's worth of accelerations during a run.
   logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
-  real :: lemieux_k1          !< 1st free parameter for landfast parameterization
-  real :: lemieux_k2          !< second free parameter (N/m^3) for landfast parametrization
-  real :: lemieux_alphab      !< Cb factor in Lemieux et al 2015
-  real :: lemieux_threshold_hw !< max water depth for grounding
-                              !! see keel data from Amundrud et al. 2004 (JGR) [L -> m]
-  real :: lemieux_u0          !< residual velocity for basal stress (m/s) [L T-1 ~> m s-1]
+  real :: lemieux_k1          !< 1st free parameter for landfast parameterization [nondim]
+  real :: lemieux_k2          !< second free parameter (N/m^3) for landfast parametrization [R L T-2 ~> N m-3]
+  real :: lemieux_alphab      !< Cb factor in Lemieux et al 2015 [nondim]
+  real :: lemieux_threshold_hw !< max water depth for grounding [Z ~> m]
+                              !! see keel data from Amundrud et al. 2004 (JGR)
+  real :: lemieux_u0          !< residual velocity for basal stress [L T-1 ~> m s-1]
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
-                                                !! [R L-2 T-2 -> kg m-1 s-2]
+                                                !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
-                                                !! [R L-2 T-2 -> kg m-1 s-2]
+                                                !! [R Z L T-2 -> kg m-1 s-2]
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
   integer :: id_fix = -1, id_fiy = -1, id_fcx = -1, id_fcy = -1
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
-  integer :: id_stren = -1, id_stren0 = -1
+  integer :: id_flfx = -1, id_flfy = -1, id_stren = -1, id_stren0 = -1
   integer :: id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
   integer :: id_PFu = -1, id_PFv = -1, id_fpx = -1, id_fpy = -1
   integer :: id_fix_d = -1, id_fix_t = -1, id_fix_s = -1
@@ -281,15 +281,20 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                  "If true, turn on Lemieux landfast ice parameterization.", default=.false.)
   if (CS%lemieux_landfast) then
     call get_param(param_file, mdl, "LEMIEUX_K1", CS%lemieux_k1, &
-                   "The value of the first Lemieux landfast ice tuneable parameter.", default=8.0)
+                   "The value of the first Lemieux landfast ice tuneable parameter.", &
+                   units="Nondim", default=8.0)
     call get_param(param_file, mdl, "LEMIEUX_K2", CS%lemieux_k2, &
-                   "The value of the second Lemieux landfast ice tuneable parameter.", default=15.0)
+                   "The value of the second Lemieux landfast ice tuneable parameter.", &
+                   units="N m-3", default=15.0, scale=US%kg_m3_to_R*US%m_s_to_L_T*US%T_to_s)
     call get_param(param_file, mdl, "LEMIEUX_ALPHA_B", CS%lemieux_alphab, &
-                   "The value of a third Lemieux landfast ice tuneable parameter.", default=20.0)
+                   "The value of a third Lemieux landfast ice tuneable parameter.", &
+                   units="Nondim", default=20.0)
     call get_param(param_file, mdl, "LEMIEUX_THRESHOLD_HW", CS%lemieux_threshold_hw, &
-                   "Maximum water depth for grounding in Lemieux landfast ice.", default=30.0)
+                   "Maximum water depth for grounding in Lemieux landfast ice.", &
+                   units="m", default=30.0, scale=US%m_to_Z)
     call get_param(param_file, mdl, "LEMIEUX_U0", CS%lemieux_u0, &
-                   "Velocity for Lemieux landfast ice.", default=5.e-5)
+                   "Velocity for Lemieux landfast ice.", &
+                   units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
 
     allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed)) ; CS%Tb_u(:,:) = 0.0
     allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB)) ; CS%Tb_v(:,:) = 0.0
@@ -356,6 +361,14 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             missing_value=missing, interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,   &
             'water stress on ice - y component', &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
+            missing_value=missing, interp_method='none')
+  CS%id_flfx  = register_diag_field('ice_model', 'FLF_X', diag%axesCu1, Time,   &
+            'land-fast bottom stress on ice - x component', &
+            'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
+            missing_value=missing, interp_method='none')
+  CS%id_flfy  = register_diag_field('ice_model', 'FLF_Y', diag%axesCv1, Time,   &
+            'land-fast bottom stress on ice - y component', &
             'Pa',  conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
             missing_value=missing, interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesCu1, Time,     &
@@ -538,6 +551,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     fxic_d, & ! Zonal force due to divergence internal stress [R Z L T-2 ~> Pa].
     fxic_t, & ! Zonal force due to tension internal stress [R Z L T-2 ~> Pa].
     fxic_s, & ! Zonal force due to shearing internal stress [R Z L T-2 ~> Pa].
+    fxlf, &   ! Zonal landfast ice stress [R Z L T-2 ~> Pa]
     ui_min_trunc, &  ! The range of v-velocities beyond which the velocities
     ui_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
     Cor_u, & ! Zonal Coriolis acceleration [L T-2 ~> m s-2].
@@ -554,6 +568,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     fyic_d, & ! Meridional force due to divergence internal stress [R Z L T-2 ~> Pa].
     fyic_t, & ! Meridional force due to tension internal stress [R Z L T-2 ~> Pa].
     fyic_s, & ! Meridional force due to shearing internal stress [R Z L T-2 ~> Pa].
+    fylf, &   ! Meridional landfast ice stress [R Z L T-2 ~> Pa]
     vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
     vi_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration [L T-2 ~> m s-2].
@@ -585,6 +600,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: fxic_now  ! Zonal ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
   real :: fyic_now  ! Meridional ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
   real :: drag_u, drag_v ! Drag rates with the ocean at u & v points [R Z T-1 ~> kg m-2 s-1].
+  real :: drag_LFu  ! Drag rates to the land for landfast ice at u points [R Z T-1 ~> kg m-2 s-1].
+  real :: drag_LFv  ! Drag rates to the land for landfast ice at v points [R Z T-1 ~> kg m-2 s-1].
   real :: drag_max  ! A maximum drag rate allowed in the ocean [R Z T-1 ~> kg m-2 s-1].
   real :: tot_area  ! The sum of the area of the four neighboring cells [L2 ~> m2].
   real :: dxharm    ! The harmonic mean of the x- and y- grid spacings [L ~> m].
@@ -655,6 +672,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 
   ! Zero these arrays to accumulate sums.
   fxoc(:,:) = 0.0 ; fyoc(:,:) = 0.0
+  fxlf(:,:) = 0.0 ; fylf(:,:) = 0.0
   fxic(:,:) = 0.0 ; fyic(:,:) = 0.0
   Cor_u(:,:) = 0.0 ; Cor_v(:,:) = 0.0
   fxic_d(:,:) = 0.0 ; fyic_d(:,:) = 0.0 ; fxic_t(:,:) = 0.0 ; fyic_t(:,:) = 0.0
@@ -1008,9 +1026,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,u_tmp,ui,vi,azon,bzon,czon,dzon, &
 !$OMP                                  G,CS,dy2T,dx2B,vo,uo,Cor_u,f2dt_u,I1_f2dt2_u,    &
 !$OMP                                  mi_u,dt,PFu,fxat,I_cdRhoDt,cdRho,m_neglect,fxoc, &
-!$OMP                                  fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,          &
+!$OMP                                  fxlf,fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,          &
 !$OMP                                  ui_min_trunc,ui_max_trunc,drag_max) &
-!$OMP                          private(Cor,fxic_now,v2_at_u,v2_at_u_min,uio_init,drag_u,b_vel0, &
+!$OMP                          private(Cor,fxic_now,v2_at_u,v2_at_u_min,uio_init,drag_u,drag_LFu,b_vel0, &
 !$OMP                                  m_uio_explicit,uio_pred,uio_C)
     do j=jsc,jec ; do I=isc-1,iec
       ! Save the current values of u for later use in updating v.
@@ -1059,8 +1077,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         drag_u = cdRho * sqrt(uio_init**2 + v2_at_u )
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
+      drag_LFu = 0.0
       if (CS%lemieux_landfast) then
-        drag_u = drag_u + CS%Tb_u(I,j) / (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
+        drag_LFu = CS%Tb_u(I,j) / (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
@@ -1073,12 +1092,15 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !     endif
       uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
                ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
-                dt * (mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) ) / &
-               (mi_u(I,j) + m_neglect + dt * drag_u)
+                dt * ((mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) - drag_LFu*uo(I,j)) ) / &
+               (mi_u(I,j) + m_neglect + dt * (drag_u + drag_LFu))
 
       ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
       ! Note that fxoc is the stress felt by the ocean.
       fxoc(I,j) = fxoc(I,j) + drag_u*uio_C
+
+      ! Here fxlf is the stress felt by the landfast ice.
+      fxlf(I,j) = fxlf(I,j) - drag_LFu*ui(I,j)
 
       ! sum accelerations to take averages.
       fxic(I,j) = fxic(I,j) + fxic_now
@@ -1103,9 +1125,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,amer,bmer,cmer,dmer,u_tmp,G,CS, &
 !$OMP                                  dx2T,dy2B,uo,vo,vi,Cor_v,f2dt_v,I1_f2dt2_v,mi_v, &
 !$OMP                                  dt,PFv,fyat,I_cdRhoDt,cdRho,m_neglect,fyoc,fyic, &
-!$OMP                                  fyic_d,fyic_t,fyic_s,do_trunc_its,vi_min_trunc,  &
+!$OMP                                  fylf,fyic_d,fyic_t,fyic_s,do_trunc_its,vi_min_trunc,  &
 !$OMP                                  vi_max_trunc,drag_max) &
-!$OMP                          private(Cor,fyic_now,u2_at_v,vio_init,drag_v,u2_at_v_min, &
+!$OMP                          private(Cor,fyic_now,u2_at_v,vio_init,drag_v,drag_LFv,u2_at_v_min, &
 !$OMP                                  m_vio_explicit,b_vel0,vio_pred,vio_C)
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
@@ -1151,8 +1173,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         drag_v = cdRho * sqrt(vio_init**2 + u2_at_v )
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
+      drag_LFv = 0.0
       if (CS%lemieux_landfast) then
-        drag_v = drag_v + CS%Tb_v(i,J) / (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
+        drag_LFv = CS%Tb_v(i,J) / (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
@@ -1165,12 +1188,15 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !     endif
       vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
                ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
-                dt * (mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) ) / &
-               (mi_v(i,J) + m_neglect + dt * drag_v)
+                dt * ((mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) - drag_LFv*vo(i,J)) ) / &
+               (mi_v(i,J) + m_neglect + dt * (drag_v + drag_LFv))
 
       vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
       ! Note that fyoc is the stress felt by the ocean.
       fyoc(i,J) = fyoc(i,J) + drag_v*vio_C
+
+      ! Here fylf is the stress felt by the landfast ice.
+      fylf(I,j) = fylf(I,j) - drag_LFv*vi(I,j)
 
       ! sum accelerations to take averages.
       fyic(i,J) = fyic(i,J) + fyic_now
@@ -1230,6 +1256,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     if (CS%debug_EVP .and. (CS%debug .or. CS%debug_redundant)) then
       call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call uvchksum("f[xy]lf in SIS_C_dynamics", fxlf, fylf, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
       call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
       call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     endif
@@ -1244,12 +1271,13 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 
   ! make averages
   I_sub_steps = 1.0/EVP_steps
-!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,fxoc,fxic,Cor_u,fxic_d,fxic_t, &
-!$OMP                               fxic_s,I_sub_steps,fyoc,fyic,Cor_v,fyic_d,       &
+!$OMP parallel default(none) shared(isc,iec,jsc,jec,G,fxoc,fxlf,fxic,Cor_u,fxic_d,fxic_t, &
+!$OMP                               fxic_s,I_sub_steps,fyoc,fylf,fyic,Cor_v,fyic_d,       &
 !$OMP                               fyic_t,fyic_s)
 !$OMP do
   do j=jsc,jec ; do I=isc-1,iec
     fxoc(I,j) = fxoc(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
+    fxlf(I,j) = fxlf(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
     fxic(I,j) = fxic(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
     Cor_u(I,j) = Cor_u(I,j) * (G%mask2dCu(I,j) * I_sub_steps)
 
@@ -1261,6 +1289,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !$OMP do
   do J=jsc-1,jec ; do i=isc,iec
     fyoc(i,J) = fyoc(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
+    fylf(i,J) = fylf(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
     fyic(i,J) = fyic(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
     Cor_v(i,J) = Cor_v(i,J) * (G%mask2dCv(i,J) * I_sub_steps)
 
@@ -1353,6 +1382,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     endif
     if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, -fxoc, CS%diag) ! water force on ice
     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, -fyoc, CS%diag) ! ...= -ice on water
+    if (CS%id_flfx>0) call post_SIS_data(CS%id_flfx, fxlf, CS%diag) ! water force on ice
+    if (CS%id_flfy>0) call post_SIS_data(CS%id_flfy, fylf, CS%diag) ! ...= -ice on water
 !  The diagnostics of fxat and fyat are supposed to be taken over all partitions
 !  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
 
@@ -1648,20 +1679,20 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
   type(SIS_hor_grid_type),            intent(in)  :: G     !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: mi    !< Mass per unit ocean area of sea ice [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: ci    !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: sea_lev !< Sea ice concentration [Z -> m]
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: sea_lev !< Sea level [Z ~> m]
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real :: &
-         h_u, & ! volume per unit area of ice at u location (mean thickness)
-         h_v, & ! volume per unit area of ice at v location (mean thickness)
-         hw_u, & ! water depth at u location
-         hw_v, & ! water depth at v location
-         hc_u, & ! critical thickness at u location
-         hc_v    ! critical thickness at v location
+         h_u, & ! volume per unit area of ice at u location (mean thickness) [Z ~> m]
+         h_v, & ! volume per unit area of ice at v location (mean thickness) [Z ~> m]
+         hw_u, & ! water depth at u location [Z ~> m]
+         hw_v, & ! water depth at v location [Z ~> m]
+         hc_u, & ! critical thickness at u location [Z ~> m]
+         hc_v    ! critical thickness at v location [Z ~> m]
 
   integer :: i, j, isc, iec, jsc, jec
-  real :: ci_u
-  real :: ci_v
+  real :: ci_u ! Concentration and u-points [nondim]
+  real :: ci_v ! Concentration and u-points [nondim]
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   ! Compute the term (h_u - h_cu) * exp(-C(1-A_u)) (at u points)
