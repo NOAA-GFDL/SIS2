@@ -1373,7 +1373,7 @@ subroutine set_ocean_albedo_from_coszen(Ice, G, coszen)
 
   call compute_ocean_albedo(Ice%ocean_pt, coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
                             Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec), Ice%flux_u(:,:), Ice%flux_v(:,:))
 
 end subroutine set_ocean_albedo_from_coszen
 
