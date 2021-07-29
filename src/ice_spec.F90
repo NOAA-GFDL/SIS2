@@ -69,13 +69,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
   integer :: tod(3), dum1, dum2, dum3
 
   if (.not.module_is_initialized) then
-#ifdef INTERNAL_FILE_NML
-    read (input_nml_file, nml=ice_spec_nml, iostat=io)
-#else
-    unit = open_namelist_file()
-    read  (unit, ice_spec_nml,iostat=io)
-    call close_file (unit)
-#endif
+  read (input_nml_file, nml=ice_spec_nml, iostat=io)
     ierr = check_nml_error(io,'ice_spec_nml')
     write (stdout(),'(/)')
     write (stdout(), ice_spec_nml)
