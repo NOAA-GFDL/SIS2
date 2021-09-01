@@ -153,8 +153,8 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   if (CAS%dt_sum <= 0.0) then
-    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, halos=0, do_ice=.false.)
+    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, halos=0, do_snow=.false.)
 
     if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
   endif
@@ -287,8 +287,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
     mca0_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
     mca0_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
   enddo ; enddo ; enddo
-  call set_massless_SIS_tracers(mca0_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-  call set_massless_SIS_tracers(mca0_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+  call set_massless_SIS_tracers(mca0_snow, TrReg, G, IG, halos=0, do_ice=.false.)
+  call set_massless_SIS_tracers(mca0_ice, TrReg, G, IG, halos=0, do_snow=.false.)
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
 
