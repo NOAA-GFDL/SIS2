@@ -168,13 +168,13 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
 
   CS%Start_time = Input_start_time
 
-  allocate(CS%water_in_col(G%isd:G%ied, G%jsd:G%jed)) ; CS%water_in_col(:,:) = 0.0
-  allocate(CS%heat_in_col(G%isd:G%ied, G%jsd:G%jed))  ; CS%heat_in_col(:,:) = 0.0
-  allocate(CS%salt_in_col(G%isd:G%ied, G%jsd:G%jed))  ; CS%salt_in_col(:,:) = 0.0
+  allocate(CS%water_in_col(G%isd:G%ied, G%jsd:G%jed), source=0.0)
+  allocate(CS%heat_in_col(G%isd:G%ied, G%jsd:G%jed), source=0.0)
+  allocate(CS%salt_in_col(G%isd:G%ied, G%jsd:G%jed), source=0.0)
   if (CS%column_check) then
-    allocate(CS%water_col_prev(G%isd:G%ied, G%jsd:G%jed)) ; CS%water_col_prev(:,:) = 0.0
-    allocate(CS%heat_col_prev(G%isd:G%ied, G%jsd:G%jed))  ; CS%heat_col_prev(:,:) = 0.0
-    allocate(CS%salt_col_prev(G%isd:G%ied, G%jsd:G%jed))  ; CS%salt_col_prev(:,:) = 0.0
+    allocate(CS%water_col_prev(G%isd:G%ied, G%jsd:G%jed), source=0.0)
+    allocate(CS%heat_col_prev(G%isd:G%ied, G%jsd:G%jed), source=0.0)
+    allocate(CS%salt_col_prev(G%isd:G%ied, G%jsd:G%jed), source=0.0)
   endif
 
 end subroutine SIS_sum_output_init

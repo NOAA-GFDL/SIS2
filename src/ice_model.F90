@@ -2335,9 +2335,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       if (Ice%sCS%pass_stress_mag .and. .not.query_initialized(Ice%Ice_restart, 'stress_mag')) then
         ! Determine the magnitude of the stresses from the (non-symmetric-memory) stresses
         ! in the Ice type, which will have been read from the restart files.
-        allocate(str_x(sG%isd:sG%ied,sG%jsd:sG%jed)) ; str_x(:,:) = 0.0
-        allocate(str_y(sG%isd:sG%ied,sG%jsd:sG%jed)) ; str_y(:,:) = 0.0
-        allocate(stress_mag(sG%isd:sG%ied,sG%jsd:sG%jed)) ; stress_mag(:,:) = 0.0
+        allocate(str_x(sG%isd:sG%ied, sG%jsd:sG%jed), source=0.0)
+        allocate(str_y(sG%isd:sG%ied, sG%jsd:sG%jed), source=0.0)
+        allocate(stress_mag(sG%isd:sG%ied, sG%jsd:sG%jed), source=0.0)
 
         i_off = LBOUND(Ice%stress_mag,1) - sG%isc ; j_off = LBOUND(Ice%stress_mag,2) - sG%jsc
         do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec ; i2 = i+i_off ; j2 = j+j_off ! Correct for indexing differences.
@@ -2404,7 +2404,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_domain=Ice%slow_domain_NH)
 
       !### Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
-      ! allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+      ! allocate(h_ice_input(sG%isd:sG%ied, sG%jsd:sG%jed), source=0.0)
       ! call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
       !                      ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
       ! do j=jsc,jec ; do i=isc,iec

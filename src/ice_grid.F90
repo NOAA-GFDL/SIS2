@@ -126,8 +126,8 @@ subroutine allocate_ice_metrics(IG)
 
   ! This subroutine allocates any extensive elements of the ice_grid_type
   ! and zeros them out.
-  allocate(IG%cat_thick_lim(1:IG%CatIce+1)) ; IG%cat_thick_lim(:) = 0.0
-  allocate(IG%mH_cat_bound(1:IG%CatIce+1)) ; IG%mH_cat_bound(:) = 0.0
+  allocate(IG%cat_thick_lim(1:IG%CatIce+1), source=0.0)
+  allocate(IG%mH_cat_bound(1:IG%CatIce+1), source=0.0)
 end subroutine allocate_ice_metrics
 
 !---------------------------------------------------------------------
