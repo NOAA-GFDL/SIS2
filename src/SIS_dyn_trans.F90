@@ -2373,12 +2373,12 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
     allocate(tmp_array(G%isd:G%ied, G%jsd:G%jed, 0:nts_prev))
     tmp_array(:,:,0:nts_prev) = DS2d%mca_step(:,:,0:nts_prev)
     deallocate(DS2d%mca_step)
-    allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts)) ; DS2d%mca_step(:,:,:) = 0.0
+    allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts), source=0.0)
     ! Copy over the data that had been set before.
     DS2d%mca_step(:,:,0:nts_prev) = tmp_array(:,:,0:nts_prev)
     deallocate(tmp_array)
   else
-    allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts)) ; DS2d%mca_step(:,:,:) = 0.0
+    allocate(DS2d%mca_step(G%isd:G%ied, G%jsd:G%jed, 0:DS2d%max_nts), source=0.0)
   !  This is the equivalent for when the 6 argument version of safe_alloc is available.
   !      call safe_alloc(DS2d%mca_step, G%isd, G%ied, G%jsd, G%jed, 0, DS2d%max_nts)
   endif
@@ -2386,7 +2386,7 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
   if (allocated(DS2d%uh_step)) then
     if (nts_prev > 0) then
       allocate(tmp_array(G%IsdB:G%IedB, G%jsd:G%jed, nts_prev))
-      if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%uh_step(:,:,1:nts_prev)
+      tmp_array(:,:,1:nts_prev) = DS2d%uh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%uh_step)
     call safe_alloc(DS2d%uh_step, G%IsdB, G%IedB, G%jsd, G%jed, DS2d%max_nts)
@@ -2401,7 +2401,7 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
   if (allocated(DS2d%vh_step)) then
     if (nts_prev > 0) then
       allocate(tmp_array(G%isd:G%ied, G%JsdB:G%JedB, nts_prev))
-      if (nts_prev > 0) tmp_array(:,:,1:nts_prev) = DS2d%vh_step(:,:,1:nts_prev)
+      tmp_array(:,:,1:nts_prev) = DS2d%vh_step(:,:,1:nts_prev)
     endif
     deallocate(DS2d%vh_step)
     call safe_alloc(DS2d%vh_step, G%isd, G%ied, G%JsdB, G%JedB, DS2d%max_nts)

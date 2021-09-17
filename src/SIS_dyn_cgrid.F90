@@ -296,8 +296,8 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                    "Velocity for Lemieux landfast ice.", &
                    units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
 
-    allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed)) ; CS%Tb_u(:,:) = 0.0
-    allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB)) ; CS%Tb_v(:,:) = 0.0
+    allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed), source=0.0)
+    allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB), source=0.0)
   endif
 
 !  if (len_trim(dirs%output_directory) > 0) then
@@ -1811,7 +1811,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
 
     call clone_MOM_domain(G%domain, domain_tmp, symmetric=.false., &
                           domain_name="ice temporary domain")
-    allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed)) ; str_tmp(:,:) = 0.0
+    allocate(str_tmp(G%isd:G%ied, G%jsd:G%jed), source=0.0)
 
     call only_read_from_restarts(Ice_restart, 'str_s', str_tmp, domain_tmp, position=CORNER, &
                                  directory=restart_dir, success=read_values)
@@ -1827,7 +1827,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
 
     call clone_MOM_domain(G%domain, domain_tmp, symmetric=.true., &
                           domain_name="ice temporary domain")
-    allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed)) ; str_tmp(:,:) = 0.0
+    allocate(str_tmp(G%isd-1:G%ied, G%jsd-1:G%jed), source=0.0)
 
     call only_read_from_restarts(Ice_restart, 'sym_str_s', str_tmp, domain_tmp, position=CORNER, &
                                  directory=restart_dir, success=read_values)

@@ -1312,8 +1312,8 @@ subroutine SIS_fast_thermo_init(Time, G, IG, param_file, diag, CS)
   call SIS2_ice_thm_init(G%US, param_file, CS%ice_thm_CSp)
 
   if (CS%column_check) then
-    allocate(CS%enth_prev(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce)) ; CS%enth_prev(:,:,:) = 0.0
-    allocate(CS%heat_in(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce)) ; CS%heat_in(:,:,:) = 0.0
+    allocate(CS%enth_prev(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce), source=0.0)
+    allocate(CS%heat_in(G%HI%isd:G%HI%ied, G%HI%jsd:G%HI%jed, IG%CatIce), source=0.0)
   endif
 
   call callTree_leave("SIS_fast_thermo_init()")

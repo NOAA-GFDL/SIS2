@@ -958,7 +958,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
     ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
-    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce)) ; sal_ice_tmp(:,:,:) = 0.0
+    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce), source=0.0)
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 'sal_ice'//trim(nstr), sal_ice_tmp(:,:,:), &
@@ -980,7 +980,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
   read_t_ice(:) = .false.
   if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
       (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))) then
-    allocate(t_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
+    allocate(t_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce), source=0.0)
 
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
@@ -1021,7 +1021,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
   if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
     ! Try to initialize the snow enthalpy from separate temperature variables for each layer,
     ! perhaps from a SIS1 restart.
-    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce), source=0.0)
     call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, G%domain, &
                                  directory=dirs%restart_input_dir, success=read_values)
     if (.not.read_values) then ! Try reading the ice temperature if snow is not available.
