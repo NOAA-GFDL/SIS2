@@ -4,7 +4,7 @@ module SIS2_ice_thm
 ! This file is part of SIS2. See LICENSE.md for the license.
 
 use ice_thm_mod,         only : get_thermo_coefs
-use MOM_EOS,             only : EOS_type, EOS_init, EOS_end
+use MOM_EOS,             only : EOS_type, EOS_init
 use MOM_error_handler,   only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
 use MOM_file_parser,     only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
@@ -1741,7 +1741,10 @@ subroutine ice_thermo_init(param_file, ITV, US, init_EOS )
   endif
 
   if (present(init_EOS)) then ; if (init_EOS) then
-    if (.not.associated(ITV%EOS)) call EOS_init(param_file, ITV%EOS)
+    if (.not.associated(ITV%EOS)) then
+      allocate(ITV%EOS)
+      call EOS_init(param_file, ITV%EOS)
+    endif
   endif ; endif
 
 end subroutine ice_thermo_init
@@ -2190,7 +2193,7 @@ end subroutine get_SIS2_thermo_coefs
 subroutine ice_thermo_end(ITV)
   type(ice_thermo_type), pointer :: ITV !< A pointer to the ice thermodynamic parameter structure.
 
-  if (associated(ITV%EOS)) call EOS_end(ITV%EOS)
+  if (associated(ITV%EOS)) deallocate(ITV%EOS)
   deallocate(ITV)
 
 end subroutine ice_thermo_end
