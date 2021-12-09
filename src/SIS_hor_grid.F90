@@ -159,7 +159,7 @@ type, public :: SIS_hor_grid_type
   real :: west_lon      !< The longitude (or x-coordinate) of the first u-line
   real :: len_lat = 0.  !< The latitudinal (or y-coord) extent of physical domain
   real :: len_lon = 0.  !< The longitudinal (or x-coord) extent of physical domain
-  real :: Rad_Earth = 6.378e6 !< The radius of the planet [m].
+  real :: Rad_Earth     !< The radius of the planet [L ~> m], by default 6.378e6 m
   real :: max_depth     !< The maximum depth of the ocean [m].
 end type SIS_hor_grid_type
 
