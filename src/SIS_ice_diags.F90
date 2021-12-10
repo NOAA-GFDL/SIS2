@@ -49,7 +49,7 @@ type, public :: ice_state_diags_type ; private
   integer :: id_mib = -1, id_mi = -1
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn = -1, id_hi = -1, id_hp = -1, id_hs = -1, id_tsn = -1, id_ext = -1
-  integer :: id_t_iceav = -1, id_s_iceav = -1, id_e2m = -1, id_rdgf = -1
+  integer :: id_t_iceav = -1, id_s_iceav = -1, id_e2m = -1, id_rdgf = -1, id_rdg_h = -1
 
   integer :: id_simass = -1, id_simassn = -1, id_sisnmass = -1, id_sivol = -1
   integer :: id_siconc = -1, id_sithick = -1, id_sisnconc = -1, id_sisnthick = -1
@@ -258,6 +258,11 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     call post_data(IDs%id_rdgf, rdg_frac, diag)
   endif
 
+  ! Dermine the height of ridged ice rdg_height in each category.
+  if (IDs%id_rdg_h>0) then
+    call post_data(IDs%id_rdg_h, IST%rdg_height, diag)
+  endif
+
 end subroutine post_ice_state_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -387,6 +392,8 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                  "If true, call the ridging routines.", default=.false., do_not_log=.true.)
   if (do_ridging) then
     IDs%id_rdgf = register_diag_field('ice_model', 'RDG_FRAC', diag%axesTc, Time, &
+                   'ridged ice fraction', '0-1', missing_value=missing)
+    IDs%id_rdg_h = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
                    'ridged ice fraction', '0-1', missing_value=missing)
   endif
 end subroutine register_ice_state_diagnostics
