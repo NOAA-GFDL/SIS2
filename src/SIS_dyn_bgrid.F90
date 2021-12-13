@@ -634,17 +634,6 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
   endif
 
-! ! Compute the deformation rate for ridging
-! if (do_ridging) then
-!   do j=jsc,jec ; do i=isc,iec ; if (ice_present(i,j)) then
-!     del2 = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j)) * (1+EC2I) +  &
-!            4.0*EC2I*strn12(i,j)*strn12(i,j) + 2.0*strn11(i,j)*strn22(i,j)*(1-EC2I) ! H&D eqn 9
-!     rdg_rate(i,j) = ridge_rate(del2, (strn11(i,j)+strn22(i,j)))
-!   else
-!     rdg_rate(i,j) = 0.0
-!   endif ; enddo ; enddo
-! endif
-
 end subroutine SIS_B_dynamics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

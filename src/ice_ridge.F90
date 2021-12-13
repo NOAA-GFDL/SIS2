@@ -43,36 +43,36 @@ public :: ice_ridging, ice_ridging_init
 
 type, public :: ice_ridging_CS ; private
   logical :: &
-       new_rdg_partic = .true., & !< .true. = new participation, .false. = Thorndike et al 75
-       new_rdg_redist = .true.    !< .true. = new redistribution, .false. = Hibler 80
-  real (kind=dbl_kind) ::  mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
+       new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
+       new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
+  real (kind=dbl_kind) :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
 end type ice_ridging_CS
 
 contains
 
-subroutine ice_ridging_init(G, IG, TrReg, PF, CS, US)
-  type(SIS_hor_grid_type),           intent(inout) :: G      !<  G The ocean's grid structure.
-  type(ice_grid_type),               intent(inout) :: IG     !<   The sea-ice-specific grid structure.
-  type(SIS_tracer_registry_type),    pointer       :: TrReg  ! TrReg - The registry of registered SIS ice and snow tracers.
-  type(param_file_type),             intent(in)    :: PF     !< A structure to parse for run-time parameters
-  type(ice_ridging_CS),              intent(in)    :: CS     !< The ridging control structure.
-  type(unit_scale_type),             intent(in)    :: US     !< A structure with unit conversion factors.
+subroutine ice_ridging_init(G, IG, PF, CS, US)
+  type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
+  type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
+  type(param_file_type),      intent(in) :: PF     !< A structure to parse for run-time parameters
+  type(ice_ridging_CS),       pointer    :: CS     !< The ridging control structure.
+  type(unit_scale_type),      intent(in) :: US     !< A structure with unit conversion factors.
 
   integer (kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
   integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
   character(len=40) :: mdl = "ice_ridging_init" ! This module's name.
 
-! call get_param(PF, mdl, "NEW_RIDGE_PARTICIPATION", CS%new_rdg_partic, &
-!                "Participation function used in ridging, .false. for Thorndike et al. 1975 "//&
-!                ".true. for Lipscomb et al. 2007", default=.true.)
-! call get_param(PF, mdl, "NEW_RIDGE_REDISTRIBUTION", CS%new_rdg_redist, &
-!                "Redistribution function used in ridging, .false. for Hibler 1980 "//&
-!                ".true. for Lipscomb et al. 2007", default=.true.)
-! if (CS%new_rdg_partic) then
-!   call get_param(PF, mdl, "RIDGE_MU", CS%mu_rdg, &
-!                  "E-folding scale of ridge ice from Lipscomb et al. 2007", &
-!                  units="m^0.5", default=3.0)
-! endif
+  if (.not.associated(CS)) allocate(CS)
+  call get_param(PF, mdl, "NEW_RIDGE_PARTICIPATION", CS%new_rdg_partic, &
+                 "Participation function used in ridging, .false. for Thorndike et al. 1975 "//&
+                 ".true. for Lipscomb et al. 2007", default=.false.)
+  call get_param(PF, mdl, "NEW_RIDGE_REDISTRIBUTION", CS%new_rdg_redist, &
+                 "Redistribution function used in ridging, .false. for Hibler 1980 "//&
+                 ".true. for Lipscomb et al. 2007", default=.false.)
+  if (CS%new_rdg_partic) then
+    call get_param(PF, mdl, "RIDGE_MU", CS%mu_rdg, &
+                   "E-folding scale of ridge ice from Lipscomb et al. 2007", &
+                   units="m^0.5", default=3.0)
+  endif
 
   ncat=IG%CatIce ! The number of sea-ice thickness categories
   nilyr=IG%NkIce ! The number of ice layers per category
@@ -115,7 +115,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water?
   type(SIS_tracer_registry_type),    pointer       :: TrReg  !< TrReg - The registry of registered SIS ice and
                                                           !! snow tracers.
-  type(ice_ridging_CS),                  intent(in)    :: CS  !< The ridging control structure.
+  type(ice_ridging_CS),              intent(in)    :: CS  !< The ridging control structure.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors.
   real (kind=dbl_kind),              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds.
