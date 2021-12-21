@@ -24,7 +24,7 @@ use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, ist_chksum
 use fms_io_mod,        only : register_restart_field, restart_file_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, get_SIS_tracer_pointer
-use SIS2_ice_thm,    only : get_SIS2_thermo_coefs
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
 use ice_grid,          only : ice_grid_type
 !Icepack modules
 use icepack_kinds

@@ -14,12 +14,15 @@ module SIS_dyn_cgrid
 !                                                                              !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
+use ice_grid,          only : ice_grid_type
+
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, NOTE, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_domains,       only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_domains,       only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,     only : hor_index_type
 use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use MOM_io,            only : MOM_read_data
 use MOM_time_manager,  only : time_type, real_to_time, operator(+), operator(-)
 use MOM_time_manager,  only : set_date, get_time, get_date
 use MOM_unit_scaling,  only : unit_scale_type
@@ -33,6 +36,8 @@ use SIS_restart,       only : register_restart_field, only_read_from_restarts, S
 use SIS_restart,       only : query_initialized=>query_inited
 use SIS_framework,     only : safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_types,         only : ice_state_type
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
 
 implicit none ; private
 
@@ -40,7 +45,7 @@ implicit none ; private
 
 public :: SIS_C_dyn_init, SIS_C_dynamics, SIS_C_dyn_end
 public :: SIS_C_dyn_register_restarts, SIS_C_dyn_read_alt_restarts
-public :: basal_stress_coeff_C
+public :: basal_stress_coeff_C, basal_stress_coeff_itd
 
 !> The control structure with parameters regulating C-grid ice dynamics
 type, public :: SIS_C_dyn_CS ; private
@@ -113,11 +118,13 @@ type, public :: SIS_C_dyn_CS ; private
   real :: lemieux_threshold_hw !< max water depth for grounding [Z ~> m]
                               !! see keel data from Amundrud et al. 2004 (JGR)
   real :: lemieux_u0          !< residual velocity for basal stress [L T-1 ~> m s-1]
+  logical :: itd_landfast     !< If true, use the probabilistic landfast ice parameterization.
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
+  real, pointer, dimension(:,:) :: sigma_b=>NULL()   !< !< Bottom depth variance [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
@@ -163,6 +170,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_C_dyn" ! This module's name.
+  character(len=200) :: filename, h2_file, inputdir
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -286,18 +294,35 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
     call get_param(param_file, mdl, "LEMIEUX_K2", CS%lemieux_k2, &
                    "The value of the second Lemieux landfast ice tuneable parameter.", &
                    units="N m-3", default=15.0, scale=US%kg_m3_to_R*US%m_s_to_L_T*US%T_to_s)
-    call get_param(param_file, mdl, "LEMIEUX_ALPHA_B", CS%lemieux_alphab, &
-                   "The value of a third Lemieux landfast ice tuneable parameter.", &
-                   units="Nondim", default=20.0)
     call get_param(param_file, mdl, "LEMIEUX_THRESHOLD_HW", CS%lemieux_threshold_hw, &
                    "Maximum water depth for grounding in Lemieux landfast ice.", &
                    units="m", default=30.0, scale=US%m_to_Z)
+  endif
+  call get_param(param_file, mdl, "ITD_LANDFAST", CS%itd_landfast, &
+                 "If true, turn on probabilistic landfast ice parameterization.", default=.false.)
+
+  if (CS%lemieux_landfast .or. CS%itd_landfast) then
+    call get_param(param_file, mdl, "LEMIEUX_ALPHA_B", CS%lemieux_alphab, &
+                   "The value of a third Lemieux landfast ice tuneable parameter.", &
+                   units="Nondim", default=20.0)
     call get_param(param_file, mdl, "LEMIEUX_U0", CS%lemieux_u0, &
                    "Velocity for Lemieux landfast ice.", &
                    units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
-
     allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed)) ; CS%Tb_u(:,:) = 0.0
     allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB)) ; CS%Tb_v(:,:) = 0.0
+  endif
+  if (CS%itd_landfast) then
+    call get_param(param_file, mdl, "H2_FILE", h2_file, &
+                 "The path to the file containing the sub-grid-scale "//&
+                 "topographic roughness amplitude with ITD_LANDFAST.", &
+                 fail_if_missing=.true.)
+    call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
+    filename = trim(inputdir) // "/" // trim(h2_file)
+!   call log_param(param_file, mdl, "INPUTDIR/H2_FILE", filename)
+    allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed)) ; CS%sigma_b(:,:) = 0.0
+    call MOM_read_data(filename, 'h2', CS%sigma_b, G%domain, scale=US%m_to_Z**2)
+    CS%sigma_b(:,:) = max(sqrt(CS%sigma_b(:,:)), 0.001) ! Limit it to 1 mm min roughhness
+    call pass_var(CS%sigma_b, G%Domain)
   endif
 
 !  if (len_trim(dirs%output_directory) > 0) then
@@ -1047,8 +1072,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       v2_at_u =  CS%drag_bg_vel2 + 0.25 * &
                      (((vi(i,J)-vo(i,J))**2 + (vi(i+1,J-1)-vo(i+1,J-1))**2) + &
                       ((vi(i+1,J)-vo(i+1,J))**2 + (vi(i,J-1)-vo(i,J-1))**2))
-      if (CS%lemieux_landfast) v2_at_u_min = min(abs(vi(I,j)), abs(vi(i+1,J-1)), &
-               abs(vi(i+1,J)), abs(vi(i,J-1)))**2
+      if (CS%lemieux_landfast .or. CS%itd_landfast) &
+               v2_at_u_min = min(abs(vi(I,j)), abs(vi(i+1,J-1)), &
+                                 abs(vi(i+1,J)), abs(vi(i,J-1)))**2
 
       uio_init = (ui(I,j)-uo(I,j))
 
@@ -1078,18 +1104,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       endif
       if (drag_max>0.) drag_u = min( drag_u, drag_max )
       drag_LFu = 0.0
-      if (CS%lemieux_landfast) then
+      if (CS%lemieux_landfast .or. CS%itd_landfast) then
         drag_LFu = CS%Tb_u(I,j) / (sqrt(ui(I,j)**2 + v2_at_u_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
-!     if (CS%lemieux_landfast) then
-!       if (G%idg_offset + I == 25 .and. G%jdg_offset + j == 573) then
-!       if (G%idg_offset + I == 471 .and. G%jdg_offset + j == 671) then
-!         print *, 'inside ice timestep', CS%Tb_u(I,j), drag_u, drag_max, uio_C, ui(i,J), v2_at_u_min
-!       endif
-!     endif
       uio_C =  G%mask2dCu(I,j) * ( mi_u(I,j) * &
                ((ui(I,j) + dt * Cor) * I1_f2dt2_u(I,j) - uo(I,j)) + &
                 dt * ((mi_u(I,j) * PFu(I,j) + (fxic_now + fxat(I,j))) - drag_LFu*uo(I,j)) ) / &
@@ -1143,8 +1163,9 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       u2_at_v = CS%drag_bg_vel2 + 0.25 * &
                 (((u_tmp(I,j)-uo(I,j))**2 + (u_tmp(I-1,j+1)-uo(I-1,j+1))**2) + &
                  ((u_tmp(I,j+1)-uo(I,j+1))**2 + (u_tmp(I-1,j)-uo(I-1,j))**2))
-      if (CS%lemieux_landfast) u2_at_v_min = min(abs(u_tmp(i,J)), abs(u_tmp(I-1,j+1)), &
-               abs(u_tmp(I,j+1)), abs(u_tmp(I-1,j)))**2
+      if (CS%lemieux_landfast .or. CS%itd_landfast) &
+                u2_at_v_min = min(abs(u_tmp(i,J)), abs(u_tmp(I-1,j+1)), &
+                                  abs(u_tmp(I,j+1)), abs(u_tmp(I-1,j)))**2
 
       vio_init = (vi(i,J)-vo(i,J))
 
@@ -1174,18 +1195,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       endif
       if (drag_max>0.) drag_v = min( drag_v, drag_max )
       drag_LFv = 0.0
-      if (CS%lemieux_landfast) then
+      if (CS%lemieux_landfast .or. CS%itd_landfast) then
         drag_LFv = CS%Tb_v(i,J) / (sqrt(vi(i,J)**2 + u2_at_v_min ) + CS%lemieux_u0)
       endif
 
       !   This is a quasi-implicit timestep of Coriolis, followed by an explicit
       ! update of the other terms and an implicit bottom drag calculation.
-!     if (CS%lemieux_landfast) then
-!       if (G%idg_offset + i == 25 .and. G%jdg_offset + J == 573) then
-!       if (G%idg_offset + i == 471 .and. G%jdg_offset + J == 671) then
-!         print *, 'inside ice timestep', CS%Tb_v(i,J), drag_v, drag_max, vio_C, vi(i,J), u2_at_v_min
-!       endif
-!     endif
       vio_C =  G%mask2dCv(i,J) * ( mi_v(i,J) * &
                ((vi(i,J) + dt * Cor) * I1_f2dt2_v(i,J) - vo(i,J)) + &
                 dt * ((mi_v(i,J) * PFv(i,J) + (fyic_now + fyat(i,J))) - drag_LFv*vo(i,J)) ) / &
@@ -1691,8 +1706,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
          hc_v    ! critical thickness at v location [Z ~> m]
 
   integer :: i, j, isc, iec, jsc, jec
-  real :: ci_u ! Concentration and u-points [nondim]
-  real :: ci_v ! Concentration and u-points [nondim]
+  real :: ci_u ! Concentration at u-points [nondim]
+  real :: ci_v ! Concentration at u-points [nondim]
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   ! Compute the term (h_u - h_cu) * exp(-C(1-A_u)) (at u points)
@@ -1712,10 +1727,6 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
       else
         CS%Tb_u(I,j) = 0.0
       endif
-!     if (G%idg_offset + I == 25 .and. G%jdg_offset + j == 573) then
-!     if (G%idg_offset + I == 471 .and. G%jdg_offset + j == 671) then
-!       print *, 'inside basal_stress', hw_u, ci_u, h_u, hc_u
-!     endif
     enddo
   enddo
 !
@@ -1737,16 +1748,182 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
       else
         CS%Tb_v(i,J) = 0.0
       endif
-!     if (G%idg_offset + i == 471 .and. G%jdg_offset + J == 671) then
-!     if (G%idg_offset + i == 25 .and. G%jdg_offset + J == 573) then
-!       print *, 'inside basal_stress', hw_v, ci_v, h_v, hc_v
-!     endif
     enddo
   enddo
 !          call uvchksum("Tb_[uv] before SIS_C_dynamics", CS%Tb_u, CS%Tb_v, G, &
 !                         halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 
 end subroutine basal_stress_coeff_C
+
+!> Computes basal stress Tbu coefficients (landfast ice)
+!!
+!! Computes seabed (basal) stress factor Tbu (landfast ice) based on
+!! probability of contact between the ITD and the seabed. The water depth
+!! could take into account variations of the SSH. In the simplest
+!! formulation, hwater is simply the value of the bathymetry. To calculate
+!! the probability of contact, it is assumed that the bathymetry follows
+!! a normal distribution with sigma_b = 2.5d0. An improvement would
+!! be to provide the distribution based on high resolution data.
+!!
+!! Dupont, F. Dumont, D., Lemieux, J.F., Dumas-Lefebvre, E., Caya, A.
+!! in prep.
+!!
+!! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
+!!
+subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
+
+  type(SIS_hor_grid_type),            intent(in)  :: G     !< The horizontal grid type
+  type(ice_grid_type),                intent(in)  :: IG    !< The sea-ice specific grid type
+  type(ice_state_type),               intent(in)  :: IST   !< A type describing the state of the sea ice
+  real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: sea_lev !< Sea level [Z ~> m]
+  type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
+
+  integer, parameter :: &
+           ncat_b = 100, &  ! number of bathymetry categories
+           ncat_i = 100     ! number of ice thickness categories (log-normal)
+
+  real, parameter :: &
+           max_depth = 50.0, & ! initial range of log-normal distribution (m)
+           mu_s = 0.1          ! friction coefficient
+
+  real, dimension(ncat_i) :: & ! log-normal for ice thickness
+           x_k, & ! center of thickness categories (m)
+           g_k, & ! probability density function (thickness, 1/m)
+           P_x    ! probability for each thickness category
+
+  real, dimension(ncat_b) :: & ! normal dist for bathymetry
+           y_n, & ! center of bathymetry categories (m)
+           b_n, & ! probability density function (bathymetry, 1/m)
+           P_y    ! probability for each bathymetry category
+
+  integer, dimension(ncat_b) :: tmp
+  real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
+
+  logical, dimension (ncat_b) :: gt
+
+  real, dimension(IG%CatIce) :: vcat   ! category limits (m)
+  real, dimension(IG%CatIce) :: acat   ! category limits (m)
+
+  real :: wid_i, wid_b, mu_i, sigma_i, mu_b, m_i, v_i !  parameters for PDFs
+  real, dimension(ncat_i):: tb_tmp
+  real, dimension (SZI_(G),SZJ_(G)):: Tbt ! seabed stress factor at t point (N/m^2)
+  real :: atot, x_kmax
+  real :: cut, rho_ice, rho_water, gravit, pi, puny
+  integer :: i, ii, j, isc, iec, jsc, jec, k, n, ncat
+  real :: ci_u ! Concentration at u-points [nondim]
+  real :: ci_v ! Concentration at u-points [nondim]
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+  ncat = IG%CatIce
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice, rho_water=rho_water)
+  pi = 4.0*atan(1.0)
+  gravit = G%g_Earth
+
+  puny = 1.e-20
+
+! a note regarding hi_min and hin_max(0):
+! both represent a minimum ice thickness.  hin_max(0) is
+! intended to be used for particular numerical implementations
+! of category conversions in the ice thickness distribution.
+! hi_min is a more general purpose parameter, but is specifically
+! for maintaining stability in the thermodynamics.
+! hin_max(0) = 0.1 m for the delta function itd
+! hin_max(0) = 0.0 m for linear remapping
+!
+! Also note that the upper limit on the thickest category
+! is only used for the linear remapping scheme
+! and it is not a true upper limit on the thickness
+  hin_max(0)=0.0
+  do k=1,nCat
+    hin_max(k) = IG%mH_cat_bound(k)/(rho_ice*IG%kg_m2_to_H)
+  end do
+
+  Tbt=0.0
+
+  do j=jsc-1,jec+1
+    do i=isc-1,iec+1
+
+      acat(1:ncat) = IST%part_size(i,j,1:ncat)
+      atot = sum(acat)
+      vcat(1:ncat) = IST%mH_ice(i,j,1:ncat) / rho_ice
+      m_i = sum(vcat)
+
+      if (atot > 0.05 .and. m_i > 0.01 .and. sea_lev(i,j) < max_depth) then
+
+        mu_b = G%bathyT(i,j) + sea_lev(i,j) ! (hwater) mean of PDF (normal dist) bathymetry
+        wid_i = max_depth/ncat_i     ! width of ice categories
+        wid_b = 6.0*CS%sigma_b(i,j)/ncat_b    ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
+
+        x_k = (/( wid_i*( real(i) - 0.5 ), i=1, ncat_i )/)
+        y_n = (/( ( mu_b-3.0*CS%sigma_b(i,j) )+( real(i) - 0.5 )*( 6.0*CS%sigma_b(i,j)/ncat_b ), i=1, ncat_b )/)
+
+        v_i=0.0
+        do n =1, ncat
+          v_i = v_i + vcat(n)**2 / (max(acat(n), puny))
+        enddo
+        v_i = v_i - m_i**2
+
+        mu_i    = log(m_i/sqrt(1.0 + v_i/m_i**2)) ! parameters for the log-normal
+        sigma_i = max(sqrt(log(1.0 + v_i/m_i**2)), puny)
+
+        ! max thickness associated with percentile of log-normal PDF
+        ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al.)
+
+        x_kmax = exp(mu_i + sqrt(2.0*sigma_i)*1.9430)
+
+        ! Set x_kmax to hlev of the last category where there is ice
+        ! when there is no ice in the last category
+        cut = x_k(ncat_i)
+        do n = ncat,-1,1
+          if (acat(n) < puny) then
+            cut = hin_max(n-1)
+          else
+            exit
+          endif
+        enddo
+        x_kmax = min(cut, x_kmax)
+
+        g_k = exp(-(log(x_k) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / (x_k * sigma_i * sqrt(2.0 * pi))
+
+        b_n  = exp(-(y_n - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0 * pi))
+
+        P_x = g_k*wid_i
+        P_y = b_n*wid_b
+
+        do n =1, ncat_i
+          if (x_k(n) > x_kmax) P_x(n)=0.0
+        enddo
+
+        ! calculate Tb factor at t-location
+        do n=1, ncat_i
+          gt = (y_n <= rho_ice*x_k(n)/rho_water)
+          tmp = merge(1,0,gt)
+          ii = sum(tmp)
+          if (ii == 0) then
+            tb_tmp(n) = 0.0
+          else
+            tb_tmp(n) = max(mu_s*gravit*P_x(n)*sum(P_y(1:ii)*(rho_ice*x_k(n) - rho_water*y_n(1:ii))),0.0)
+          endif
+        enddo
+        Tbt(i,j) = sum(tb_tmp)*exp(-CS%lemieux_alphab * (1.0 - atot))
+      endif
+    enddo
+  enddo
+
+  do j=jsc,jec
+    do I=isc-1,iec
+      ! convert quantities to u-location
+      CS%Tb_u(I,j)  = max(Tbt(i,j),Tbt(i+1,j))
+    enddo
+  enddo
+  do J=jsc-1,jec
+    do i=isc,iec
+      ! convert quantities to v-location
+      CS%Tb_v(i,J)  = max(Tbt(i,j),Tbt(i,j+1))
+    enddo
+  enddo
+
+end subroutine basal_stress_coeff_itd
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_register_restarts allocates and registers any variables for the
@@ -2019,6 +2196,7 @@ subroutine SIS_C_dyn_end(CS)
   deallocate(CS%str_d) ; deallocate(CS%str_t) ; deallocate(CS%str_s)
   if (associated(CS%Tb_u)) deallocate(CS%Tb_u)
   if (associated(CS%Tb_v)) deallocate(CS%Tb_v)
+  if (associated(CS%sigma_b)) deallocate(CS%sigma_b)
 
   deallocate(CS)
 end subroutine SIS_C_dyn_end

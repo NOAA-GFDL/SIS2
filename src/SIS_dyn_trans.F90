@@ -42,6 +42,7 @@ use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts, basal_stress_coeff_C
+use SIS_dyn_cgrid,     only : basal_stress_coeff_itd
 use SIS_restart,       only : SIS_restart_CS
 use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
@@ -122,6 +123,7 @@ type dyn_trans_CS ; private
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    !! timing of diagnostic output.
   logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
+  logical :: itd_landfast !< If true, use the probabilistic landfast ice parameterization.
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1
@@ -456,6 +458,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
 
           if (CS%lemieux_landfast) then
             call basal_stress_coeff_C(G, mi_sum, ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
+          elseif (CS%itd_landfast) then
+            call basal_stress_coeff_itd(G, IG, IST, OSS%sea_lev, CS%SIS_C_dyn_CSp)
           endif
 
           if (CS%debug) then
@@ -2241,6 +2245,11 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   call get_param(param_file, mdl, "LEMIEUX_LANDFAST", CS%lemieux_landfast, &
                    "If true, turn on Lemieux landfast ice parameterization.", default=.false., &
                    do_not_log=.true.)
+  call get_param(param_file, mdl, "ITD_LANDFAST", CS%itd_landfast, &
+                   "If true, turn on probabilistic landfast ice parameterization.", default=.false., &
+                   do_not_log=.true.)
+  if (CS%merged_cont .and. CS%itd_landfast) &
+    call SIS_error(FATAL, "ITD_LANDFAST can not be true if MERGED_CONTINUITY=True.")
 
   call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &
