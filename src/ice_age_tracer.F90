@@ -159,10 +159,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice
   CS%min_mass = 1.0e-7*G%US%kg_m3_to_R*G%US%m_to_Z
 
   ! Allocate the main tracer arrays
-  allocate(CS%tr(SZI_(G), SZJ_(G),IG%CatIce,IG%NkIce,CS%ntr)) ; CS%tr(:,:,:,:,:) = 0.0
+  allocate(CS%tr(SZI_(G), SZJ_(G), IG%CatIce, IG%NkIce, CS%ntr), source=0.0)
   ! Boundary condition arrays
-  allocate(CS%ocean_BC(SZI_(G), SZJ_(G),IG%CatIce,CS%ntr)) ; CS%ocean_BC(:,:,:,:) = 0.0
-  allocate(CS%snow_BC(SZI_(G), SZJ_(G),IG%CatIce,CS%ntr)) ; CS%snow_BC(:,:,:,:)  = 0.0
+  allocate(CS%ocean_BC(SZI_(G), SZJ_(G), IG%CatIce, CS%ntr), source=0.0)
+  allocate(CS%snow_BC(SZI_(G), SZJ_(G), IG%CatIce, CS%ntr), source=0.0)
 
   ! Make sure that diag manager is assigned
   CS%diag => diag

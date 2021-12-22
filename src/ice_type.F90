@@ -281,7 +281,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   call safe_alloc_ptr(Ice%u_surf, isc, iec, jsc, jec, km)
   call safe_alloc_ptr(Ice%v_surf, isc, iec, jsc, jec, km)
   if (.not.associated(Ice%ocean_pt)) then
-    allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+    allocate(Ice%ocean_pt(isc:iec, jsc:jec), source=.false.) !derived
   endif
 
   call safe_alloc_ptr(Ice%rough_mom, isc, iec, jsc, jec, km)

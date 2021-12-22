@@ -488,10 +488,10 @@ subroutine allocate_metrics(G)
   ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
   ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
-  allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
-  allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
-  allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
-  allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
+  allocate(G%gridLonT(isg:ieg), source=0.0)
+  allocate(G%gridLonB(isg-1:ieg), source=0.0)
+  allocate(G%gridLatT(jsg:jeg), source=0.0)
+  allocate(G%gridLatB(jsg-1:jeg), source=0.0)
 
 end subroutine allocate_metrics
 

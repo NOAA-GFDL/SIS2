@@ -406,7 +406,7 @@ subroutine safe_alloc_ids_1d(ids, nids)
   integer,              intent(in)    :: nids   !< The number of IDs to allocate
 
   if (.not.ALLOCATED(ids)) then
-    allocate(ids(nids)) ; ids(:) = -1
+    allocate(ids(nids), source=-1)
   endif;
 end subroutine safe_alloc_ids_1d
 
