@@ -594,6 +594,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   ! Zero out the part_size of any massless categories.
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
     if (mH_ice(i,j,k) < 0.0) then
+      print *, 'Negative ice mass at:', i+G%idg_offset, j+G%jdg_offset, k, mH_ice(i,j,:)
       call SIS_error(FATAL, "Input to adjust_ice_categories, negative ice mass.")
     endif
     if (mH_snow(i,j,k) > 0.0) then

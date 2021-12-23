@@ -319,7 +319,6 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                  fail_if_missing=.true.)
     call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
     filename = trim(inputdir) // "/" // trim(h2_file)
-!   call log_param(param_file, mdl, "INPUTDIR/H2_FILE", filename)
     allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed), source=0.0)
     call MOM_read_data(filename, 'h2', CS%sigma_b, G%domain, scale=US%m_to_Z**2)
     CS%sigma_b(:,:) = max(sqrt(CS%sigma_b(:,:)), 0.001) ! Limit it to 1 mm min roughhness
@@ -1855,8 +1854,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         wid_i = max_depth/ncat_i     ! width of ice categories
         wid_b = 6.0*CS%sigma_b(i,j)/ncat_b    ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
 
-        x_k = (/( wid_i*( real(i) - 0.5 ), i=1, ncat_i )/)
-        y_n = (/( ( mu_b-3.0*CS%sigma_b(i,j) )+( real(i) - 0.5 )*( 6.0*CS%sigma_b(i,j)/ncat_b ), i=1, ncat_b )/)
+        x_k = (/( wid_i*( real(ii) - 0.5 ), ii=1, ncat_i )/)
+        y_n = (/( ( mu_b-3.0*CS%sigma_b(i,j) )+( real(ii) - 0.5 )*( 6.0*CS%sigma_b(i,j)/ncat_b ), ii=1, ncat_b )/)
 
         v_i=0.0
         do n =1, ncat

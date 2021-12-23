@@ -120,6 +120,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
   stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
 
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (h(i,j,k) < 0.0) then
+    print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
     call SIS_error(FATAL, 'Negative thickness input to ice_continuity().')
   endif ; enddo ; enddo ; enddo
 
@@ -156,6 +157,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
       if (h(i,j,k) < 0.0) then
+        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
         call SIS_error(FATAL, 'Negative thickness encountered in ice_continuity().')
       endif
     enddo ; enddo ; enddo
@@ -176,6 +178,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
+        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
         call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
       endif
@@ -198,6 +201,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
+        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
         call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
       endif
@@ -221,6 +225,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
+        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
         call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
       endif
@@ -242,6 +247,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
+        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
         call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
       endif
