@@ -187,7 +187,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                                                     !! sea ice velocities.  The default is true.
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp_diag ! A temporary diagnostic array
-  real                  :: I_area_Earth ! The inverse of the area of the sphere [m-2].
+  real                  :: I_area_Earth ! The inverse of the area of the sphere [L-2 ~> m-2].
   real, parameter       :: missing = -1e34  ! The fill value for missing data.
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: Cgrid_dyn
@@ -225,21 +225,21 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'rate of rain fall', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   FIA%id_runoff   = register_SIS_diag_field('ice_model', 'RUNOFF', diag%axesT1, Time, &
                'liquid runoff', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-  FIA%id_calving  = register_SIS_diag_field('ice_model', 'CALVING',diag%axesT1, Time, &
+  FIA%id_calving  = register_SIS_diag_field('ice_model', 'CALVING', diag%axesT1, Time, &
                'frozen runoff', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   FIA%id_runoff_hflx  = register_SIS_diag_field('ice_model', 'RUNOFF_HFLX', diag%axesT1, Time, &
                'liquid runoff sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
-  FIA%id_calving_hflx = register_SIS_diag_field('ice_model', 'CALVING_HFLX',diag%axesT1, Time, &
+  FIA%id_calving_hflx = register_SIS_diag_field('ice_model', 'CALVING_HFLX', diag%axesT1, Time, &
                'frozen runoff sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
                'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-  FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT' , diag%axesT1, Time, &
+  FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT', diag%axesT1, Time, &
                'upper surface melting energy flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
-  FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT' , diag%axesT1, Time, &
+  FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT', diag%axesT1, Time, &
                'bottom surface melting energy flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
-  FIA%id_bheat    = register_SIS_diag_field('ice_model', 'BHEAT' , diag%axesT1, Time, &
+  FIA%id_bheat    = register_SIS_diag_field('ice_model', 'BHEAT', diag%axesT1, Time, &
                'ocean to ice heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
@@ -364,7 +364,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
     I_area_Earth = 1.0 / (16.0*atan(1.0)*G%Rad_Earth**2)
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp_diag(i,j) = (US%L_to_m**2*G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
+      tmp_diag(i,j) = (G%areaT(i,j) * G%mask2dT(i,j)) * I_area_Earth
     enddo ; enddo
     call post_data(id_cell_area, tmp_diag, diag, is_static=.true.)
   endif
