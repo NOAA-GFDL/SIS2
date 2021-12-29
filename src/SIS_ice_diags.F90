@@ -49,9 +49,9 @@ type, public :: ice_state_diags_type ; private
   integer :: id_mib = -1, id_mi = -1
   integer, dimension(:), allocatable :: id_t, id_sal
   integer :: id_cn = -1, id_hi = -1, id_hp = -1, id_hs = -1, id_tsn = -1, id_ext = -1
-  integer :: id_t_iceav = -1, id_s_iceav = -1, id_e2m = -1, id_rdgf = -1
+  integer :: id_t_iceav = -1, id_s_iceav = -1, id_e2m = -1, id_rdgf = -1, id_rdg_h = -1
 
-  integer :: id_simass = -1, id_sisnmass = -1, id_sivol = -1
+  integer :: id_simass = -1, id_simassn = -1, id_sisnmass = -1, id_sivol = -1
   integer :: id_siconc = -1, id_sithick = -1, id_sisnconc = -1, id_sisnthick = -1
   integer :: id_siconc_CMOR = -1, id_sisnconc_CMOR = -1, id_sivol_CMOR = -1
   integer :: id_siu = -1, id_siv = -1, id_sispeed = -1, id_sitimefrac = -1
@@ -137,6 +137,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   ! Thermodynamic state diagnostics
   !
   if (IDs%id_cn>0) call post_data(IDs%id_cn, IST%part_size(:,:,1:ncat), diag)
+  if (IDs%id_simassn>0) call post_data(IDs%id_simassn, IST%mH_ice, diag)
   if ((IDs%id_siconc>0) .or. (IDs%id_siconc_CMOR>0)) then
     diagVar(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec ; do k=1,ncat
@@ -257,6 +258,11 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     call post_data(IDs%id_rdgf, rdg_frac, diag)
   endif
 
+  ! Dermine the height of ridged ice rdg_height in each category.
+  if (IDs%id_rdg_h>0) then
+    call post_data(IDs%id_rdg_h, IST%rdg_height, diag)
+  endif
+
 end subroutine post_ice_state_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -373,6 +379,8 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'ice + snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_simass = register_diag_field('ice_model', 'simass', diag%axesT1, Time, &
                'ice mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
+  IDs%id_simassn = register_diag_field('ice_model', 'simass_n', diag%axesTc, Time, &
+               'ice mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_sisnmass = register_diag_field('ice_model', 'sisnmass', diag%axesT1, Time, &
                'snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
@@ -384,6 +392,8 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                  "If true, call the ridging routines.", default=.false., do_not_log=.true.)
   if (do_ridging) then
     IDs%id_rdgf = register_diag_field('ice_model', 'RDG_FRAC', diag%axesTc, Time, &
+                   'ridged ice fraction', '0-1', missing_value=missing)
+    IDs%id_rdg_h = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
                    'ridged ice fraction', '0-1', missing_value=missing)
   endif
 end subroutine register_ice_state_diagnostics

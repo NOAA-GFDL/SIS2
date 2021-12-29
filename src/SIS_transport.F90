@@ -25,7 +25,7 @@ use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracer
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_types,         only : ice_state_type
 use ice_grid,          only : ice_grid_type
-use ice_ridging_mod,   only : ice_ridging
+use ice_ridging_mod,   only : ice_ridging_init, ice_ridging, ice_ridging_CS
 
 implicit none ; private
 
@@ -65,6 +65,8 @@ type, public :: SIS_transport_CS ; private
           !< The control structure for the SIS tracer advection module
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
           !< The control structure for the SIS thickness advection module
+  type(ice_ridging_CS),       pointer :: ice_ridging_CSp => NULL()
+          !< Pointer to the control structure for the ice ridging
 
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
@@ -262,7 +264,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
 
   if (CS%do_ridging) then
     ! Compress the ice using the ridging scheme taken from the CICE-Icepack module
-    call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, US, dt, IST%rdg_rate)
+    call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, CS%ice_ridging_CSp, US, &
+                     dt, rdg_rate=IST%rdg_rate, rdg_height=IST%rdg_height)
     ! Clean up any residuals
     call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
   else
@@ -1122,11 +1125,12 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
+subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
-  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
+  type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice specific grid type
+  type(unit_scale_type),       intent(in)    :: US   !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_transport_CS),      pointer       :: CS   !< The control structure for this module
@@ -1174,7 +1178,6 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
                  "in categories with less than this coverage to be discarded.", &
                  units="nondim", default=-1.0)
 
-
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow "//&
                  "mass conservation in the sea-ice transport code.  This "//&
@@ -1217,6 +1220,8 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call SIS_continuity_init(Time, G, US, param_file, diag, CS%continuity_CSp, &
                            CS_cvr=cover_trans_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+  if (CS%do_ridging) &
+      call ice_ridging_init(G, IG, param_file, CS%ice_ridging_CSp, US)
 
   if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp
 

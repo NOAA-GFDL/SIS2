@@ -153,7 +153,7 @@ type, public :: dyn_state_2d ; private
   integer :: max_nts      !< The maximum number of transport steps that can be stored
                           !! before they are carried out.
   integer :: nts = 0      !< The number of accumulated transport steps since the last update.
-  real :: ridge_rate_count !< The number of contributions to av_ridge_rate
+  real :: ridge_rate_count !< The number of contributions to avg_ridge_rate
 
   real, allocatable, dimension(:,:) :: avg_ridge_rate !< The time average ridging rate in [T-1 ~> s-1].
 
@@ -2284,10 +2284,10 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
       call SIS_B_dyn_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_B_dyn_CSp)
     endif
     if (CS%merged_cont) then
-      call SIS_transport_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_transport_CSp, &
+      call SIS_transport_init(CS%Time, G, IG, US, param_file, CS%diag, CS%SIS_transport_CSp, &
                               continuity_CSp=CS%continuity_CSp, cover_trans_CSp=CS%cover_trans_CSp)
     else
-      call SIS_transport_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_transport_CSp, &
+      call SIS_transport_init(CS%Time, G, IG, US, param_file, CS%diag, CS%SIS_transport_CSp, &
                               continuity_CSp=CS%continuity_CSp)
     endif
 

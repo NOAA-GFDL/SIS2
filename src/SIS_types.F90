@@ -95,6 +95,8 @@ type ice_state_type
   real, allocatable, dimension(:,:) :: rdg_rate !< The rate of fractional area loss by ridging [T-1 ~> s-1]
   real, allocatable, dimension(:,:,:) :: &
     rdg_mice    !< A diagnostic of the ice load that was formed by ridging [R Z ~> kg m-2].
+  real, allocatable, dimension(:,:,:) :: &
+    rdg_height    ! height of ridged ice per category [Z ~> m]
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
   logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
@@ -458,6 +460,7 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
     allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed), source=0.0)
     allocate(IST%rdg_rate(isd:ied, jsd:jed), source=0.0)
     allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce), source=0.0)
+    allocate(IST%rdg_height(isd:ied, jsd:jed, CatIce), source=0.0)
   endif ; endif
 
   if (do_vel) then
@@ -1225,7 +1228,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, rdg_height, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
 
@@ -1241,7 +1244,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, rdg_height, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
     call redistribute_data(domain_in, IST_in%part_size, domain_out, &
                            IST_out%part_size, complete=.true.)
