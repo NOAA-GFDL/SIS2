@@ -47,7 +47,7 @@ type, public :: SIS_C_dyn_CS ; private
   real, allocatable, dimension(:,:) :: &
     str_t, &  !< The tension stress tensor component [R Z L2 T-2 ~> Pa m].
     str_d, &  !< The divergence stress tensor component [R Z L2 T-2 ~> Pa m].
-    str_s     !< The shearing stress tensor component (cross term) [T Z L2 T-2 ~> Pa m].
+    str_s     !< The shearing stress tensor component (cross term) [R Z L2 T-2 ~> Pa m].
 
   ! parameters for calculating water drag and internal ice stresses
   real :: p0                  !< Pressure constant in the Hibler rheology [R L2 T-2 ~> Pa]

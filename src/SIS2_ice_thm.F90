@@ -176,7 +176,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real, intent(in   ) :: dtt   !< timestep [T ~> s]
   integer, intent(in   ) :: NkIce !< The number of ice layers.
   real, intent(inout) :: tmelt !< accumulated top melting energy  [Q R Z ~> J m-2]
-  real, intent(inout) :: bmelt !< accumulated bottom melting energy [Q R Z ~>  J m-2]
+  real, intent(inout) :: bmelt !< accumulated bottom melting energy [Q R Z ~> J m-2]
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2 ice thermodynamics control structure
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -592,7 +592,7 @@ subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
   real :: Cp_ice   ! The heat capacity of ice [Q degC-1 ~> J kg-1 degC-1].
   real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
                    ! [Q degC-1 ~> J kg-1 degC-1].
-  real :: Lat_fus  ! The latent heat of fusion [Q degC-1 ~> J kg-1].
+  real :: Lat_fus  ! The latent heat of fusion [Q ~> J kg-1].
   integer :: k
 
   temp_IC(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
@@ -703,9 +703,9 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
   real, intent(in) :: m_ice !< mass of ice [R Z ~> kg m-2]
   real, intent(in) :: T_fr !< ice freezing temp [degC] (determined by salinity)
   real, intent(in) :: Qf   !< Inward forcing [Q R Z T-1 ~> W m-2]
-  real, intent(in) :: bf   !< response of outward heat flux to local temperature [Q R Z T-1 ~> W m-2 degC]
+  real, intent(in) :: bf   !< response of outward heat flux to local temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1]
   real, intent(in) :: tp   !< prior step temperature [degC]
-  real, intent(in) :: enth !< prior step enthalpy
+  real, intent(in) :: enth !< prior step enthalpy [Q ~> J kg-1] (unused)
   real, intent(in) :: salin !< ice salinity [gSalt kg-1].
   real, intent(in) :: dtt  !< timestep [T ~> s]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
@@ -865,8 +865,8 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                                !! the prescribed heat flux if dftop_dT = 0 [Q R Z T-1 ~> W m-2].
   real, intent(in) :: ht_body  !< Body heating to layer [Q R Z T-1 ~> W m-2]
   real, intent(inout) :: fbot  !< Downward heat below the layer at T = 0 degC [Q R Z T-1 ~> W m-2].
-  real, intent(in) :: dftop_dT !< The linearization of ftop with layer temperature [Q R Z T-1 ~> W m-2 degC-1].
-  real, intent(in) :: dfbot_dT !< The linearization of fbot with layer temperature [Q R Z T-1 ~> W m-2 degC-1].
+  real, intent(in) :: dftop_dT !< The linearization of ftop with layer temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real, intent(in) :: dfbot_dT !< The linearization of fbot with layer temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real, intent(in) :: dtt      !< The timestep [T ~> s]
   real, intent(in) :: hf_err_rat  !< A conversion factor for comparing the errors
                                !! in explicit and implicit estimates of the updated
@@ -909,7 +909,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                    ! [Q degC-1 ~> J kg-1 degC-1].
   real :: Cp_water ! The heat capacity of liquid water in the ice model,
                    ! but not in the brine pockets [Q degC-1 ~> J kg-1 degC-1].
-  real :: LI       ! The latent heat of fusion [Q degC-1 ~> J kg-1].
+  real :: LI       ! The latent heat of fusion [Q ~> J kg-1].
   integer :: itt
   ! real :: T_itt(20), dTemp(20), Err_itt(20)
 
@@ -1210,7 +1210,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                                       ! enthalpy [Q ~> J kg-1].
   real :: min_dEnth_freeze    ! The minimum enthalpy change that must occur when freezing water,
                               ! usually enough to account for the latent heat of fusion
-                              ! in a small fraction of the water [Q ~> J kg-2].
+                              ! in a small fraction of the water [Q ~> J kg-1].
   real :: m_freeze            ! The newly formed ice from freezing [R Z ~> kg m-2].
   real :: M_melt              ! The ice mass lost to melting [R Z ~> kg m-2].
   real :: evap_left           ! The remaining evaporation [R Z ~> kg m-2].
@@ -1502,12 +1502,12 @@ subroutine add_frazil_SIS2(m_lay, Enthalpy, Sice_therm, Salin, npassive, TrLay, 
   ! Local variables
   real :: enth_frazil       ! The enthalpy of newly formed frazil ice [Q ~> J kg-1].
   real :: frazil_per_layer  ! The frazil heat sink from each of the sublayers of
-                            ! of the ice [Q R Z ~> J kg-1].
+                            ! of the ice [Q R Z ~> J m-2].
   real :: t_frazil          ! The temperature which with the frazil-ice is created [degC].
   real :: m_frazil          ! The newly-formed mass per unit area of frazil ice [R Z ~> kg m-2].
   real :: min_dEnth_freeze  ! The minimum enthalpy change that must occur when freezing water,
                             ! usually enough to account for the latent heat of fusion
-                            ! in a small fraction of the water [Q ~> J kg-2].
+                            ! in a small fraction of the water [Q ~> J kg-1].
   real :: salin_freeze      ! The salinity of newly frozen ice [gSalt kg-1].
   real :: enthM_freezing    ! The enthalpy gain due to the mass gain by freezing [Q R Z ~> J m-2].
   real :: LI                ! The latent heat of fusion [Q ~> J kg-1].
@@ -1591,7 +1591,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
                               intent(inout) :: TrLay !< Passive tracer in the column layer [Conc]
 
   real, dimension(NkIce) :: mlay_new     ! New mass in a layer [R Z ~> kg m-2]
-  real, dimension(NkIce) :: enth_ice_new ! New integrated enthalpy [R Z Q ~> kg m-2 Enth]
+  real, dimension(NkIce) :: enth_ice_new ! New integrated enthalpy [Q R Z ~> J m-2]
   real, dimension(NkIce) :: sal_ice_new  ! New integrated salinity [R Z gSalt kg-1 ~> gSalt m-2]
   real, dimension(NkIce,npassive) :: tr_ice_new ! New integrated tracer amount [R Z Conc ~> kg Conc m-2]
   real :: m_k1_to_k2   ! The being transferred from layer k1 to layer k2 [R Z ~> kg m-2]
@@ -1993,7 +1993,7 @@ function Temp_from_En_S(En, S, ITV) result(Temp)
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: Temp  !< Temperature [degC].
 
-  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities [degC Q ~> kg degC J-1].
+  real :: I_Cp_Ice, I_Cp_Water  ! Inverse heat capacities [degC Q-1 ~> degC kg J-1].
   real :: BB    ! A temporary variable [Q ~> J kg-1]
   real :: T_fr  ! The freezing temperature [degC].
   real :: En_J  ! Enthalpy with 0 offset [Q ~> J kg-1].

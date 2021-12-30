@@ -34,7 +34,7 @@ type, public :: SIS_B_dyn_CS ; private
   real, dimension(:,:), pointer :: &
     sig11 => NULL(), &  !< The xx component of the stress tensor [R Z L2 T-2 ~> Pa m] (or N m-1).
     sig12 => NULL(), &  !< The xy and yx component of the stress tensor [R Z L2 T-2 ~> Pa m] (or N m-1).
-    sig22 => NULL()     !< The yy component of the stress tensor [RZ Z L2 T-2 ~> Pa m] (or N m-1).
+    sig22 => NULL()     !< The yy component of the stress tensor [R Z L2 T-2 ~> Pa m] (or N m-1).
 
   ! parameters for calculating water drag and internal ice stresses
   real :: p0                  !< Hibbler rheology pressure constant [R L2 T-2 ~> Pa]
@@ -642,10 +642,10 @@ function sigI(mi, ci, sig11, sig22, sig12, G, US, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [RZ Z L2 T-2 ~> Pa m]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [RZ Z L2 T-2 ~> Pa m]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [R Z L2 T-2 ~> Pa m]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [R Z L2 T-2 ~> Pa m]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress
-                                                        !! tensor [RZ Z L2 T-2 ~> Pa m] (or N m-1)
+                                                        !! tensor [R Z L2 T-2 ~> Pa m] (or N m-1)
   real, dimension(SZI_(G),SZJ_(G))             :: sigI !< The first stress invariant [nondim]
   type(unit_scale_type),            intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module
@@ -667,10 +667,10 @@ function sigII(mi, ci, sig11, sig22, sig12, G, US, CS)
   type(SIS_hor_grid_type),          intent(in) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: mi  !< Mass per unit ocean area of sea ice [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [RZ Z L2 T-2 ~> Pa m]
-  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [RZ Z L2 T-2 ~> Pa m]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig11 !< The xx component of the stress tensor [R Z L2 T-2 ~> Pa m]
+  real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig22 !< The yy component of the stress tensor [R Z L2 T-2 ~> Pa m]
   real, dimension(SZI_(G),SZJ_(G)), intent(in) :: sig12 !< The xy & yx component of the stress
-                                                        !! tensor [RZ Z L2 T-2 ~> Pa m] (or N m-1)
+                                                        !! tensor [R Z L2 T-2 ~> Pa m] (or N m-1)
   real, dimension(SZI_(G),SZJ_(G))             :: sigII !< The second stress invariant [nondim]
   type(unit_scale_type),            intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_B_dyn_CS),               pointer    :: CS  !< The control structure for this module

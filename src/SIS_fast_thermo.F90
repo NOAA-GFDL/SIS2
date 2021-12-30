@@ -888,7 +888,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real    :: flux_sw_prev  ! The previous value of flux_sw_top [Q R Z T-1 ~> W m-2].
   real    :: rescale    ! A rescaling factor between 0 and 1 [nondim].
   real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays [Q R Z ~> J m-2].
-  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 ~> W m-2 degC-1].
+  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real    :: Tskin_prev ! The previous value of Tskin [degC]
   real    :: T_bright   ! A skin temperature below which the snow and ice attain
                         ! their greatest brightness and albedo no longer varies [degC].

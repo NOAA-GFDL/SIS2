@@ -965,7 +965,7 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
   real,                      intent(in)    :: mass_neglect ! A cell mass that is so small it is usually
                                                   !! lost in roundoff and can be neglected, or 0 to use
                                                   !! h_neglect times area [R Z L2 ~> kg].  If this is
-                                                 !! negative use an Adcroft-rule reciprocal in CFL.
+                                                  !! negative use an Adcroft-rule reciprocal in CFL.
   ! Local
   integer :: i
   real :: hup, hlos ! Upwind cell mass and an outward transport [R Z L2 ~> kg]
@@ -1297,7 +1297,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
                            intent(inout) :: Tr  !< The tracers being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                            intent(inout) :: hprev !< Category thickness times fractional coverage
-                                                !! before this step of advection [R Z ~> kg m-2].
+                                                !! before this step of advection [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                            intent(inout) :: vhr !< Remaining volume or mass fluxes through
                                                 !! meridional faces [R Z L2 ~> kg].
@@ -1495,7 +1495,7 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
   integer,                  intent(in)    :: J   !< The j-index to work on
   real, dimension(SZI_(G),SZJ_(G)), &
                             intent(in)    :: hprev !< Category thickness times fractional coverage
-                                                 !! before this step of advection [R Z L2 ~> kg m-2].
+                                                 !! before this step of advection [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G)), &
                             intent(in)    :: vhr !< Remaining volume or mass fluxes through
                                                  !! meridional faces [R Z L2 ~> kg].
@@ -1506,7 +1506,7 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
   logical, dimension(SZJB_(G)), &
                             intent(inout) :: domore_v !< True in rows with more advection to be done
   real,                     intent(in)    :: h_neglect !< A thickness that is so small it is usually lost
-                                                 !! in roundoff and can be neglected [R Z L2 ~> kg m-2].
+                                                 !! in roundoff and can be neglected [R Z ~> kg m-2].
   real,                     intent(in)    :: mass_neglect ! A cell mass that is so small it is usually
                                                  !! lost in roundoff and can be neglected, or 0 to use
                                                  !! h_neglect times area [R Z L2 ~> kg].  If this is
