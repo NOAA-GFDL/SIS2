@@ -22,9 +22,9 @@ implicit none ; private
 public advect_SIS_tracers, advect_tracers_thicker, advect_scalar
 public SIS_tracer_advect_init, SIS_tracer_advect_end
 
-!> This control structure hold parameters that regulate tracer advection
+!> This control structure holds parameters that regulate tracer advection
 type, public :: SIS_tracer_advect_CS ; private
-  real    :: dt             !< The baroclinic dynamics time step [T ~> s].
+  real    :: dt             !< The ice dynamics time step [T ~> s].
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                             !! timing of diagnostic output.
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
@@ -32,7 +32,7 @@ type, public :: SIS_tracer_advect_CS ; private
                             !! was used in older versions of SIS.
   logical :: usePPM         !< If true, use PPM tracer advection instead of PLM.
   logical :: usePCM         !< If true, use PCM tracer advection instead of PLM.
-  logical :: fixed_mass_neglect !< If true use a globally constant negligible volume in the
+  logical :: fixed_mass_neglect !< If true use a globally constant negligible mass in the
                             !! denominator of the tracer advection CFL calculation, reproducing an
                             !! older incorrect expression, rather than using a proper scaling of this
                             !! negligible mass with cell area.  This should eventually be obsoleted.
@@ -61,10 +61,10 @@ subroutine advect_SIS_tracers(h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS, TrRe
                                intent(in)    :: h_end !<  Layer thickness times fractional
                                                       !! coverage after advection [R Z ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(in)    :: uhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: uhtr  !< Accumulated mass fluxes through
                                                       !! zonal faces [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                               intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: vhtr  !< Accumulated mass fluxes through
                                                       !! meridional faces [R Z L2 T-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [T ~> s].
   type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
@@ -117,10 +117,10 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
                                intent(in)    :: h_end !<  Layer thickness times fractional
                                                       !! coverage after advection [R Z ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(in)    :: uhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: uhtr  !< Accumulated mass fluxes through
                                                       !! zonal faces [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                               intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: vhtr  !< Accumulated mass fluxes through
                                                       !! meridional faces [R Z L2 T-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [T ~> s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
@@ -131,19 +131,18 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
                                                       ! ! whether, where, and what open boundary
                                                       ! ! conditions are used.
 
-! This subroutine time steps the tracer concentrations using a monotonic, conservative, weakly diffusive scheme.
-
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    hprev           ! The cell volume at the end of the previous tracer change [R Z L2 ~> kg].
+    hprev           ! The cell mass at the end of the previous tracer change [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
-    uhr             ! The remaining zonal thickness flux [R Z L2 ~> kg].
+    uhr             ! The remaining zonal mass flux [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
-    vhr             ! The remaining meridional thickness fluxes [R Z L2 ~> kg].
+    vhr             ! The remaining meridional mass fluxes [R Z L2 ~> kg].
   real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
   real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
                                 ! can be simply discarded [R Z L2 ~> kg].
 
-  real :: landvolfill         ! An arbitrary? nonzero cell volume [R Z L2 ~> kg].
+  real :: landvolfill         ! An arbitrary? nonzero cell mass [R Z L2 ~> kg].
   real :: Idt                 ! 1/dt [T-1 ~> s-1].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
@@ -154,8 +153,8 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
   integer :: max_iter           ! The maximum number of iterations in
                                 ! each layer.
   integer :: domore_k(SZCAT_(IG))
-  integer :: stensil            ! The stensil of the advection scheme.
-  integer :: nsten_halo         ! The number of stensils that fit in the halos.
+  integer :: stensil            ! The stencil of the advection scheme.
+  integer :: nsten_halo         ! The number of stencils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
   integer :: isv, iev, jsv, jev ! The valid range of the indices.
@@ -163,7 +162,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20*US%m_to_L**2 ! This is arbitrary, but must be positive.
-  stensil = 2                   ! The scheme's stensil; 2 for PLM.
+  stensil = 2                   ! The scheme's stencil; 2 for PLM.
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracer.")
@@ -179,12 +178,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
   max_iter = 3
   if (CS%dt > 0.0) max_iter = 2*INT(CEILING(dt/CS%dt)) + 1
 
-! This initializes the halos of uhr and vhr because pass_vector might do
-! calculations on them, even though they are never used.
+  ! This initializes the halos of uhr and vhr because pass_vector might do
+  ! calculations on them, even though they are never used.
   uhr(:,:,:) = 0.0 ; vhr(:,:,:) = 0.0
   hprev(:,:,:) = landvolfill
   h_neglect = IG%H_subroundoff
-! Initialize domore_u and domore_v to .false.; they will be reevaluated later.
+  ! Initialize domore_u and domore_v to .false.; they will be reevaluated later.
   domore_u(:,:) = .false. ; domore_v(:,:) = .false.
 
 !$OMP parallel default(none) shared(ncat,is,ie,js,je,domore_k,uhr,vhr,uhtr,vhtr,dt, &
@@ -193,10 +192,10 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
 !$OMP do
   do k=1,ncat
     domore_k(k)=1
-!  Put the remaining (total) thickness fluxes into uhr and vhr.
+    ! Put the remaining (total) mass fluxes into uhr and vhr.
     do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
     do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
-    ! Find the previous total mass (or volume) of ice, but in the case that this
+    ! Find the previous total mass of ice, but in the case that this
     ! category is now dramatically thinner than it was previously, add a tiny
     ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
     ! lead rarely to a very slight non-conservation of tracers, but not mass.
@@ -302,19 +301,19 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
     jsv = jsv + stensil ; jev = jev - stensil
     !$OMP parallel do default(shared)
     do k=1,ncat ; if (domore_k(k) > 0) then
-!    To ensure positive definiteness of the thickness at each iteration, the
-!  mass fluxes out of each layer are checked each step, and limited to keep
-!  the thicknesses positive.  This means that several iteration may be required
-!  for all the transport to happen.  The sum over domore_k keeps the processors
-!  synchronized.  This may not be very efficient, but it should be reliable.
+      !   To ensure positive definiteness of the mass at each iteration, the
+      ! mass fluxes out of each layer are checked each step, and limited to keep
+      ! the masses positive.  This means that several iteration may be required
+      ! for all the transport to happen.  The sum over domore_k keeps the processors
+      ! synchronized.  This may not be very efficient, but it should be reliable.
 
       if (x_first) then
-  !    First, advect zonally.
+        ! First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                       isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, &
                       CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
-  !    Next, advect meridionally.
+        ! Next, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                       isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                       CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
@@ -323,12 +322,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
         do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
         do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
       else
-  !    First, advect meridionally.
+        ! First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
                       isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, &
                       CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
-  !    Next, advect zonally.
+        ! Next, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
                       isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                       CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
@@ -370,22 +369,23 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
                                intent(in)    :: h_end !<  Layer thickness times fractional
                                                       !! coverage after advection [R Z ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(in)    :: uhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: uhtr  !< Accumulated mass fluxes through
                                                       !! zonal faces [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                               intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: vhtr  !< Accumulated mass fluxes through
                                                       !! meridional faces [R Z L2 T-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !< Time increment [T ~> s].
   type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_tracer_advect_CS),  pointer       :: CS    !< The control structure returned by a previous
                                                       !! call to SIS_tracer_advect_init.
 
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: &
-    hprev           ! The cell volume at the end of the previous tracer change [R Z L2 ~> kg].
+    hprev           ! The cell mass at the end of the previous tracer change [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)) :: &
-    uhr             ! The remaining zonal thickness flux [R Z L2 ~> kg].
+    uhr             ! The remaining zonal mass flux [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
-    vhr             ! The remaining meridional thickness fluxes [R Z L2 ~> kg].
+    vhr             ! The remaining meridional mass fluxes [R Z L2 ~> kg].
   real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
   real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
                                 ! can be simply discarded [R Z L2 ~> kg].
@@ -402,12 +402,13 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
 
   real, dimension(SZIB_(G),SZJ_(G)) :: flux_U2d_x  ! x-direction tracer fluxes [Conc kg]
   real, dimension(SZI_(G),SZJB_(G)) :: flux_U2d_y  ! y-direction tracer fluxes [Conc kg]
-  real    :: tr_up              ! Upwind tracer concentrations [Conc].
-  real    :: vol_end, Ivol_end  ! Cell mass at the end of a step [R Z L2 ~> kg] and its inverse [R-1 Z-1 L-2 ~> kg-1].
+  real    :: tr_up      ! Upwind tracer concentrations [Conc].
+  real    :: vol_end    ! Cell mass at the end of a step [R Z L2 ~> kg]
+  real    :: Ivol_end   ! Inverse of the cell mass at the end of a step [R-1 Z-1 L-2 ~> kg-1]
 
   integer :: domore_k(SZCAT_(IG))
-  integer :: stensil            ! The stensil of the advection scheme.
-  integer :: nsten_halo         ! The number of stensils that fit in the halos.
+  integer :: stensil            ! The stencil of the advection scheme.
+  integer :: nsten_halo         ! The number of stencils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
   integer :: isv, iev, jsv, jev ! The valid range of the indices.
@@ -415,7 +416,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20*US%m_to_L**2 ! This is arbitrary, but must be positive.
-  stensil = 2                   ! The scheme's stensil; 2 for PLM.
+  stensil = 2                   ! The scheme's stencil; 2 for PLM.
 
   if (.not. associated(CS)) call SIS_error(FATAL, "advect_scalar: "// &
        "SIS_tracer_advect_init must be called before advect_scalar.")
@@ -474,10 +475,10 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
     do k=1,ncat
       domore_k(k)=1
 
-      ! Put the remaining (total) thickness fluxes into uhr and vhr.
+      ! Put the remaining (total) mass fluxes into uhr and vhr.
       do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
       do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
-      ! Find the previous total mass (or volume) of ice, but in the case that this
+      ! Find the previous total mass of ice, but in the case that this
       ! category is now dramatically thinner than it was previously, add a tiny
       ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
       ! lead rarely to a very slight non-conservation of tracers, but not mass.
@@ -551,19 +552,19 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
       jsv = jsv + stensil ; jev = jev - stensil
       !$OMP parallel do default(shared)
       do k=1,ncat ; if (domore_k(k) > 0) then
-  !    To ensure positive definiteness of the thickness at each iteration, the
-  !  mass fluxes out of each layer are checked each step, and limited to keep
-  !  the thicknesses positive.  This means that several iteration may be required
-  !  for all the transport to happen.  The sum over domore_k keeps the processors
-  !  synchronized.  This may not be very efficient, but it should be reliable.
+        !   To ensure positive definiteness of the mass at each iteration, the
+        ! mass fluxes out of each layer are checked each step, and limited to keep
+        ! the masses positive.  This means that several iteration may be required
+        ! for all the transport to happen.  The sum over domore_k keeps the processors
+        ! synchronized.  This may not be very efficient, but it should be reliable.
 
         if (x_first) then
-    !    First, advect zonally.
+          ! First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                         isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
-    !    Next, advect meridionally.
+          ! Next, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                         isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
@@ -572,12 +573,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
           do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
           do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
         else
-    !    First, advect meridionally.
+          ! First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
                         isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
-    !    Next, advect zonally.
+          ! Next, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
                         isv, iev, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
@@ -616,10 +617,10 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                intent(inout) :: scalar !< Scalar tracer field to be advected, in arbitrary units [Conc]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: hprev !< Category thickness times fractional coverage
-                                                      !! before this step of advection [R Z L2 ~> kg].
+                               intent(inout) :: hprev !< Cell-area integrated category mass before this
+                                                      !! step of advection [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: uhr   !< Remaining volume or mass fluxes through
+                               intent(inout) :: uhr   !< Remaining mass fluxes through
                                                       !! zonal faces [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G)), &
                                intent(inout) :: uh_neglect !< A value of uhr that can be neglected [R Z L2 ~> kg].
@@ -638,7 +639,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
   logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   logical,                     intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
-                                                    !! negligible volume in the denominator of the tracer
+                                                    !! negligible mass in the denominator of the tracer
                                                     !! advection CFL calculation, rather than using a proper
                                                     !! scaling with the cell area.  This is here to reproduce
                                                     !! old answers and should eventually be obsoleted.
@@ -656,22 +657,26 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
                     ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
-  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+  real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [R Z L2 ~> kg].
   real, dimension(SZIB_(G)) :: &
     uhh, &          ! The zonal flux that occurs during the current iteration [R Z L2 ~> kg].
-    CFL             ! A nondimensional work variable [nondim].
+    CFL             ! An advective CFL number based on zonal mass transports [nondim].
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew, &  ! Work variables with units of [R Z L2 ~> kg] and [R-1 Z-1 L-2 ~> kg-1].
-    haddE, haddW    ! Tiny amounts of thickness that should be added to the
+    hlst, &         ! Category cell mass before this advective step, perhaps with a little added
+                    ! mass in the case of nearly total cell evacuation within a timestep to avoid
+                    ! inaccurate tracer concentrations from roundoff when inverting the integrated
+                    ! tracer amounts to get concentrations [R Z L2 ~> kg].
+    Ihnew, &        ! A bounded inverse of the projected category mass [R-1 Z-1 L-2 ~> kg-1].
+    haddE, haddW    ! Tiny amounts of mass that should be added to the
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal east
                     ! and west of the present cell [R Z L2 ~> kg].
-  real :: hnew      ! The projected thickness [R Z L2 ~> kg].
-  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+  real :: hnew      ! The projected mass [R Z L2 ~> kg].
+  real :: h_add     ! A tiny mass to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+  real :: I_htot    ! The inverse of the sum of masses within or passing or
                     ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
@@ -680,7 +685,6 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
   logical :: do_i(SZI_(G))  ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j
-!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -735,7 +739,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
         elseif (hnew < h_neglect*G%areaT(i,j)) then
-          ! Add a bit of thickness with tracer concentrations that are
+          ! Add a bit of mass with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
@@ -773,10 +777,10 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
   type(SIS_tracer_type), dimension(ntr), &
                                intent(inout) :: Tr    !< The tracers being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: hprev !< Category thickness times fractional
-                                                      !! coverage before advection [R Z L2 ~> kg].
+                               intent(inout) :: hprev !< Cell-area integrated category mass before
+                                                      !! advection [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(inout) :: uhr   !< Remaining volume or mass fluxes through
+                               intent(inout) :: uhr   !< Remaining mass fluxes through
                                                       !! zonal faces [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G)), &
                                intent(inout) :: uh_neglect !< A value of uhr that can be neglected [R Z L2 ~> kg].
@@ -797,7 +801,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
   logical,                     intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                     intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   logical,                     intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
-                                                    !! negligible volume in the denominator of the tracer
+                                                    !! negligible mass in the denominator of the tracer
                                                     !! advection CFL calculation, rather than using a proper
                                                     !! scaling with the cell area.  This is here to reproduce
                                                     !! old answers and should eventually be obsoleted.
@@ -815,22 +819,26 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
                     ! both neighboring cells have any mass, and 0 otherwise.
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
-  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+  real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [R Z L2 ~> kg].
   real, dimension(SZIB_(G)) :: &
     uhh, &          ! The zonal flux that occurs during the current iteration [R Z L2 ~> kg].
-    CFL             ! A nondimensional work variable [nondim].
+    CFL             ! An advective CFL number based on zonal mass transports [nondim].
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew, &  ! Work variables with units of [R Z L2 ~> kg] and [R-1 Z-1 L-2 ~> kg-1].
-    haddE, haddW    ! Tiny amounts of thickness that should be added to the
+    hlst, &         ! Category cell mass before this advective step, perhaps with a little added
+                    ! mass in the case of nearly total cell evacuation within a timestep to avoid
+                    ! inaccurate tracer concentrations from roundoff when inverting the integrated
+                    ! tracer amounts to get concentrations [R Z L2 ~> kg].
+    Ihnew, &        ! A bounded inverse of the projected category mass [R-1 Z-1 L-2 ~> kg-1].
+    haddE, haddW    ! Tiny amounts of mass that should be added to the
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal east
                     ! and west of the present cell [R Z L2 ~> kg].
-  real :: hnew      ! The projected thickness [R Z L2 ~> kg].
-  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+  real :: hnew      ! The projected mass [R Z L2 ~> kg].
+  real :: h_add     ! A tiny mass to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+  real :: I_htot    ! The inverse of the sum of masses within or passing or
                     ! out of a cell [R-1 Z-1 L-2 ~> kg-1].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
@@ -900,7 +908,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
         elseif (hnew < h_neglect*G%areaT(i,j)) then
-          ! Add a bit of thickness with tracer concentrations that are
+          ! Add a bit of mass with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
@@ -951,22 +959,23 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
   integer,                   intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                   intent(in)    :: j   !< The tracer j-index to work on
   real, dimension(SZI_(G),SZJ_(G)), &
-                             intent(in)    :: hprev !< Category thickness times fractional coverage
-                                                  !! before this step of advection [R Z L2 ~> kg].
+                             intent(in)    :: hprev !< Cell-area integrated category mass before this
+                                                  !! step of advection [R Z L2 ~> kg].
   real, dimension(SZIB_(G),SZJ_(G)), &
-                             intent(in)    :: uhr !< Remaining volume or mass fluxes through
+                             intent(in)    :: uhr !< Remaining mass fluxes through
                                                   !! zonal faces [R Z L2 ~> kg].
-  real, dimension(SZIB_(G)), intent(inout) :: uhh !< The volume or mass flux that can be accomodated
+  real, dimension(SZIB_(G)), intent(inout) :: uhh !< The mass flux that can be accommodated
                                                   !! with this pass of advection [R Z L2 ~> kg].
-  real, dimension(SZIB_(G)), intent(inout) :: CFL !< The CFL number for this phase of advection
+  real, dimension(SZIB_(G)), intent(inout) :: CFL !< The CFL number for this phase of advection [nondim]
   logical,                   intent(inout) :: domore_u !< True in rows with more advection to be done
-  real,                      intent(in)    :: h_neglect !< A thickness that is so small it is usually lost
+  real,                      intent(in)    :: h_neglect !< A mass that is so small it is usually lost
                                                   !! in roundoff and can be neglected [R Z L2 ~> kg].
   real,                      intent(in)    :: mass_neglect ! A cell mass that is so small it is usually
                                                   !! lost in roundoff and can be neglected, or 0 to use
                                                   !! h_neglect times area [R Z L2 ~> kg].  If this is
                                                   !! negative use an Adcroft-rule reciprocal in CFL.
-  ! Local
+
+  ! Local variables
   integer :: i
   real :: hup, hlos ! Upwind cell mass and an outward transport [R Z L2 ~> kg]
 
@@ -1026,12 +1035,14 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
   integer,                           intent(in)    :: j   !< The tracer j-index to work on
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect,
                                                           !! in arbitrary units [Conc]
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask !< A multiplicative mask at u-points
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask !< A multiplicative mask at u-points [nondim]
   real, dimension(SZI_(G)),          intent(inout) :: slope_x !< The x-slope in tracer concentration
                                                           !! times the grid spacing [Conc].
-  ! Local
+
+  ! Local variables
+  real :: Tp, Tc, Tm ! Tracer concentrations in several adjacent points [Conc]
+  real :: dMx, dMn   ! Limited differences in tracer concentrations [Conc]
   integer :: i
-  real :: Tp, Tc, Tm, dMx, dMn
 
   do i = is, ie
     Tp = scalar(i+1,j) ; Tc = scalar(i,j) ; Tm = scalar(i-1,j)
@@ -1049,15 +1060,19 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
   integer,                           intent(in)    :: is  !< The starting tracer i-index to work on
   integer,                           intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                           intent(in)    :: j   !< The tracer j-index to work on
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask !< A multiplicative mask at u-points
-  real, dimension(SZIB_(G)),         intent(in)    :: uhh !< The volume or mass flux in this
-                                                          !! pass of advection [R Z L2 ~> kg].
-  real, dimension(SZIB_(G)),         intent(in)    :: CFL !< The CFL number for this phase of advection
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect [Conc]
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in)    :: uMask !< A multiplicative mask at u-points [nondim]
+  real, dimension(SZIB_(G)),         intent(in)    :: uhh !< The mass flux in this pass of
+                                                          !! advection [R Z L2 ~> kg]
+  real, dimension(SZIB_(G)),         intent(in)    :: CFL !< The CFL number for this phase of advection [nondim]
   real, dimension(SZIB_(G)),         intent(inout) :: Tr_x !< The average tracer concentration in the flux [Conc]
-  ! Local
+
+  ! Local variables
+  real :: Tp, Tc, Tm ! Tracer concentrations in several adjacent points [Conc]
+  real :: aL, aR, dA ! Left and right edge tracer concentrations and their difference [Conc]
+  real :: a6         ! A limited estimate of tracer concentration curvature [Conc]
+  real :: mA         ! Average of the left and right edge tracer concentrations [Conc]
   integer :: i
-  real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
 
   do I=is,ie
     if (uhh(I) >= 0.0) then
@@ -1130,12 +1145,12 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: scalar !< The tracer concentration to advect
+                           intent(inout) :: scalar !< The tracer concentration to advect [Conc]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: hprev !< Category thickness times fractional coverage
-                                                !! before this step of advection [R Z L2 ~> kg].
+                           intent(inout) :: hprev !< Cell-area integrated category mass before this
+                                                !! step of advection [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                           intent(inout) :: vhr !< Remaining volume or mass fluxes through
+                           intent(inout) :: vhr !< Remaining mass fluxes through
                                                 !! meridional faces [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G)), &
                            intent(inout) :: vh_neglect !< A value of vhr that can be neglected [R Z L2 ~> kg].
@@ -1154,7 +1169,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
   logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   logical,                 intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
-                                                !! negligible volume in the denominator of the tracer
+                                                !! negligible mass in the denominator of the tracer
                                                 !! advection CFL calculation, rather than using a proper
                                                 !! scaling with the cell area.  This is here to reproduce
                                                 !! old answers and should eventually be obsoleted.
@@ -1174,20 +1189,24 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
                     ! iteration [R Z L2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
-  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+  real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [R Z L2 ~> kg].
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew, &  ! Work variables with units of m3 or kg and m-3 or kg-1.
-    haddN, haddS, & ! Tiny amounts of thickness that should be added to the
+    hlst, &         ! Category cell mass before this advective step, perhaps with a little added
+                    ! mass in the case of nearly total cell evacuation within a timestep to avoid
+                    ! inaccurate tracer concentrations from roundoff when inverting the integrated
+                    ! tracer amounts to get concentrations [R Z L2 ~> kg].
+    Ihnew, &        ! A bounded inverse of the projected category mass [R-1 Z-1 L-2 ~> kg-1].
+    haddN, haddS, & ! Tiny amounts of mass that should be added to the
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal north
                     ! and south of the present cell [R Z L2 ~> kg].
-    CFL             ! A nondimensional work variable [nondim].
-  real :: hnew      ! The projected thickness [R Z L2 ~> kg].
-  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+    CFL             ! An advective CFL number based on meridional mass transports [nondim]
+  real :: hnew      ! The projected mass [R Z L2 ~> kg].
+  real :: h_add     ! A tiny mass to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+  real :: I_htot    ! The inverse of the sum of masses within or passing or
                     ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
@@ -1197,7 +1216,6 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
   logical :: do_i(SZI_(G))     ! If true, work on given points.
   logical :: do_any_i
   integer :: i, j, l, m
-!  real :: aR, aL, dMx, dMn, Tp, Tc, Tm, dA, mA, a6
   logical :: usePLMslope
 
   usePLMslope = .not.(usePCM .or. usePPM)
@@ -1259,7 +1277,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
         elseif (hnew < h_neglect*G%areaT(i,j)) then
-          ! Add a tiny bit of thickness with tracer concentrations that are
+          ! Add a tiny bit of mass with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
@@ -1296,10 +1314,10 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   type(SIS_tracer_type), dimension(ntr), &
                            intent(inout) :: Tr  !< The tracers being advected
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
-                           intent(inout) :: hprev !< Category thickness times fractional coverage
-                                                !! before this step of advection [R Z L2 ~> kg].
+                           intent(inout) :: hprev !< Cell-area integrated category mass before this
+                                                !! step of advection [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                           intent(inout) :: vhr !< Remaining volume or mass fluxes through
+                           intent(inout) :: vhr !< Remaining mass fluxes through
                                                 !! meridional faces [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G)), &
                            intent(inout) :: vh_neglect !< A value of vhr that can be neglected [R Z L2 ~> kg].
@@ -1320,7 +1338,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
   logical,                 intent(in)    :: usePPM !< If true, use PPM tracer advection instead of PLM.
   logical,                 intent(in)    :: usePCM !< If true, use PCM tracer advection instead of PLM.
   logical,                 intent(in)    :: fixed_mass_neglect  !< If true use a globally constant
-                                                !! negligible volume in the denominator of the tracer
+                                                !! negligible mass in the denominator of the tracer
                                                 !! advection CFL calculation, rather than using a proper
                                                 !! scaling with the cell area.  This is here to reproduce
                                                 !! old answers and should eventually be obsoleted.
@@ -1340,20 +1358,24 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
                     ! iteration [R Z L2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
-  real :: hup, hlos ! hup is the upwind volume, hlos is the part of that volume
+  real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
                     ! that might be lost due to advection out the other side of
                     ! the grid box, both [R Z L2 ~> kg].
   real, dimension(SZI_(G)) :: &
-    hlst, Ihnew, &  ! Work variables with units of [R Z L2 ~> kg] and [R-1 Z-1 L-2 ~> kg-1].
-    haddN, haddS, & ! Tiny amounts of thickness that should be added to the
+    hlst, &         ! Category cell mass before this advective step, perhaps with a little added
+                    ! mass in the case of nearly total cell evacuation within a timestep to avoid
+                    ! inaccurate tracer concentrations from roundoff when inverting the integrated
+                    ! tracer amounts to get concentrations [R Z L2 ~> kg].
+    Ihnew, &        ! A bounded inverse of the projected category mass [R-1 Z-1 L-2 ~> kg-1].
+    haddN, haddS, & ! Tiny amounts of mass that should be added to the
                     ! tracer update with concentrations that match the average
                     ! over the fluxes through the faces to the nominal north
                     ! and south of the present cell [R Z L2 ~> kg].
-    CFL             ! A nondimensional work variable [nondim].
-  real :: hnew      ! The projected thickness [R Z L2 ~> kg].
-  real :: h_add     ! A tiny thickness to add to keep the new tracer calculation
+    CFL             ! An advective CFL number based on meridional mass transports [nondim]
+  real :: hnew      ! The projected mass [R Z L2 ~> kg].
+  real :: h_add     ! A tiny mass to add to keep the new tracer calculation
                     ! well defined in the limit of vanishing layers [R Z L2 ~> kg].
-  real :: I_htot    ! The inverse of the sum of thickness within or passing or
+  real :: I_htot    ! The inverse of the sum of masses within or passing or
                     ! out of a cell [R Z L2 ~> kg].
   real :: h_neglect ! A thickness that is so small it is usually lost
                     ! in roundoff and can be neglected [R Z ~> kg m-2].
@@ -1429,7 +1451,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
         if (hnew <= 0.0) then
           hnew = 0.0 ; do_i(i) = .false.
         elseif (hnew < h_neglect*G%areaT(i,j)) then
-          ! Add a tiny bit of thickness with tracer concentrations that are
+          ! Add a tiny bit of mass with tracer concentrations that are
           ! proportional to the mass associated with fluxes and the previous
           ! mass in the cell.
           h_add = h_neglect*G%areaT(i,j) - hnew
@@ -1494,15 +1516,15 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
   integer,                  intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                  intent(in)    :: J   !< The j-index to work on
   real, dimension(SZI_(G),SZJ_(G)), &
-                            intent(in)    :: hprev !< Category thickness times fractional coverage
-                                                 !! before this step of advection [R Z L2 ~> kg].
+                            intent(in)    :: hprev !< Cell-area integrated category mass before this
+                                                 !! step of advection [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G)), &
-                            intent(in)    :: vhr !< Remaining volume or mass fluxes through
+                            intent(in)    :: vhr !< Remaining mass fluxes through
                                                  !! meridional faces [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G)), &
-                            intent(inout) :: vhh !< The volume or mass flux that can be accomodated
+                            intent(inout) :: vhh !< The mass flux that can be accommodated
                                                           !! with this pass of advection [R Z L2 ~> kg].
-  real, dimension(SZI_(G)), intent(inout) :: CFL !< The CFL number for this pass of advection
+  real, dimension(SZI_(G)), intent(inout) :: CFL !< The CFL number for this pass of advection [nondim]
   logical, dimension(SZJB_(G)), &
                             intent(inout) :: domore_v !< True in rows with more advection to be done
   real,                     intent(in)    :: h_neglect !< A thickness that is so small it is usually lost
@@ -1572,12 +1594,14 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
   integer,                           intent(in)    :: j   !< The tracer j-index to work on
   real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect,
                                                           !! in arbitrary units [Conc]
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask !< A multiplicative mask at v-points
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask !< A multiplicative mask at v-points [nondim]
   real, dimension(SZI_(G)),          intent(inout) :: slope_y !< The y-slope in tracer concentration
                                                           !! times the grid spacing [Conc].
-  ! Local
+
+  ! Local variables
+  real :: Tp, Tc, Tm ! Tracer concentrations in several adjacent points [Conc]
+  real :: dMx, dMn   ! Limited differences in tracer concentrations [Conc]
   integer :: i
-  real :: Tp, Tc, Tm, dMx, dMn
 
   do i = is, ie
     Tp = scalar(i,j+1) ; Tc = scalar(i,j) ; Tm = scalar(i,j-1)
@@ -1595,14 +1619,18 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
   integer,                           intent(in)    :: is  !< The starting tracer i-index to work on
   integer,                           intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                           intent(in)    :: J   !< The j-index to work on
-  real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask !< A multiplicative mask at v-points
-  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh !< The volume or mass flux in this pass of
+  real, dimension(SZI_(G),SZJ_(G)),  intent(in)    :: scalar !< The tracer concentration to advect [Conc]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vMask !< A multiplicative mask at v-points [nondim]
+  real, dimension(SZI_(G),SZJB_(G)), intent(in)    :: vhh !< The mass flux in this pass of
                                                           !! advection [R Z L2 ~> kg].
-  real, dimension(SZI_(G)),          intent(in)    :: CFL !< The CFL number for this phase of advection
-  real, dimension(SZI_(G)),          intent(inout) :: Tr_y !< The average tracer concentration in the flux
-  ! Local variables, all with the same units as scalar.
-  real :: Tp, Tc, Tm, aL, aR, dA, a6, mA
+  real, dimension(SZI_(G)),          intent(in)    :: CFL !< The CFL number for this phase of advection [nondim]
+  real, dimension(SZI_(G)),          intent(inout) :: Tr_y !< The average tracer concentration in the flux [Conc]
+
+  ! Local variables
+  real :: Tp, Tc, Tm ! Tracer concentrations in several adjacent points [Conc]
+  real :: aL, aR, dA ! Left and right edge tracer concentrations and their difference [Conc]
+  real :: a6         ! A limited estimate of tracer concentration curvature [Conc]
+  real :: mA         ! Average of the left and right edge tracer concentrations [Conc]
   integer :: i
 
   do i=is,ie
@@ -1683,20 +1711,21 @@ subroutine advect_upwind_2d(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG)
                                intent(in)    :: h_end !<  Layer thickness times fractional
                                                       !! coverage after advection [R Z ~> kg m-2].
   real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
-                               intent(in)    :: uhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: uhtr  !< Accumulated mass fluxes through
                                                       !! zonal faces [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
-                               intent(in)    :: vhtr  !< Accumulated volume or mass fluxes through
+                               intent(in)    :: vhtr  !< Accumulated mass fluxes through
                                                       !! meridional faces [R Z L2 T-1 ~> kg s-1].
   real,                        intent(in)    :: dt    !<  Time increment [T ~> s].
   integer,                     intent(in)    :: ntr   !< The number of tracers to advect
   type(unit_scale_type),       intent(in)    :: US    !< A structure with unit conversion factors
 
+  ! Local variables
   real, dimension(SZIB_(G),SZJ_(G)) :: flux_x  ! x-direction tracer fluxes [Conc R Z L2 ~> Conc kg]
   real, dimension(SZI_(G),SZJB_(G)) :: flux_y  ! y-direction tracer fluxes [Conc R Z L2 ~> Conc kg]
   real    :: tr_up  ! Upwind tracer concentrations [Conc].
   real    :: Idt    ! The inverse of the time increment [T-1 ~> s-1]
-  real    :: vol_end, Ivol_end  ! Cell volume at the end of a step [R Z L2 ~> kg] and its inverse.
+  real    :: vol_end, Ivol_end  ! Cell mass at the end of a step [R Z L2 ~> kg] and its inverse.
   integer :: i, j, k, l, m, is, ie, js, je
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
 
@@ -1769,6 +1798,7 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
   integer,                    intent(in)    :: ie  !< The ending tracer i-index to work on
   integer,                    intent(in)    :: j   !< The tracer j-index to work on
 
+  ! Local variables
   real, dimension(SZI_(G),SZCAT_(IG)) :: vol  ! The category mass at the start of a pass [R Z L2 ~> kg]
   type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL()
   real :: Ivol_new  ! The inverse of the new category mass  [R-1 Z-1 L-2 ~> kg-1]
@@ -1920,7 +1950,7 @@ end subroutine SIS_tracer_advect_end
 !*  modified flux advection scheme from Easter (Mon. Wea. Rev., 1993)  *
 !*  with tracer distributions that are piecewise constant,             *
 !*  piecewise linear (given by the monotonic scheme proposed by        *
-!*  Lin et al. (Mon. Wea. Rev., 1994)), or the montonic piecewise      *
+!*  Lin et al. (Mon. Wea. Rev., 1994)), or the monotonic piecewise     *
 !*  parabolic method, as described in Carpenter et al. (MWR, 1990).    *
 !*  This detects the mass of ice or snow in a grid cell and thickness  *
 !*  category at the previous instance when the tracer concentration    *
