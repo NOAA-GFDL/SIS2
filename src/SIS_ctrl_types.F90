@@ -37,7 +37,7 @@ public :: ice_diagnostics_init, ice_diags_fast_init
 type SIS_fast_CS
   type(time_type) :: Time  !< The current sea ice model time.
   type(time_type) :: Time_step_fast !< The sea ice fast thermodynamics time step.
-  type(time_type) :: Time_step_slow !< The sea ice dynamcis and slow thermodynamics time step.
+  type(time_type) :: Time_step_slow !< The sea ice dynamics and slow thermodynamics time step.
 
   logical :: bounds_check   !< If true, check for sensible values of thicknesses
                             !! temperatures, fluxes, etc.
@@ -89,7 +89,7 @@ end type SIS_fast_CS
 !! approach.
 type SIS_slow_CS
   type(time_type) :: Time  !< The current sea ice model time.
-  type(time_type) :: Time_step_slow !< The sea ice dynamcis and slow thermodynamics time step.
+  type(time_type) :: Time_step_slow !< The sea ice dynamics and slow thermodynamics time step.
 
   logical :: Cgrid_dyn      !< If true use a C-grid discretization of the
                             !! sea-ice dynamics.
@@ -169,7 +169,7 @@ contains
 !=======================================================================
 
 !> ice_diagnostics_init does the registration for a variety of sea-ice model
-!! diagnostics and saves several static diagnotic fields.
+!! diagnostics and saves several static diagnostic fields.
 subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   type(ice_ocean_flux_type),  intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                    !! the ocean that are calculated by the ice model.
@@ -336,7 +336,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   if (coupler_type_initialized(OSS%tr_fields)) &
     call coupler_type_set_diags(OSS%tr_fields, 'ice_model', diag%axesT1%handles, Time)
 
-!  These are omitted diagnotics with no imminent plans to add them.
+!  These are omitted diagnostics with no imminent plans to add them.
 !  XYZ%id_strna = register_SIS_diag_field('ice_model', 'STRAIN_ANGLE', diag%axesT1,Time, &
 !               'strain angle', 'none', missing_value=missing)
 !  XYZ%id_obi   = register_SIS_diag_field('ice_model', 'OBI', diag%axesT1, Time, &

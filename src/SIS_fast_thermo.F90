@@ -431,7 +431,7 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, US, IG)
   ! already being taken into account.
 
   ! This could be done more succinctly by initializing XSF = -TSF, but the
-  ! answers would then be more accutely impacted by roundoff.
+  ! answers would then be more acutely impacted by roundoff.
   XSF%flux_sh(:,:) = 0.0 ; XSF%flux_lw(:,:) = 0.0 ; XSF%flux_lh(:,:) = 0.0
   XSF%flux_sw(:,:,:) = 0.0
   XSF%evap(:,:) = 0.0 ; XSF%fprec(:,:) = 0.0 ; XSF%lprec(:,:) = 0.0
@@ -513,7 +513,7 @@ subroutine infill_array(IST, ta_ocn, ta, G, IG)
         mH_thin(i) = IST%mH_ice(i,j,k)
       endif ; enddo ; enddo
 
-      ! The logic for the k=1 (thinest) category is particularly simple.
+      ! The logic for the k=1 (thinnest) category is particularly simple.
       do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
         ta(i,j,1) = G%mask2dT(i,j)*ta_ocn(i,j)
       endif ; enddo
@@ -739,7 +739,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
       dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
       if (CS%Reorder_0C_heatflux) then
-        ! This form seperately projects each contribution to the surface heat
+        ! This form separately projects each contribution to the surface heat
         ! flux back to its value when T=0, so that a bitwise identical result
         ! can be obtained if the heating is redone.  The two forms are
         ! mathematically equivalent.

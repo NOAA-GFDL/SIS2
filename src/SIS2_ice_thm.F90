@@ -1,4 +1,4 @@
-!> Routines to do SIS2 ice thermodynamic calcualtions
+!> Routines to do SIS2 ice thermodynamic calculations
 module SIS2_ice_thm
 
 ! This file is part of SIS2. See LICENSE.md for the license.
@@ -20,7 +20,7 @@ public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
 public :: e_to_melt_TS, energy_melt_enthS, latent_sublimation
 
-!> This type contains the parameters regulating sea-ice thermodyanmics
+!> This type contains the parameters regulating sea-ice thermodynamics
 type, public :: ice_thermo_type ; private
   real :: Cp_ice            !< The heat capacity of ice [Q degC-1 ~> J kg-1 degC-1].
   real :: Cp_water          !< The heat capacity of liquid water in the ice model,
@@ -226,7 +226,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: tflux_sfc   ! [Q R Z ~> J m-2]
   ! These are used in diagnostic calculations that could be uncommented for debugging.
   ! real :: sum_sol     ! The time integrated shortwave heating [Q R Z ~> J m-2]
-  ! real :: tfb_diff_err  ! A diagostic estimate of errors from roundoff [Q R Z ~> J m-2]
+  ! real :: tfb_diff_err  ! A diagnostic estimate of errors from roundoff [Q R Z ~> J m-2]
   ! real :: tfb_resid_err ! A diagnostic estimate of the residual due to roundoff [Q R Z ~> J m-2]
   ! real :: d_tflux_bot, tflux_bot_diff, tflux_bot_resid ! Diagnostic terms [Q R Z ~> J m-2]
   real :: hsnow_eff    ! The effective thickness of the snow layer [Z ~> m]
@@ -860,7 +860,7 @@ subroutine update_lay_enth(m_lay, sice, enth, ftop, ht_body, fbot, dftop_dT, &
                            dfbot_dT, dtt, hf_err_rat, ITV, US, extra_heat, temp_new, temp_max)
   real, intent(in) :: m_lay    !< This layers mass of ice [R Z ~> kg m-2]
   real, intent(in) :: sice     !< ice salinity [gSalt kg-1]
-  real, intent(inout) :: enth  !< ice enthalpy in enthaly units [Q ~> J kg-1].
+  real, intent(inout) :: enth  !< ice enthalpy in enthalpy units [Q ~> J kg-1].
   real, intent(inout) :: ftop  !< Downward heat flux atop the layer at T = 0 degC, or
                                !! the prescribed heat flux if dftop_dT = 0 [Q R Z T-1 ~> W m-2].
   real, intent(in) :: ht_body  !< Body heating to layer [Q R Z T-1 ~> W m-2]
@@ -1110,8 +1110,8 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
   integer, intent(in) :: NkIce !< The number of vertical temperature layers in the ice
   character(len=*), intent(in) :: msg_part !< An identifying message
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real, optional, intent(in) :: bmelt  !< The heat flux assocated with bottom melt [Q R Z ~> J m-2] or [J m-2]
-  real, optional, intent(in) :: tmelt  !< The heat flux assocated with top melt [Q R Z ~> J m-2] or [J m-2]
+  real, optional, intent(in) :: bmelt  !< The heat flux associated with bottom melt [Q R Z ~> J m-2] or [J m-2]
+  real, optional, intent(in) :: tmelt  !< The heat flux associated with top melt [Q R Z ~> J m-2] or [J m-2]
   real, optional, intent(in) :: t_sfc  !< The ice surface temperature [degC]
   type(unit_scale_type), optional, intent(in) :: US  !< A structure with unit conversion factors
 
@@ -1657,7 +1657,7 @@ end subroutine SIS2_ice_thm_end
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !  Everything above this point pertains to the updating of the ice state due to
-!  themrmodyanmic forcing.  Everything after this point relates to more basic
+!  thermodyanmic forcing.  Everything after this point relates to more basic
 !  calculations of sea ice thermodynamics.  They could be separated into two
 !  modules, but by keeping them together compliers stand a better chance of
 !  inlining various small subroutines and achieving better performance.
@@ -1854,7 +1854,7 @@ function enth_melt(T, S, ITV) result (emelt)
   real, intent(in)  :: T  !< The ice temperature [degC]
   real, intent(in)  :: S  !< The ice bulk salinity [gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real             :: emelt !< The enthaply change needed to melt the frozen water [Q ~> J kg-1]
+  real             :: emelt !< The enthalpy change needed to melt the frozen water [Q ~> J kg-1]
 
   emelt = enthalpy_liquid_freeze(S, ITV) - enth_from_TS(T, S, ITV)
 end function enth_melt
@@ -1909,7 +1909,7 @@ subroutine Temp_from_Enth_S(En, S, Temp, ITV)
 end subroutine Temp_from_Enth_S
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> dTemp_dEnth_EnS returns the partial deriative of sea ice temperature with enthalpy
+!> dTemp_dEnth_EnS returns the partial derivative of sea ice temperature with enthalpy
 !! for ice of a given enthalpy and salinity.
 function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
   real, intent(in)  :: En !< The ice enthalpy, in enthalpy units [Q ~> J kg-1]
@@ -1948,7 +1948,7 @@ function dTemp_dEnth_EnS(En, S, ITV) result(dT_dE)
 end function dTemp_dEnth_EnS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> dTemp_dEnth_TS returns the partial deriative of sea ice temperature with enthalpy
+!> dTemp_dEnth_TS returns the partial derivative of sea ice temperature with enthalpy
 !! for ice of a given temperature and salinity.
 function dTemp_dEnth_TS(Temp, S, ITV) result(dT_dE)
   real, intent(in)  :: Temp !< The ice temperature [degC]

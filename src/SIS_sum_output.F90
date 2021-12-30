@@ -66,7 +66,7 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called [gSalt], in EFP form.
   type(EFP_type) :: mass_prev_EFP !<   The total sea ice mass the last time that
                                 !! write_ice_statistics was called [kg], in EFP form.
-  real    :: dt                 !< The baroclinic dynamics time step [T ~> s].
+  real    :: dt                 !< The dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90
@@ -246,7 +246,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: mass_imb     ! The column integrated mass imbalance [kg].
   real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Q ~> J kg-1].
   real :: kg_H_nlay    ! A mass unit conversion factor divided by the number of layers [kg m-2 H-1 ~> 1]
-  real :: area_pt      ! The area of a thickness catagory in a cell [m2].
+  real :: area_pt      ! The area of a thickness category in a cell [m2].
   real :: area_h       ! The masked area of a column [m2].
   type(EFP_type) :: &
     fresh_water_in_EFP, & ! The total mass of fresh water added by surface fluxes

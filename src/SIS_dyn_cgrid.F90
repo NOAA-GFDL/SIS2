@@ -82,7 +82,7 @@ type, public :: SIS_C_dyn_CS ; private
                               !! changes due to the convergent or divergent ice flow.
   logical :: weak_coast_stress = .false. !< If true, do not use land masks in determining the area
                               !! for stress convergence, which acts to weaken the stress-driven
-                              !! acceleation in coastal points.
+                              !! acceleration in coastal points.
   logical :: weak_low_shear = .false. !< If true, the divergent stresses go toward 0 in the C-grid
                               !! dynamics when the shear magnitudes are very weak.
                               !! Otherwise they go to -P_ice.  This setting is temporary.
@@ -106,7 +106,7 @@ type, public :: SIS_C_dyn_CS ; private
                               !! written by this PE during the current run.
   integer :: max_writes       !< The maximum number of times any PE can write out
                               !! a column's worth of accelerations during a run.
-  logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
+  logical :: lemieux_landfast !< If true, use the Lsemieux landfast ice parameterization.
   real :: lemieux_k1          !< 1st free parameter for landfast parameterization [nondim]
   real :: lemieux_k2          !< second free parameter (N/m^3) for landfast parametrization [R L T-2 ~> N m-3]
   real :: lemieux_alphab      !< Cb factor in Lemieux et al 2015 [nondim]
@@ -596,7 +596,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                   ! velocities, but with the influence going in opposite
                   ! directions.
 
-  real :: Cor       ! A Coriolis accleration [L T-2 ~> m s-2].
+  real :: Cor       ! A Coriolis acceleration [L T-2 ~> m s-2].
   real :: fxic_now  ! Zonal ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
   real :: fyic_now  ! Meridional ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
   real :: drag_u, drag_v ! Drag rates with the ocean at u & v points [R Z T-1 ~> kg m-2 s-1].
@@ -652,7 +652,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
 
   type(time_type) :: &
-    time_it_start, &  ! The starting time of the iteratve steps.
+    time_it_start, &  ! The starting time of the iterative steps.
     time_step_end, &  ! The end time of an iterative step.
     time_end_in       ! The end time for diagnostics when this routine started.
   real :: time_int_in ! The diagnostics' time interval when this routine started.
@@ -921,7 +921,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     call pass_vector(ui, vi, G%Domain, stagger=CGRID_NE)
 
     !    Calculate the strain tensor for viscosities and forcing elastic eqn.
-    !  The following are the forms of the horizontal tension and hori-
+    !  The following are the forms of the horizontal tension and horizontal
     !  shearing strain advocated by Smagorinsky (1993) and discussed in
     !  Griffies and Hallberg (MWR, 2000).  Similar forms are used in the sea
     !  ice model of Bouillon et al. (Ocean Modelling, 2009).
@@ -1867,14 +1867,14 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   integer,                           intent(in) :: I    !< The i-index of the column to report on
   integer,                           intent(in) :: j    !< The j-index of the column to report on
   type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velicity [L T-1 ~> m s-1].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velicity [L T-1 ~> m s-1].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velicity [L T-1 ~> m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: ui   !< The zonal ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: u_IC !< The initial zonal ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: uo   !< The zonal ocean velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice and snow per unit ocean area [R Z ~> kg m-2]
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxoc !< The zonal ocean-to-ice force [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxic !< The ice internal force [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: Cor_u !< The zonal Coriolis acceleration [L T-2 ~> m s-2].
-  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force accleration [L T-2 ~> m s-2].
+  real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: PFu  !< The zonal Pressure force acceleration [L T-2 ~> m s-2].
   real, dimension(SZIB_(G),SZJ_(G)), intent(in) :: fxat !< The zonal wind stress [R Z L T-2 ~> Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(unit_scale_type),             intent(in) :: US   !< A structure with unit conversion factors
@@ -1943,14 +1943,14 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   integer,                           intent(in) :: i    !< The i-index of the column to report on
   integer,                           intent(in) :: J    !< The j-index of the column to report on
   type(SIS_hor_grid_type),           intent(in) :: G    !< The horizontal grid type
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi   !< The meridional ice velicity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: v_IC !< The initial meridional ice velicity [L T-1 ~> m s-1].
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vo   !< The meridional ocean velicity [L T-1 ~> m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vi   !< The meridional ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: v_IC !< The initial meridional ice velocity [L T-1 ~> m s-1].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: vo   !< The meridional ocean velocity [L T-1 ~> m s-1].
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: mis  !< The mass of ice and snow per unit ocean area [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyoc !< The meridional ocean-to-ice force [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyic !< The ice internal force [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: Cor_v !< The meridional Coriolis acceleration [L T-2 ~> m s-2].
-  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force accleration [L T-2 ~> m s-2].
+  real, dimension(SZI_(G),SZJB_(G)), intent(in) :: PFv  !< The meridional pressure force acceleration [L T-2 ~> m s-2].
   real, dimension(SZI_(G),SZJB_(G)), intent(in) :: fyat !< The meridional wind stress [R Z L T-2 ~> Pa].
   real,                              intent(in) :: dt_slow !< The slow ice dynamics timestep [T ~> s].
   type(unit_scale_type),             intent(in) :: US   !< A structure with unit conversion factors

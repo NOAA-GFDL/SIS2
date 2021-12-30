@@ -483,7 +483,7 @@ end subroutine alloc_IST_arrays
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
-!!     that need to be includedin the restart files.
+!!     that need to be included in the restart files.
 subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type

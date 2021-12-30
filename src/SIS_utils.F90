@@ -124,7 +124,7 @@ end subroutine ice_line
 subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
   integer,                 intent(in) :: id   !< The ID for this diagnostic
   real, dimension(:,:,:),  intent(in) :: val  !< The field to average
-  real, dimension(:,:,:),  intent(in) :: part !< The frational coverage of each cetegory
+  real, dimension(:,:,:),  intent(in) :: part !< The fractional coverage of each category
   type(SIS_diag_ctrl),     intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                  optional, intent(in) :: G   !< The horizontal grid type
@@ -208,7 +208,7 @@ end subroutine post_avg_3d
 subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
   integer,                  intent(in) :: id   !< The ID for this diagnostic
   real, dimension(:,:,:,:), intent(in) :: val  !< The field to average
-  real, dimension(:,:,:),   intent(in) :: part !< The frational coverage of each cetegory
+  real, dimension(:,:,:),   intent(in) :: part !< The fractional coverage of each category
   type(SIS_diag_ctrl),      intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                   optional, intent(in) :: G   !< The horizontal grid type

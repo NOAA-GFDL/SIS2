@@ -462,7 +462,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
           zeta = 2.50e8*US%s_to_T * prs(i,j)
         endif
 
-        ! Hibler uses the following dimensonal constant ceiling to prevent nonlinear instability.
+        ! Hibler uses the following dimensional constant ceiling to prevent nonlinear instability.
         zeta = max(zeta, 4.0e8*US%kg_m2s_to_RZ_T*US%m_to_L**2)
 
         eta = zeta*EC2I
@@ -614,7 +614,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     if (CS%id_fcy>0) call post_SIS_data(CS%id_fcy, fyco, CS%diag)
     if (CS%id_fwx>0) call post_SIS_data(CS%id_fwx, fxoc, CS%diag) ! water force on ice
     if (CS%id_fwy>0) call post_SIS_data(CS%id_fwy, fyoc, CS%diag) ! ...= -ice on water
-    !  The diagnistics of fxat and fyat are supposed to be taken over all partitions
+    !  The diagnostics of fxat and fyat are supposed to be taken over all partitions
     !  (ocean & ice), whereas fxat and fyat here are only averaged over the ice.
 
     if (CS%id_sigi>0) then
@@ -744,11 +744,11 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate [s-1]
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate [s-1]
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
-  real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
+  real,                             intent(in   ) :: EC    !< The yield curve axis ratio
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor [N m-1]
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor [N m-1]
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
-  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An elipticity modulated estimate of
+  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An ellipticity modulated estimate of
                                                            !! the squared strain rate [s-2].
   logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
   !
@@ -817,11 +817,11 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate
   real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate
   real,                             intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
-  real,                             intent(in   ) :: EC    !< The yeild curve axis ratio
+  real,                             intent(in   ) :: EC    !< The yield curve axis ratio
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor
   real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor
-  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An elipticity modulated estimate of
+  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An ellipticity modulated estimate of
                                                            !! the squared strain rate [s-2].
   logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
   !

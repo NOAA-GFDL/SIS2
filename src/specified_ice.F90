@@ -306,7 +306,7 @@ end function specified_ice_sum_output_CS
 !> specified_ice_end deallocates memory associated with the specified_ice_CS type.
 subroutine specified_ice_end(CS)
   type(specified_ice_CS), pointer :: CS  !< The control structure for the specified_ice module that
-                                         !! is dellocated here
+                                         !! is deallocated here
 
   deallocate(CS)
 

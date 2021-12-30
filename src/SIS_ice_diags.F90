@@ -244,7 +244,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     call post_data(IDs%id_e2m, tmp2d, diag)
   endif
 
-  ! Dermine the fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
+  ! Determine the fraction of ridged ice rdg_frac = (ridged ice volume) / (total ice volume)
   ! in each category; IST%rdg_mice is ridged ice mass per unit total area throughout the code.
   if (IDs%id_rdgf>0) then
     !$OMP parallel do default(shared)
@@ -258,7 +258,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     call post_data(IDs%id_rdgf, rdg_frac, diag)
   endif
 
-  ! Dermine the height of ridged ice rdg_height in each category.
+  ! Determine the height of ridged ice rdg_height in each category.
   if (IDs%id_rdg_h>0) then
     call post_data(IDs%id_rdg_h, IST%rdg_height, diag)
   endif
