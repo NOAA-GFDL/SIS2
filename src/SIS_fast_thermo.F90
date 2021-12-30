@@ -95,9 +95,9 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice [R L Z T-2 ~> Pa].
+    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice [R Z L T-2 ~> Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [R L Z T-2 ~> Pa].
+    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [R Z L T-2 ~> Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_sh  !< The upward sensible heat flux from the top of the ice into
                            !! the atmosphere [Q R Z T-1 ~> W m-2].
@@ -587,8 +587,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
                 ! evaporation [Q R Z T-1 ~> W m-2].
     flux_lw, &  ! The net downward longwave heat flux into the ice [Q R Z T-1 ~> W m-2].
-    flux_u, &   ! The grid-aligned quasi-zonal wind stress on the ice [R L Z T-2 ~> Pa].
-    flux_v, &   ! The grid-aligned quasi-meridional wind stress on the ice [R L Z T-2 ~> Pa].
+    flux_u, &   ! The grid-aligned quasi-zonal wind stress on the ice [R Z L T-2 ~> Pa].
+    flux_v, &   ! The grid-aligned quasi-meridional wind stress on the ice [R Z L T-2 ~> Pa].
     lprec, &    ! The liquid precipitation onto the ice [R Z T-1 ~> kg m-2 s-1].
     fprec, &    ! The frozen precipitation onto the ice [R Z T-1 ~> kg m-2 s-1].
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into

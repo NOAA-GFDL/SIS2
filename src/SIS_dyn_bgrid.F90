@@ -185,7 +185,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS) !, nCat)
   type(unit_scale_type),            intent(in)  :: US  !< A structure with unit conversion factors
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength [R Z L2 T-2 ~> N m-1]
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength  !< The ice strength [R Z L2 T-2 ~> Pa m]
   type(SIS_B_dyn_CS),               pointer     :: CS  !< The control structure for this module
   ! integer, intent(in) :: nCat !< The number of sea ice categories.
 
@@ -278,7 +278,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
   ! Local variables
   real, dimension(SZIB_(G),SZJB_(G)) :: fxic, fyic  ! ice internal stresses [R Z L2 T-2 ~> Pa m]
-  real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! Coriolis force [R Z L T-2 ~> kg m-1 s-2 = Pa]
+  real, dimension(SZIB_(G),SZJB_(G)) :: fxco, fyco  ! Coriolis force [R Z L T-2 ~> Pa]
 
   real, dimension(SZI_(G),SZJ_(G)) :: prs                    ! Ice internal pressure [R Z L2 T-2 ~> Pa m]
   real                             :: zeta, eta              ! bulk/shear viscosities [R Z L2 T-1 ~> Pa m s]

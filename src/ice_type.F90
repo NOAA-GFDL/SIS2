@@ -115,7 +115,7 @@ type ice_data_type !  ice_public_type
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
+    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2 s-1].
 
   real, pointer, dimension(:,:) :: &
     area => NULL() , &    !< The area of ocean cells [m2].  Land cells have

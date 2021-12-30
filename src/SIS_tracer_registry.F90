@@ -60,10 +60,10 @@ type, public :: SIS_tracer_type
     pointer :: ad3d_y => NULL() !< The vertically summed y-direction advective flux [Conc R Z L2 T-1 ~> Conc kg s-1].
   real, dimension(:,:,:,:), &
     pointer :: ad4d_x => NULL() !< The x-direction advective flux by ice category and layer in
-                                !! units of [Conc R Z L2 T-1 ~> CONC kg s-1].
+                                !! units of [Conc R Z L2 T-1 ~> Conc kg s-1].
   real, dimension(:,:,:,:), &
     pointer :: ad4d_y => NULL() !< The y-direction advective flux by ice category and layer in
-                                !! units of [Conc R Z L2 T-1 ~> CONC kg s-1].
+                                !! units of [Conc R Z L2 T-1 ~> Conc kg s-1].
 !  real, dimension(:,:), &
 !    pointer :: snow_flux_tr => NULL() !< Concentration of the tracer in snow (for salinity = 0.0)
   real, dimension(:,:,:), &

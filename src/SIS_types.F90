@@ -207,11 +207,11 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:,:) :: flux_sw_dn !< The total downward shortwave flux
                     !! by wavelength band, averaged across all thickness categories [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: &
-    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
-    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R L Z T-2 ~> Pa].
+    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R Z L T-2 ~> Pa].
+    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R Z L T-2 ~> Pa].
     runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2 s-1].
     calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
@@ -277,8 +277,8 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R L Z T-2 ~> Pa].
-    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R Z L T-2 ~> Pa].
     flux_sh , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
     evap    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
     flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [Q R Z T-1 ~> W m-2].
@@ -707,9 +707,9 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice,
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real,                    intent(in)    :: H_to_kg_m2 !< The mass conversion_factor that will be
-                                                     !! used for the run [kg m-2 H-1 ~> 1].
-  real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-2]
-  real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-2]
+                                                     !! used for the run [kg m-2 R-1 Z-1 ~> 1].
+  real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-3]
+  real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-3]
 
   ! Local variables
   real :: vel_rescale, Q_rescale, RZ_rescale, H_rescale_ice, H_rescale_snow
@@ -795,9 +795,11 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(SIS_hor_grid_type),   intent(in)  :: G       !< The horizontal grid type
   type(unit_scale_type),     intent(in)  :: US      !< A structure with unit conversion factors
-  type(ice_grid_type),       intent(in)  :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),       intent(in)  :: IG      !< The sea-ice specific grid type
 
-  real :: QRZ_T_rescale, RZ_T_rescale, RZL_T2_rescale ! Rescaling correction factors [all ~> 1.0]
+  real :: QRZ_T_rescale  ! Restart rescaling correction factor for heat fluxes [nondim]
+  real :: RZ_T_rescale   ! Restart rescaling correction factor for mass fluxes [nondim]
+  real :: RZL_T2_rescale ! Restart rescaling correction factor for stresses [nondim]
   integer :: i, j, k, b
 
   QRZ_T_rescale = 1.0 ; RZ_T_rescale = 1.0 ; RZL_T2_rescale = 1.0

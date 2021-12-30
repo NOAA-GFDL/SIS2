@@ -53,8 +53,8 @@ type, public :: SIS_C_dyn_CS ; private
   real :: p0                  !< Pressure constant in the Hibler rheology [R L2 T-2 ~> Pa]
   real :: p0_rho              !< The pressure constant divided by ice density [L2 T-2 ~> N m kg-1].
   real :: c0                  !< another pressure constant, c* in Hunke & Dukowicz 1997 [nondim]
-  real :: cdw                 !< "The drag coefficient between the sea ice and water. [nondim]
-  real :: EC = 2.0            !< yield curve axis ratio
+  real :: cdw                 !< The drag coefficient between the sea ice and water. [nondim]
+  real :: EC = 2.0            !< yield curve axis ratio [nondim]
   real :: Rho_ocean           !< The nominal density of sea water [R ~> kg m-3].
   real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3].
   real :: drag_bg_vel2 = 0.0  !< A background (subgridscale) velocity for drag with the ocean
@@ -479,7 +479,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS, halo_sz) ! ??? may
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: mi  !< Mass per unit ocean area of sea ice [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G)), intent(in)  :: ci  !< Sea ice concentration [nondim]
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength [R Z L2 T-2 ~> N m-1].
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: ice_strength !< The ice strength [R Z L2 T-2 ~> Pa m].
   type(SIS_C_dyn_CS),               pointer     :: CS  !< The control structure for this module
   type(unit_scale_type),            intent(in)  :: US  !< A structure with unit conversion factors
   integer,                optional, intent(in)  :: halo_sz !< The halo size to work on
@@ -597,8 +597,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                   ! directions.
 
   real :: Cor       ! A Coriolis acceleration [L T-2 ~> m s-2].
-  real :: fxic_now  ! Zonal ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
-  real :: fyic_now  ! Meridional ice internal stress convergence [R Z L T-2 ~> kg m-1 s-2].
+  real :: fxic_now  ! Zonal ice internal stress convergence [R Z L T-2 ~> Pa].
+  real :: fyic_now  ! Meridional ice internal stress convergence [R Z L T-2 ~> Pa].
   real :: drag_u, drag_v ! Drag rates with the ocean at u & v points [R Z T-1 ~> kg m-2 s-1].
   real :: drag_LFu  ! Drag rates to the land for landfast ice at u points [R Z T-1 ~> kg m-2 s-1].
   real :: drag_LFv  ! Drag rates to the land for landfast ice at v points [R Z T-1 ~> kg m-2 s-1].
@@ -1475,7 +1475,8 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit
                                                              !! [R Z L2 T-2 ~> Pa m].
   type(unit_scale_type),              intent(in)    :: US    !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                 pointer       :: CS    !< The control structure for this module
-  real, optional,                     intent(in)    :: limit !< A factor by which the strength limits are changed.
+  real, optional,                     intent(in)    :: limit !< A factor by which the strength limits
+                                                             !! are changed [nondim]
 
 !   This subroutine ensures that the input stresses are not larger than could
 ! be justified by the ice pressure now, as the ice might have melted or been
@@ -1486,12 +1487,12 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit
   real :: pressure  ! The integrated internal ice pressure at a point [R Z L2 T-2 ~> Pa m].
   real :: pres_avg  ! The average of the internal ice pressures around a point [R Z L2 T-2 ~> Pa m].
   real :: sum_area  ! The sum of ocean areas around a vorticity point [L2 ~> m2].
-  real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio.
-  real :: lim       ! A local copy of the factor by which the limits are changed.
-  real :: lim_2     ! The limit divided by 2.
-!  real :: EC2       ! EC^2, where EC is the yield curve axis ratio.
+  real :: I_2EC     ! 1/(2*EC), where EC is the yield curve axis ratio [nondim].
+  real :: lim       ! A local copy of the factor by which the limits are changed [nondim].
+  real :: lim_2     ! The limit divided by 2 [nondim].
+!  real :: EC2       ! EC^2, where EC is the yield curve axis ratio [nondim].
 !  real :: rescale_str ! A factor by which to rescale the internal stresses [nondim].
-!  real :: stress_mag  ! The magnitude of the stress at a point [kg m-2 L2 T-2 ~> Pa m].
+!  real :: stress_mag  ! The magnitude of the stress at a point [R Z L2 T-2 ~> Pa m].
 !  real :: str_d_q     ! CS%str_d interpolated to a vorticity point [R Z L2 T-2 ~> Pa m].
 !  real :: str_t_q     ! CS%str_t interpolated to a vorticity point [R Z L2 T-2 ~> Pa m].
 
@@ -1597,7 +1598,7 @@ subroutine find_sigI(mi, ci, str_d, sigI, G, US, CS)
   type(SIS_C_dyn_CS),               pointer     :: CS    !< The control structure for this module
 
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    strength ! The ice strength [kg m-2 L2 T-2 ~> Pa m = N m-1].
+    strength ! The ice strength [R Z L2 T-2 ~> Pa m].
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 

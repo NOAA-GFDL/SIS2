@@ -218,7 +218,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
                                 ! MOM6 that interface K is below layer k.
   real :: I_liq_lim     ! The inverse of CS%liq_lim [nondim].
   real :: heat_flux_err_rat ! A factor used to estimate which of two approaches is more
-                            ! accurate [Q T-1 degC-1 ~> W kg-1 degC-1]
+                            ! accurate [degC T Q-1 ~> kg degC W-1]
   real :: col_enth1, col_enth2, col_enth2b, col_enth3  ! [Q R Z ~> J m-2]
   real :: d_e_extra   ! [Q R Z ~> J m-2]
   real :: e_extra_sum ! [Q R Z ~> J m-2]
@@ -1197,11 +1197,11 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
 
   real, intent(  out) :: ablation      !< The mass loss from bottom melt [R Z ~> kg m-2].
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
-                                       !! by evaporation / sublimation. [Q kg m-2 ~> J m-2]
+                                       !! by evaporation / sublimation. [Q R Z ~> J m-2]
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
                                        !! by melting [Q R Z ~> J m-2].
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the mass gain
-                                       !! by freezing [Q kg m-2 ~> J m-2].
+                                       !! by freezing [Q R Z ~> J m-2].
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in [Q R Z ~> J m-2]
   real :: mtot_ice    ! The summed ice mass [R Z ~> kg m-2].
@@ -1593,7 +1593,7 @@ subroutine rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassiv
   real, dimension(NkIce) :: mlay_new     ! New mass in a layer [R Z ~> kg m-2]
   real, dimension(NkIce) :: enth_ice_new ! New integrated enthalpy [Q R Z ~> J m-2]
   real, dimension(NkIce) :: sal_ice_new  ! New integrated salinity [R Z gSalt kg-1 ~> gSalt m-2]
-  real, dimension(NkIce,npassive) :: tr_ice_new ! New integrated tracer amount [R Z Conc ~> kg Conc m-2]
+  real, dimension(NkIce,npassive) :: tr_ice_new ! New integrated tracer amount [Conc R Z ~> Conc kg m-2]
   real :: m_k1_to_k2   ! The being transferred from layer k1 to layer k2 [R Z ~> kg m-2]
   real :: m_ice_avg    ! The average mass per layer [R Z ~> kg m-2]
   integer :: k, k1, k2, kold, knew, tr
