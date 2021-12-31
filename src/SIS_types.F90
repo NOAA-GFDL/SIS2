@@ -774,7 +774,7 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice,
       IST%enth_snow(i,j,k,m) = Q_rescale * IST%enth_snow(i,j,k,m)
     enddo ; enddo ; enddo ; enddo
   endif
-  if (allocated(IST%snow_to_ocn) .and. (Q_rescale /= 1.0) .or. (RZ_rescale /= 1.0)) then
+  if (allocated(IST%snow_to_ocn) .and. ((Q_rescale /= 1.0) .or. (RZ_rescale /= 1.0))) then
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
       IST%snow_to_ocn(i,j) = RZ_rescale * IST%snow_to_ocn(i,j)
       IST%enth_snow_to_ocn(i,j) = Q_rescale * IST%enth_snow_to_ocn(i,j)
