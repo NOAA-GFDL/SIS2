@@ -102,9 +102,10 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   real    :: h_up ! The upwind thickness [R Z ~> kg m-2]
   logical :: apply_h_neg
-  integer :: is, ie, js, je, nCat, stensil
+  integer :: is, ie, js, je, nCat, stencil
   integer :: i, j, k
 
+  character(len=256) :: mesg
   logical :: x_first
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nCat = IG%CatIce
 
@@ -117,10 +118,11 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     apply_h_neg = ((use_h_neg) .and. (CS%h_neglect_cont > 0.0))
   endif
 
-  stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
+  stencil = 3 ; if (CS%simple_2nd) stencil = 2 ; if (CS%upwind_1st) stencil = 1
 
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (h(i,j,k) < 0.0) then
-    print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+    write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+    call SIS_error(WARNING, mesg, all_print=.true.)
     call SIS_error(FATAL, 'Negative thickness input to ice_continuity().')
   endif ; enddo ; enddo ; enddo
 
@@ -157,7 +159,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
            ((uh(I,j,k) - uh(I-1,j,k)) + (vh(i,J,k) - vh(i,J-1,k)))
 
       if (h(i,j,k) < 0.0) then
-        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+        write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
         call SIS_error(FATAL, 'Negative thickness encountered in ice_continuity().')
       endif
     enddo ; enddo ; enddo
@@ -165,7 +168,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
   elseif (x_first) then
   !    First, advect zonally.
     LB%ish = G%isc ; LB%ieh = G%iec
-    LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
+    LB%jsh = G%jsc-stencil ; LB%jeh = G%jec+stencil
     if (apply_h_neg) then
       call zonal_mass_flux(u, dt, G, US, IG, CS, LB, hin, uh, &
                            h_mobilize=CS%h_neglect_cont, masking_uh=masking_uh)
@@ -178,7 +181,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
-        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+        write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
         call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
       endif
@@ -201,7 +205,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
-        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+        write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
         call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
       endif
@@ -210,7 +215,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
 
   else  ! .not. x_first
   !    First, advect meridionally, so set the loop bounds accordingly.
-    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil
+    LB%ish = G%isc-stencil ; LB%ieh = G%iec+stencil
     LB%jsh = G%jsc ; LB%jeh = G%jec
 
     if (apply_h_neg) then
@@ -225,7 +230,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = hin(i,j,k) - dt*G%IareaT(i,j) * (vh(i,J,k) - vh(i,J-1,k))
       if (h(i,j,k) < 0.0) then
-        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+        write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
         call SIS_error(FATAL, &
         'Negative thickness encountered in v-pass of ice_continuity().')
       endif
@@ -247,7 +253,8 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
     do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
       h(i,j,k) = h(i,j,k) - dt* G%IareaT(i,j) * (uh(I,j,k) - uh(I-1,j,k))
       if (h(i,j,k) < 0.0) then
-        print *, 'Negative ice thickness at:', i+G%idg_offset, j+G%jdg_offset, k, h(i,j,:)
+        write(mesg,'("Negative ice thickness at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, h(i,j,k)
+        call SIS_error(WARNING, mesg, all_print=.true.)
         call SIS_error(FATAL, &
         'Negative thickness encountered in u-pass of ice_continuity().')
       endif
@@ -282,7 +289,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
   real, dimension(SZIB_(G),SZJ_(G)) :: ucvr ! Ice cover flux through zonal faces = u*cvr*dy [L2 T-1 ~> m2 s-1].
   real, dimension(SZI_(G),SZJB_(G)) :: vcvr ! Ice cover flux through meridional faces = v*cvr*dx [L2 T-1 ~> m2 s-1].
   real    :: cvr_up
-  integer :: is, ie, js, je, stensil
+  integer :: is, ie, js, je, stencil
   integer :: i, j
 
   logical :: x_first
@@ -292,7 +299,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
          "SIS_continuity: Module must be initialized before it is used.")
   x_first = (MOD(G%first_direction,2) == 0)
 
-  stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
+  stencil = 3 ; if (CS%simple_2nd) stencil = 2 ; if (CS%upwind_1st) stencil = 1
 
   do j=js,je ; do i=is,ie ; if (cvr(i,j) < 0.0) then
     call SIS_error(FATAL, 'Negative mass input to ice_cover_transport().')
@@ -325,7 +332,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
     !$OMP end parallel
   elseif (x_first) then
     ! First, advect zonally.
-    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stencil ; LB%jeh = G%jec+stencil
     call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=cvr, uh_tot=ucvr, masking_uhtot=masking_uhtot)
 
     call cpu_clock_begin(id_clock_update)
@@ -352,7 +359,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
 
   else  ! .not. x_first
     !  First, advect meridionally, so set the loop bounds accordingly.
-    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    LB%ish = G%isc-stencil ; LB%ieh = G%iec+stencil ; LB%jsh = G%jsc ; LB%jeh = G%jec
     call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=cvr, vh_tot=vcvr, masking_vhtot=masking_vhtot)
 
     call cpu_clock_begin(id_clock_update)
@@ -413,7 +420,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
   real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx
                                               ! [R Z L2 T-1 ~> kg s-1].
   real    :: h_up
-  integer :: is, ie, js, je, stensil
+  integer :: is, ie, js, je, stencil
   integer :: i, j
 
   logical :: x_first
@@ -423,7 +430,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
          "SIS_continuity: Module must be initialized before it is used.")
   x_first = (MOD(G%first_direction,2) == 0)
 
-  stensil = 3 ; if (CS%simple_2nd) stensil = 2 ; if (CS%upwind_1st) stensil = 1
+  stencil = 3 ; if (CS%simple_2nd) stencil = 2 ; if (CS%upwind_1st) stencil = 1
 
   do j=js,je ; do i=is,ie ; if (h_in(i,j) < 0.0) then
     call SIS_error(FATAL, 'Negative mass input to summed_continuity().')
@@ -482,7 +489,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
     !$OMP end parallel
   elseif (x_first) then
     ! First, advect zonally.
-    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stensil ; LB%jeh = G%jec+stensil
+    LB%ish = G%isc ; LB%ieh = G%iec ; LB%jsh = G%jsc-stencil ; LB%jeh = G%jec+stencil
     call zonal_mass_flux(u, dt, G, US, IG, CS, LB, htot_in=h_in, uh_tot=uh, h_mobilize=CS%h_neglect_cont)
 
     call cpu_clock_begin(id_clock_update)
@@ -543,7 +550,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
 
   else  ! .not. x_first
     !  First, advect meridionally, so set the loop bounds accordingly.
-    LB%ish = G%isc-stensil ; LB%ieh = G%iec+stensil ; LB%jsh = G%jsc ; LB%jeh = G%jec
+    LB%ish = G%isc-stencil ; LB%ieh = G%iec+stencil ; LB%jsh = G%jsc ; LB%jeh = G%jec
     call meridional_mass_flux(v, dt, G, US, IG, CS, LB, htot_in=h_in, vh_tot=vh, h_mobilize=CS%h_neglect_cont)
 
     call cpu_clock_begin(id_clock_update)
@@ -656,7 +663,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
   real, dimension(SZI_(G),SZJ_(G)) :: I_htot ! The Adcroft reciprocal of the total thicknesses [R-1 Z-1 ~> m2 kg-1].
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   logical :: do_mask  ! If true, mask very small fluxes.
-  integer :: is, ie, js, je, nCat, stensil
+  integer :: is, ie, js, je, nCat, stencil
   integer :: i, j, k
 
   logical :: x_first
@@ -1347,19 +1354,19 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   real :: dMx, dMn
   logical :: use_CW84, use_2nd
   character(len=256) :: mesg
-  integer :: i, j, isl, iel, jsl, jel, stensil
+  integer :: i, j, isl, iel, jsl, jel, stencil
 
   use_CW84 = .false. ; if (present(monotonic)) use_CW84 = monotonic
   use_2nd = .false. ; if (present(simple_2nd)) use_2nd = simple_2nd
   isl = LB%ish-1 ; iel = LB%ieh+1 ; jsl = LB%jsh ; jel = LB%jeh
 
-  ! This is the stensil of the reconstruction, not the scheme overall.
-  stensil = 2 ; if (use_2nd) stensil = 1
+  ! This is the stencil of the reconstruction, not the scheme overall.
+  stencil = 2 ; if (use_2nd) stencil = 1
 
-  if ((isl-stensil < G%isd) .or. (iel+stensil > G%ied)) then
+  if ((isl-stencil < G%isd) .or. (iel+stencil > G%ied)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_x called with a ", &
                & "x-halo that needs to be increased by ",i2,".")') &
-               stensil + max(G%isd-isl,iel-G%ied)
+               stencil + max(G%isd-isl,iel-G%ied)
     call SIS_error(FATAL,mesg)
   endif
   if ((jsl < G%jsd) .or. (jel > G%jed)) then
@@ -1439,14 +1446,14 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   real :: dMx, dMn
   logical :: use_CW84, use_2nd
   character(len=256) :: mesg
-  integer :: i, j, isl, iel, jsl, jel, stensil
+  integer :: i, j, isl, iel, jsl, jel, stencil
 
   use_CW84 = .false. ; if (present(monotonic)) use_CW84 = monotonic
   use_2nd = .false. ; if (present(simple_2nd)) use_2nd = simple_2nd
   isl = LB%ish ; iel = LB%ieh ; jsl = LB%jsh-1 ; jel = LB%jeh+1
 
-  ! This is the stensil of the reconstruction, not the scheme overall.
-  stensil = 2 ; if (use_2nd) stensil = 1
+  ! This is the stencil of the reconstruction, not the scheme overall.
+  stencil = 2 ; if (use_2nd) stencil = 1
 
   if ((isl < G%isd) .or. (iel > G%ied)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_y called with a ", &
@@ -1454,10 +1461,10 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
                max(G%isd-isl,iel-G%ied)
     call SIS_error(FATAL,mesg)
   endif
-  if ((jsl-stensil < G%jsd) .or. (jel+stensil > G%jed)) then
+  if ((jsl-stencil < G%jsd) .or. (jel+stencil > G%jed)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_y called with a ", &
                  & "y-halo that needs to be increased by ",i2,".")') &
-                 stensil + max(G%jsd-jsl,jel-G%jed)
+                 stencil + max(G%jsd-jsl,jel-G%jed)
     call SIS_error(FATAL,mesg)
   endif
 
