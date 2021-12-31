@@ -584,6 +584,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
   logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nCat
+  character(len=256) :: mesg
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   nCat = IG%CatIce
 
@@ -594,7 +595,8 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   ! Zero out the part_size of any massless categories.
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
     if (mH_ice(i,j,k) < 0.0) then
-      print *, 'Negative ice mass at:', i+G%idg_offset, j+G%jdg_offset, k, mH_ice(i,j,:)
+      write(mesg,'("Negative ice mass at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, mH_ice(i,j,k)
+      call SIS_error(WARNING, mesg, all_print=.true.)
       call SIS_error(FATAL, "Input to adjust_ice_categories, negative ice mass.")
     endif
     if (mH_snow(i,j,k) > 0.0) then
