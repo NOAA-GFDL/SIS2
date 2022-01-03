@@ -566,7 +566,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   endif
 
 !   It is possible that the ice mass and surface pressure will be needed after
-! the themodynamic step, in which case this should be uncommented.
+! the thermodynamic step, in which case this should be uncommented.
 !  ! Sum the concentration weighted mass.
 !  Ice%mi(:,:) = 0.0
 !  i_off = LBOUND(Ice%mi,1) - G%isc ; j_off = LBOUND(Ice%mi,2) - G%jsc
@@ -577,7 +577,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
 !        (G%US%RZ_to_kg_m2 * ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_ice(i,j,k)))
 !  enddo ; enddo ; enddo
 
-  ! This block of code is probably unneccessary.
+  ! This block of code is probably unnecessary.
   Ice%flux_t(:,:) = 0.0 ; Ice%flux_q(:,:) = 0.0
   Ice%flux_sw_nir_dir(:,:) = 0.0 ; Ice%flux_sw_nir_dif(:,:) = 0.0
   Ice%flux_sw_vis_dir(:,:) = 0.0 ; Ice%flux_sw_vis_dif(:,:) = 0.0
@@ -608,7 +608,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
 !   It is possible that the ice mass and surface pressure will be needed after
-! the themodynamic step, in which case this should be uncommented.
+! the thermodynamic step, in which case this should be uncommented.
 !  if (IOF%slp2ocean) then
 !     Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
 !   else
@@ -829,10 +829,10 @@ end subroutine unpack_ocean_ice_boundary
 !! variable.
 subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields)
   type(ocean_ice_boundary_type), intent(in)    :: OIB !< A type containing ocean surface fields that
-                                                      !! aare used to drive the sea ice
+                                                      !! are used to drive the sea ice
   type(ocean_sfc_state_type),    intent(inout) :: OSS !< A structure containing the arrays that describe
                                                       !! the ocean's surface state for the ice model.
-  type(ice_thermo_type),         intent(in)    :: ITV !< The ice themodynamics parameter structure.
+  type(ice_thermo_type),         intent(in)    :: ITV !< The ice thermodynamics parameter structure.
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   logical,                       intent(in)    :: specified_ice !< If true, use specified ice properties.
@@ -996,7 +996,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
   real, dimension(IG%NkIce) :: sw_abs_lay ! The fraction of the absorbed shortwave that is
                                           ! absorbed in each of the ice layers, <=1, [nondim].
   real, dimension(size(FIA%flux_sw_top,4)) :: &
-    albedos        ! The albedos for the various wavelenth and direction bands
+    albedos        ! The albedos for the various wavelength and direction bands
                    ! for the current partition, non-dimensional and 0 to 1.
   real :: u, v     ! Ice velocity components [m s-1]
 
@@ -1160,7 +1160,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
     enddo
   endif
 
-  ! Copy over the additional tracer fields into the the open-ocean category of
+  ! Copy over the additional tracer fields into the open-ocean category of
   ! the Ice%ocean_fields structure.
   call coupler_type_copy_data(OSS%tr_fields, Ice%ocean_fields, ind3_start=1, ind3_end=1)
 
@@ -1194,7 +1194,7 @@ subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, US, IG, optics_CS
 
   real, dimension(IG%NkIce) :: sw_abs_lay ! The fraction of the absorbed shortwave that is
                                           ! absorbed in each of the ice layers, <=1, [nondim].
-  real :: albedos(4)  ! The albedos for the various wavelenth and direction bands
+  real :: albedos(4)  ! The albedos for the various wavelength and direction bands
                       ! for the current partition, non-dimensional and 0 to 1.
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat
 
@@ -1279,7 +1279,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
   type(time_type),               intent(in)    :: Time_start !< The start of the time covered by this call
-  type(time_type),               intent(in)    :: Time_end   !< The end of the timee covered by this call
+  type(time_type),               intent(in)    :: Time_end   !< The end of the time covered by this call
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   logical :: coszen_changed
@@ -1329,7 +1329,7 @@ subroutine set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   type(time_type),         intent(in)    :: Time_start !< The start of the time covered by this call
-  type(time_type),         intent(in)    :: Time_end   !< The end of the timee covered by this call
+  type(time_type),         intent(in)    :: Time_end   !< The end of the time covered by this call
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
     dummy, &  ! A dummy array that is not used again.
@@ -1760,7 +1760,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! after a restart. However this may cause answers to diverge
                               ! after a restart.Provide a switch to turn this option off.
   logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
-                              ! categories after initialiation.
+                              ! categories after initialization.
   logical :: Verona
   logical :: Concurrent
   logical :: read_aux_restart

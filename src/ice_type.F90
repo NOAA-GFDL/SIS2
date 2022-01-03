@@ -48,7 +48,7 @@ type ice_data_type !  ice_public_type
   logical  :: slow_ice_pe = .false. !< If true, this is a slow ice PE
   logical  :: fast_ice_pe = .false. !< If true, this is a fast ice PE
   logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
-                                    !! and domain decomposiion
+                                    !! and domain decomposition
   integer  :: xtype          !< An integer specifying the type for the exchange
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
@@ -81,7 +81,7 @@ type ice_data_type !  ice_public_type
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
                               !! each ice-thickness category [Kelvin].
     u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
-    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
+    v_surf      => NULL()     !< The northward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
     s_surf         =>NULL()   !< The ocean's surface salinity [gSalt kg-1].
 
@@ -115,7 +115,7 @@ type ice_data_type !  ice_public_type
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
+    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2 s-1].
 
   real, pointer, dimension(:,:) :: &
     area => NULL() , &    !< The area of ocean cells [m2].  Land cells have
@@ -176,7 +176,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                               !! ocean, ice, and atmosphere.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
-  ! registers the appopriate ones for inclusion in the restart file.
+  ! registers the appropriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
   call get_domain_extent(domain, isc, iec, jsc, jec )
@@ -268,7 +268,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
                                               !! tracer fluxes.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
-  ! registers the appopriate ones for inclusion in the restart file.
+  ! registers the appropriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
   call get_domain_extent(domain, isc, iec, jsc, jec )
@@ -434,7 +434,7 @@ end subroutine Ice_public_type_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Ice_public_type_bounds_check checks for unphysical values in a publicly
-!! visible ice data type, and writes out dianostics for any offending columns
+!! visible ice data type, and writes out diagnostics for any offending columns
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
   type(ice_data_type),     intent(in)    :: Ice !< The publicly visible ice data type.
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type

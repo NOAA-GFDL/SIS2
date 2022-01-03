@@ -1,7 +1,7 @@
 !> Routines that perform various error checking and debugging functions for SIS2
 module SIS_debugging
 
-! This file is a part of SIS2.  See LICENSE.md for the lisense file.
+! This file is a part of SIS2.  See LICENSE.md for the license file.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   This module contains subroutines that perform various error checking and   !
@@ -78,7 +78,7 @@ contains
 ! =====================================================================
 
 !> SIS_debugging_init initializes the SIS_debugging module, and sets
-!! the parameterts that control which checks are active for SIS2.
+!! the parameters that control which checks are active for SIS2.
 subroutine SIS_debugging_init(param_file)
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
 ! This include declares and sets the variable "version".

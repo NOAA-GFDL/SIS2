@@ -1204,7 +1204,7 @@ subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_
     I_htot, &  ! The inverse of htot or 0 [R-1 Z-1 ~> m2 kg-1].
     hl, hr     ! Left and right face thicknesses [R Z ~> kg m-2].
   real, dimension(SZI_(G)) :: &
-    vhtot      ! The total transports [R Z L2 s-1 ~> kg s-1].
+    vhtot      ! The total transports [R Z L2 T-1 ~> kg s-1].
   real :: CFL ! The CFL number based on the local velocity and grid spacing [nondim].
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
                  ! with the same units as h_in.
@@ -1323,7 +1323,7 @@ subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_
       enddo
     elseif (present(vh_tot)) then
       do i=ish,ieh
-        vh_tot(i,J) = vhtot(I)
+        vh_tot(i,J) = vhtot(i)
       enddo
     endif
 

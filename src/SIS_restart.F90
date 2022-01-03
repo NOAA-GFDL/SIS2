@@ -404,7 +404,7 @@ subroutine SIS_restart_init(CS, filename, domain, param_file)
   endif
   allocate(CS)
 
-  ! Determine whether all paramters are set to their default values.
+  ! Determine whether all parameters are set to their default values.
   call get_param(param_file, mdl, "PARALLEL_RESTARTFILES", CS%parallel_restartfiles, &
                  default=.false., do_not_log=.true.)
   call get_param(param_file, mdl, "MAX_FIELDS", CS%max_fields, default=100, do_not_log=.true.)

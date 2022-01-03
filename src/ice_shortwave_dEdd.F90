@@ -674,7 +674,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
 ! Basically, vertical profiles of the layer extinction optical depth (tau),
 ! single scattering albedo (w0) and asymmetry parameter (g) are required over
 ! the klev+1 layers, where klev+1 = 2 + nslyr + nilyr. All of the surface type
-! information and snow/ice iop properties are evaulated in this routine, so
+! information and snow/ice iop properties are evaluated in this routine, so
 ! the tau,w0,g profiles can be passed to solution_dEdd for multiple scattering
 ! evaluation. Snow, bare ice and ponded ice iops are contained in data arrays
 ! in this routine.
@@ -771,7 +771,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       real (kind=dbl_kind), dimension (nspint,nmbrad) :: &
          Qs_tab  , & ! extinction efficiency for each snow grain radius
          ws_tab  , & ! single scatter albedo for each snow grain radius
-         gs_tab      ! assymetry parameter   for each snow grain radius
+         gs_tab      ! asymmetry parameter   for each snow grain radius
       real (kind=dbl_kind) :: &
          delr    , & ! snow grain radius interpolation parameter
          rhoi    , & ! pure ice density [kg m-3]
@@ -1607,7 +1607,7 @@ end subroutine compute_dEdd0
 !=======================================================================
 !BOP
 !
-! !IROUTINE: solution_dEdd0 - evaluate solution for Delta-Edddington solar
+! !IROUTINE: solution_dEdd0 - evaluate solution for Delta-Eddington solar
 !
 ! !INTERFACE:
 
@@ -1696,7 +1696,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
 ! lowest interface (underlying ocean) up to the top of the column.
 !
 ! Note that layer diffuse reflectivity and transmissivity are computed
-! by integrating the direct over several gaussian angles. This is
+! by integrating the direct over several Gaussian angles. This is
 ! because the diffuse reflectivity expression sometimes is negative,
 ! but the direct reflectivity is always well-behaved. We assume isotropic
 ! radiation in the upward and downward hemispheres for this integration.
@@ -1717,7 +1717,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
 ! ocean from sea ice.
 !
 ! To handle refraction, we define a "fresnel" layer, which physically
-! is of neglible thickness and is non-absorbing, which can be combined to
+! is of negligible thickness and is non-absorbing, which can be combined to
 ! any sea ice layer or top of melt pond. The fresnel layer accounts for
 ! refraction of direct beam and associated reflection and transmission for
 ! solar radiation. A fresnel layer is combined with the top of a melt pond
@@ -1943,7 +1943,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
               trndif(k,ij) = trndif(k-1,ij)*refkm1*tdif_a(k-1,ij)
         endif       ! k > 0
 
-        ! compute next layer Delta-eddington solution only if total transmission
+        ! compute next layer Delta-Eddington solution only if total transmission
         ! of radiation to the interface just above the layer exceeds trmin.
           if (trntdr(k,ij) > trmin ) then
 
@@ -2127,7 +2127,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
         trndif(k,ij) = trndif(k-1,ij)*refkm1*tdif_a(k-1,ij)
 
       ! compute reflectivity to direct and diffuse radiation for layers
-      ! below by adding succesive layers starting from the underlying
+      ! below by adding successive layers starting from the underlying
       ! ocean and working upwards:
       !
       !              layers       interface

@@ -1,4 +1,4 @@
-!> Handles the main updates of the ice states at the slower time-scales of the couplng or
+!> Handles the main updates of the ice states at the slower time-scales of the coupling or
 !! the interactions with the ocean due to ice dynamics and lateral transport.
 module SIS_dyn_trans
 
@@ -12,7 +12,7 @@ module SIS_dyn_trans
 ! with the Modular Ocean Model, version 6 (MOM6), and to permit might tighter  !
 ! dynamical coupling between the ocean and sea-ice.                            !
 !   This module handles the main updates of the ice states at the slower time- !
-! scales of the couplng or the interactions with the ocean due to ice dynamics !
+! scales of the coupling or the interactions with the ocean due to ice dynamics !
 ! and lateral transport.                                                       !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
@@ -97,7 +97,7 @@ type dyn_trans_CS ; private
                           !! current air-ice stress.  This option is here for
                           !! backward compatibility, but should be avoided.
   logical :: Warsaw_sum_order !< If true, use the order of sums in the Warsaw version
-                          !! of SIS2.  This option exists for backward compatibilty
+                          !! of SIS2.  This option exists for backward compatibility
                           !! but may eventually be obsoleted.
   real :: complete_ice_cover !< The fractional ice coverage that is close enough to 1 to be
                           !! complete for the purpose of calculating wind stresses [nondim].
@@ -123,7 +123,7 @@ type dyn_trans_CS ; private
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    !! timing of diagnostic output.
   logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
-  logical :: itd_landfast !< If true, use the probabilistic landfast ice parameterization.
+  logical :: itd_landfast     !< If true, use the probabilistic landfast ice parameterization.
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1
@@ -345,17 +345,17 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
     str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
-    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [R Z L T-2 ~> Pa].
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categories on C-grid u-points [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
     str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G))  :: &
-    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [R Z L T-2 ~> Pa].
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categories on C-grid v-points [R Z L T-2 ~> Pa].
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
-  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
 
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
@@ -927,18 +927,18 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
     str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
-    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [R Z L T-2 ~> Pa].
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categories on C-grid u-points [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
     str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G))  :: &
-    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [R Z L T-2 ~> Pa].
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categories on C-grid v-points [R Z L T-2 ~> Pa].
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
 
-  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
   real :: wt_new, wt_prev ! Weights in an average.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
@@ -1163,17 +1163,17 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
     str_y_ice_ocn_B     ! Meridional ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
   real, dimension(SZIB_(G),SZJ_(G))  :: &
-    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categores on C-grid u-points [R Z L T-2 ~> Pa].
+    WindStr_x_Cu, &   ! Zonal wind stress averaged over the ice categories on C-grid u-points [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu, & ! Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
     str_x_ice_ocn_Cu   ! Zonal ice-ocean stress on C-grid u-points [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G))  :: &
-    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categores on C-grid v-points [R Z L T-2 ~> Pa].
+    WindStr_y_Cv, &   ! Meridional wind stress averaged over the ice categories on C-grid v-points [R Z L T-2 ~> Pa].
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
   real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
-  real :: ps_vel   ! The fractional thickness catetory coverage at a velocity point.
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
@@ -1428,7 +1428,7 @@ subroutine stresses_to_stress_mag(G, str_x, str_y, stagger, stress_mag)
                                                   !! two wind stress components. Valid entries include AGRID,
                                                   !! BGRID_NE, and CGRID_NE, following the Arakawa
                                                   !! grid-staggering  notation.  BGRID_SW and CGRID_SW are
-                                                  !! possibilties that have not been implemented yet.
+                                                  !! possibilities that have not been implemented yet.
   real, dimension(SZI_(G),SZJ_(G)), &
                              intent(inout) :: stress_mag !< The magnitude of the stress at tracer points
                                                   !! in the same units as str_x and str_y [R Z L T-2 ~> Pa].
@@ -1895,11 +1895,11 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
                         !! thickness categories [nondim], between 0 & 1.
     ice_free            !< The fractional open water [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJ_(G)), intent(out)  :: &
-    WindStr_x_Cu, &     !< Zonal wind stress averaged over the ice categores on C-grid u-points
+    WindStr_x_Cu, &     !< Zonal wind stress averaged over the ice categories on C-grid u-points
                         !! [R Z L T-2 ~> Pa].
     WindStr_x_ocn_Cu    !< Zonal wind stress on the ice-free ocean on C-grid u-points [R Z L T-2 ~> Pa].
   real, dimension(SZI_(G),SZJB_(G)), intent(out)  :: &
-    WindStr_y_Cv, &     !< Meridional wind stress averaged over the ice categores on C-grid v-points
+    WindStr_y_Cv, &     !< Meridional wind stress averaged over the ice categories on C-grid v-points
                         !! [R Z L T-2 ~> Pa].
     WindStr_y_ocn_Cv    !< Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
   type(unit_scale_type),             intent(in)   :: US    !< A structure with unit conversion factors
@@ -2331,7 +2331,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   CS%write_ice_stats_time = Time_Init + CS%ice_stats_interval * &
       (1 + (Time - Time_init) / CS%ice_stats_interval)
 
-  ! Stress dagnostics that are specific to the C-grid or B-grid dynamics of the ice model
+  ! Stress diagnostics that are specific to the C-grid or B-grid dynamics of the ice model
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
                'Air stress on ice on C-grid - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
@@ -2449,7 +2449,7 @@ end function SIS_dyn_trans_sum_output_CS
 !! and calls similar routines for subsidiary modules.
 subroutine SIS_dyn_trans_end(CS)
   type(dyn_trans_CS), pointer :: CS  !< The control structure for the SIS_dyn_trans module that
-                                     !! is dellocated here
+                                     !! is deallocated here
 
   if (associated(CS%DS2d)) then
     if (allocated(CS%DS2d%mi_sum)) deallocate(CS%DS2d%mi_sum)

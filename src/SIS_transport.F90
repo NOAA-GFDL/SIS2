@@ -559,7 +559,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                            intent(inout) :: part_sz !< The fractional ice concentration
                                                 !! within a cell in each thickness
-                                                !! camcategory [nondim], 0-1.
+                                                !! category [nondim], 0-1.
   type(SIS_tracer_registry_type), &
                            pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),  pointer       :: CS  !< A pointer to the control structure for this module
@@ -579,7 +579,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     mca_ice, mca_snow, mca_pond, &
     ! Initial ice, snow and pond masses per unit cell area [R Z ~> kg m-2].
     mca0_ice, mca0_snow, mca0_pond, &
-    ! Cross-catagory transfers of ice, snow and pond mass [R Z ~> kg m-2].
+    ! Cross-category transfers of ice, snow and pond mass [R Z ~> kg m-2].
     trans_ice, trans_snow, trans_pond
   real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
   logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
