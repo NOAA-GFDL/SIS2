@@ -122,6 +122,8 @@ type, public :: SIS_C_dyn_CS ; private
   real :: basal_stress_min_thick !< min ice thickness for grounding [Z ~> m]
   real :: basal_stress_max_depth !< max water depth for grounding [Z ~> m]
   real :: basal_stress_mu_s   !< bottom drag parameter [L Z-1 ~> nondim]
+  real :: bathy_roughness_min !< minimum bathymetric roughness [z ~> m]
+  real :: bathy_roughness_max !< maximum bathymetric roughness [z ~> m]
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
@@ -345,7 +347,13 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
     filename = trim(inputdir) // "/" // trim(h2_file)
     allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed), source=0.0)
     call MOM_read_data(filename, 'h2', CS%sigma_b, G%domain, scale=US%m_to_Z**2)
-    CS%sigma_b(:,:) = max(sqrt(CS%sigma_b(:,:)), 0.001*US%m_to_Z) ! Limit it to 1 mm min roughhness
+    call get_param(param_file, mdl, "BATHY_ROUGHNESS_MIN", CS%bathy_roughness_min, &
+                   "Minimum bathymetric roughness.", &
+                   units="m", default=2.5, scale=US%m_to_Z)
+    call get_param(param_file, mdl, "BATHY_ROUGHNESS_MAX", CS%bathy_roughness_max, &
+                   "Maximum bathymetric roughness.", &
+                   units="m", default=2.5, scale=US%m_to_Z)
+    CS%sigma_b(:,:) = min(max(sqrt(CS%sigma_b(:,:)), CS%bathy_roughness_min), CS%bathy_roughness_max)
     call pass_var(CS%sigma_b, G%Domain)
   endif
 
