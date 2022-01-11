@@ -18,7 +18,7 @@ public :: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 public :: get_SIS2_thermo_coefs, ice_thermo_init, ice_thermo_end
 public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
-public :: e_to_melt_TS, energy_melt_enthS, latent_sublimation
+public :: e_to_melt_TS, energy_melt_enthS, energy_0degC, latent_sublimation
 
 !> This type contains the parameters regulating sea-ice thermodyanmics
 type, public :: ice_thermo_type ; private
@@ -2137,6 +2137,20 @@ function energy_melt_enthS(En, S, ITV) result(e_to_melt)
   e_to_melt = ITV%Q_to_J_kg * (enthalpy_liquid_freeze(S, ITV) - En)
 
 end function energy_melt_enthS
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
+!> energy_0degC returns the energy needed to melt a given snow/ice
+!!      configuration and raise it to 0 degrees C [J kg-1].
+function energy_0degC(En, ITV) result(energy_0)
+  real, intent(in) :: En !< The ice enthalpy, in enthalpy units [Q ~> J kg-1]
+  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
+
+  real :: energy_0  !< The energy required to melt this mixture of ice and brine
+                    !! and warm it to 0 degrees C [J kg-1].
+
+  energy_0 = ITV%Q_to_J_kg * (ITV%enth_liq_0 - En)
+
+end function energy_0degC
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> get_SIS2_thermo_coefs returns various thermodynamic coefficients, rescaling the units

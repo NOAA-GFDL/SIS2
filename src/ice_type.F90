@@ -20,8 +20,7 @@ use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
-use SIS2_ice_thm,      only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, temp_from_En_S
+use SIS2_ice_thm,      only : ice_thermo_type, energy_0degC, get_SIS2_thermo_coefs
 use iso_fortran_env,   only : int64
 
 implicit none ; private
@@ -535,7 +534,9 @@ subroutine ice_stock_pe(Ice, index, value)
   type(ice_state_type), pointer :: IST => NULL()
   real :: icebergs_value
   real :: LI  ! Latent heat of fusion [Q ~> J kg-1]
-  real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  real :: part_area ! The area of an ice thickness partition in a cell [m2]
+  real :: kg_H    ! A conversion factor from the ice thickness units to kg m-2 [kg m-2 H-1 ~> 1]
+  real :: kg_H_Nk ! The ice thickness unit conversion factor divided by the number of ice layers [kg m-2 H-1 ~> 1]
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
                          ! with effectively zero heat capacity of ice and snow.
@@ -547,11 +548,11 @@ subroutine ice_stock_pe(Ice, index, value)
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST
     G => Ice%sCS%G
-    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
+    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce
   elseif (associated(Ice%fCS)) then
     IST => Ice%fCS%IST
     G => Ice%fCS%G
-    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
+    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
                    "without either sCS or fCS associated.")
@@ -560,20 +561,20 @@ subroutine ice_stock_pe(Ice, index, value)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
+  kg_H = G%US%RZ_to_kg_m2 ; kg_H_Nk = G%US%RZ_to_kg_m2 / NkIce
   call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice)
+
+  value = 0.0
 
   select case (index)
 
     case (ISTOCK_WATER)
-      value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))) * &
                IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
-      value = 0.0
       if (slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
@@ -581,31 +582,30 @@ subroutine ice_stock_pe(Ice, index, value)
                               (kg_H * IST%mH_ice(i,j,k)) * LI*G%US%Q_to_J_kg
           endif
         enddo ; enddo ; enddo
-      else !### Should this be changed to raise the temperature to 0 degC?
+      else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
-          if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
-            value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
-                Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
+          part_area = (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          if (part_area*IST%mH_ice(i,j,k) > 0.0) then
+            value = value - (part_area * kg_H * IST%mH_snow(i,j,k)) * &
+                  Energy_0degC(IST%enth_snow(i,j,k,1), IST%ITV)
+            ! The pond contribution here is 0 because ponds are assumed be at 0 degC already.
+            ! Otherwise add something like:
+            ! value = value - (part_area * kg_H * IST%mH_pond(i,j,k)) * &
+            !     Energy_0degC(enthalpy_liquid(IST%Temperature_pond(i,j,k), 0.0, IST%ITV), IST%ITV)
             do m=1,NkIce
-              value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
-                  Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
+              value = value - (part_area * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
+                  Energy_0degC(IST%enth_ice(i,j,k,m), IST%ITV)
             enddo
           endif
         enddo ; enddo ; enddo
       endif
 
     case (ISTOCK_SALT)
-      !There is no salt in the snow.
-      value = 0.0
+      !There is no salt in the snow or in the ponds.
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
-
-    case default
-
-      value = 0.0
 
   end select
 
