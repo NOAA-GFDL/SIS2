@@ -6,7 +6,7 @@ module ice_boundary_types
 ! ice_exchange_types contains the types that are used for exchanging information
 !   with the atmosphere, land and ocean components via the FMS coupler.  These
 !   types should be altered only in close coordination with the entire FMS
-!   develoment effort.
+!   development effort.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 use MOM_error_handler, only : stdout, is_root_pe
@@ -40,7 +40,7 @@ type ocean_ice_boundary_type
   real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
-                         !! REGRID, REDIST or DIRECT and isused by coupler
+                         !! REGRID, REDIST or DIRECT and is used by coupler
   type(coupler_2d_bc_type) :: fields !< An array of fields used for additional tracers
 end type ocean_ice_boundary_type
 
@@ -86,13 +86,13 @@ type atmos_ice_boundary_type
                          !! with the surface temperature [kg m-2 s-1 degC-1].
     drdt    => NULL(), & !< The derivative of the net UPWARD longwave radiative
                          !! heat flux (-lw_flux) with surface temperature [W m-2 degC-1].
-    coszen  => NULL(), & !< The cosine of the solar zenith angle averged over the
+    coszen  => NULL(), & !< The cosine of the solar zenith angle averaged over the
                          !! next radiation timestep (not the one that was used to
                          !! calculate the sw_flux fields), nondim and <=1.
     p       => NULL()    !< The atmospheric surface pressure [Pa], often ~1e5 Pa.
 !    data    => NULL() ! This can probably be removed.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
-                         !! REGRID, REDIST or DIRECT and isused by coupler
+                         !! REGRID, REDIST or DIRECT and is used by coupler
   type(coupler_3d_bc_type)  :: fluxes !< An array of fluxes used for additional tracers
 end type atmos_ice_boundary_type
 
@@ -111,7 +111,7 @@ type land_ice_boundary_type
                          !! at 0 degC [W m-2].
   real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
-                         !! REGRID, REDIST or DIRECT and isused by coupler
+                         !! REGRID, REDIST or DIRECT and is used by coupler
 end type land_ice_boundary_type
 
 contains

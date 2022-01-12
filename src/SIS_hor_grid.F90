@@ -57,8 +57,8 @@ type, public :: SIS_hor_grid_type
   integer :: JsgB !< The start j-index of cell vertices within the global domain
   integer :: JegB !< The end j-index of cell vertices within the global domain
 
-  integer :: isd_global !< The value of isd in the global index space (decompoistion invariant).
-  integer :: jsd_global !< The value of isd in the global index space (decompoistion invariant).
+  integer :: isd_global !< The value of isd in the global index space (decomposition invariant).
+  integer :: jsd_global !< The value of isd in the global index space (decomposition invariant).
   integer :: idg_offset !< The offset between the corresponding global and local i-indices.
   integer :: jdg_offset !< The offset between the corresponding global and local j-indices.
   logical :: symmetric  !< True if symmetric memory is used.
@@ -417,7 +417,7 @@ end function isPointInCell
 !> Specify which direction to work on first in directionally split algorithms.
 subroutine set_first_direction(G, y_first)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  integer, intent(in) :: y_first !< A flag indicating which diretion to work on first
+  integer, intent(in) :: y_first !< A flag indicating which direction to work on first
                                  !! in split algorithms. Even for x, odd for y.
 
   G%first_direction = y_first

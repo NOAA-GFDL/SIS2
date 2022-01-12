@@ -101,10 +101,10 @@ subroutine slab_ice_dynamics(ui, vi, uo, vo, fxat, fyat, fxoc, fyoc)
   real, dimension(:,:), intent(inout) :: vi    !< Meridional ice velocity [L T-1 ~> m s-1]
   real, dimension(:,:), intent(in   ) :: uo    !< Zonal ocean velocity [L T-1 ~> m s-1]
   real, dimension(:,:), intent(in   ) :: vo    !< Meridional ocean velocity [L T-1 ~> m s-1]
-  real, dimension(:,:), intent(in   ) :: fxat  !< Zonal air stress on ice [kg m-2 L T-2 ~> Pa]
-  real, dimension(:,:), intent(in   ) :: fyat  !< Meridional air stress on ice [kg m-2 L T-2 ~> Pa]
-  real, dimension(:,:), intent(  out) :: fxoc  !< Zonal ice stress on ocean [kg m-2 L T-2 ~> Pa]
-  real, dimension(:,:), intent(  out) :: fyoc  !< Meridional ice stress on ocean [kg m-2 L T-2 ~> Pa]
+  real, dimension(:,:), intent(in   ) :: fxat  !< Zonal air stress on ice [R Z L T-2 ~> Pa]
+  real, dimension(:,:), intent(in   ) :: fyat  !< Meridional air stress on ice [R Z L T-2 ~> Pa]
+  real, dimension(:,:), intent(  out) :: fxoc  !< Zonal ice stress on ocean [R Z L T-2 ~> Pa]
+  real, dimension(:,:), intent(  out) :: fyoc  !< Meridional ice stress on ocean [R Z L T-2 ~> Pa]
 
   ui(:,:) = uo(:,:) ; vi(:,:) = vo(:,:)
   fxoc(:,:) = fxat(:,:) ; fyoc(:,:) = fyat(:,:)

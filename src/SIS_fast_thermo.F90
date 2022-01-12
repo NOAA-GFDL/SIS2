@@ -94,9 +94,9 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   type(SIS_hor_grid_type),       intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),           intent(in)    :: IG  !< The sea-ice specific grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice [R L Z T-2 ~> Pa].
+    intent(in) :: flux_u   !< The grid-wise quasi-zonal wind stress on the ice [R Z L T-2 ~> Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
-    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [R L Z T-2 ~> Pa].
+    intent(in) :: flux_v   !< The grid-wise quasi-meridional wind stress on the ice [R Z L T-2 ~> Pa].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: flux_sh  !< The upward sensible heat flux from the top of the ice into
                            !! the atmosphere [Q R Z T-1 ~> W m-2].
@@ -430,7 +430,7 @@ subroutine find_excess_fluxes(FIA, TSF, XSF, part_size, G, US, IG)
   ! already being taken into account.
 
   ! This could be done more succinctly by initializing XSF = -TSF, but the
-  ! answers would then be more accutely impacted by roundoff.
+  ! answers would then be more acutely impacted by roundoff.
   XSF%flux_sh(:,:) = 0.0 ; XSF%flux_lw(:,:) = 0.0 ; XSF%flux_lh(:,:) = 0.0
   XSF%flux_sw(:,:,:) = 0.0
   XSF%evap(:,:) = 0.0 ; XSF%fprec(:,:) = 0.0 ; XSF%lprec(:,:) = 0.0
@@ -512,7 +512,7 @@ subroutine infill_array(IST, ta_ocn, ta, G, IG)
         mH_thin(i) = IST%mH_ice(i,j,k)
       endif ; enddo ; enddo
 
-      ! The logic for the k=1 (thinest) category is particularly simple.
+      ! The logic for the k=1 (thinnest) category is particularly simple.
       do i=isc,iec ; if (IST%part_size(i,j,1) <= 0.0) then
         ta(i,j,1) = G%mask2dT(i,j)*ta_ocn(i,j)
       endif ; enddo
@@ -586,8 +586,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     flux_lh, &  ! The upward latent heat flux associated with sublimation or
                 ! evaporation [Q R Z T-1 ~> W m-2].
     flux_lw, &  ! The net downward longwave heat flux into the ice [Q R Z T-1 ~> W m-2].
-    flux_u, &   ! The grid-aligned quasi-zonal wind stress on the ice [R L Z T-2 ~> Pa].
-    flux_v, &   ! The grid-aligned quasi-meridional wind stress on the ice [R L Z T-2 ~> Pa].
+    flux_u, &   ! The grid-aligned quasi-zonal wind stress on the ice [R Z L T-2 ~> Pa].
+    flux_v, &   ! The grid-aligned quasi-meridional wind stress on the ice [R Z L T-2 ~> Pa].
     lprec, &    ! The liquid precipitation onto the ice [R Z T-1 ~> kg m-2 s-1].
     fprec, &    ! The frozen precipitation onto the ice [R Z T-1 ~> kg m-2 s-1].
     sh_T0, &    ! The upward sensible heat flux from the top of the ice into
@@ -738,7 +738,7 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
 
       dhf_dt = (dshdt(i,j,k) + devapdt(i,j,k)*latent) - dlwdt(i,j,k)
       if (CS%Reorder_0C_heatflux) then
-        ! This form seperately projects each contribution to the surface heat
+        ! This form separately projects each contribution to the surface heat
         ! flux back to its value when T=0, so that a bitwise identical result
         ! can be obtained if the heating is redone.  The two forms are
         ! mathematically equivalent.
@@ -887,7 +887,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real    :: flux_sw_prev  ! The previous value of flux_sw_top [Q R Z T-1 ~> W m-2].
   real    :: rescale    ! A rescaling factor between 0 and 1 [nondim].
   real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays [Q R Z ~> J m-2].
-  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 ~> W m-2 degC-1].
+  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
   real    :: Tskin_prev ! The previous value of Tskin [degC]
   real    :: T_bright   ! A skin temperature below which the snow and ice attain
                         ! their greatest brightness and albedo no longer varies [degC].

@@ -81,7 +81,7 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   nfsd=0 ! The number of floe size distribution layers
   n_iso=0 ! The number of isotopes in use
   n_aero=0 ! The number of aerosols in use
-  nt_Tsfc=1 ! Tracer index for ice/snow surface temperatore
+  nt_Tsfc=1 ! Tracer index for ice/snow surface temperature
   nt_qice=2 ! Starting index for ice enthalpy in layers
   nt_qsno=2+nilyr ! Starting index for snow enthalpy
   nt_sice=2+nilyr+nslyr ! Index for ice salinity

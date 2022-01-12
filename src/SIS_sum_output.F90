@@ -53,11 +53,11 @@ type, public :: SIS_sum_out_CS ; private
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2]
     ! These three arrays are only allocated and used for monitoring column-wise conservation.
-    water_cell_prev, &          !< The cell integrated water that was in the ice and snow the last
+    water_col_prev, &           !< The column integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg].
-    heat_cell_prev, &           !< The cell integrated heat that was in the ice and snow the last
+    heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [J].
-    salt_cell_prev              !< The cell integrated salt that was in the ice and snow the last
+    salt_col_prev               !< The column integrated salt that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kgSalt].
 
   type(EFP_type) :: heat_prev_EFP !<   The total amount of heat in the sea ice the last
@@ -66,7 +66,7 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called [kgSalt], in EFP form.
   type(EFP_type) :: mass_prev_EFP !<   The total sea ice mass the last time that
                                 !! write_ice_statistics was called [kg], in EFP form.
-  real    :: dt                 !< The dynamics time step [T ~> s].
+  real    :: dt                 !< The ice dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90

@@ -1,4 +1,4 @@
-!> Convenient wrappers to the FMS diag_manager interfaces with additional diagnostic capabilies.
+!> Convenient wrappers to the FMS diag_manager interfaces with additional diagnostic capabilities.
 module SIS_diag_mediator
 
 ! This file is a part of SIS2. See LICENSE.md for the license.
@@ -106,7 +106,7 @@ type, public :: SIS_diag_ctrl
   type(diag_type), dimension(:), allocatable :: diags !< The array of diagnostics
   integer :: next_free_diag_id !< The next unused diagnostic ID
 
-  !> default missing value to be sent to ALL diagnostics registerations
+  !> default missing value to be sent to ALL diagnostics registrations
   real :: missing_value = -1.0e34
 
 end type SIS_diag_ctrl
@@ -152,7 +152,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   G%x_axis_units = "degrees_E"
   G%y_axis_units = "degrees_N"
   if (index(lowercase(trim(grid_config)),"cartesian") > 0) then
-    ! This is a cartesian grid, and may have different axis units.
+    ! This is a Cartesian grid, and may have different axis units.
     Cartesian_grid = .true.
     call get_param(param_file, mdl, "AXIS_UNITS", units_temp, &
                  "The units for the x- and y- axis labels.  AXIS_UNITS "//&
@@ -240,7 +240,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 
 end subroutine set_SIS_axes_info
 
-!> Define an a group of axes from a list of handles
+!> Define a group of axes from a list of handles
 subroutine defineAxes(diag_cs, handles, axes)
   ! Defines "axes" from list of handle and associates mask
   type(SIS_diag_ctrl), target, intent(in)  :: diag_cs !< A structure that is used to regulate diagnostic output
@@ -773,7 +773,7 @@ subroutine SIS_diag_mediator_init(G, IG, param_file, diag_cs, component, err_msg
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
   type(param_file_type),      intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl),        intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
-  character(len=*), optional, intent(in)    :: component !< An opitonal component name
+  character(len=*), optional, intent(in)    :: component !< An optional component name
   character(len=*), optional, intent(out)   :: err_msg !< A string for a returned error message
   character(len=*), optional, intent(in)    :: doc_file_dir !< A directory in which to create the file
 
