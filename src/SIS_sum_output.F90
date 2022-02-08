@@ -48,19 +48,16 @@ type, public :: SIS_sum_out_CS ; private
   real, dimension(:,:), allocatable :: &
     water_in_col, &             !< The water that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [R Z ~> kg m-2]
-                                !! or its area integral in mks units [kg]
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [Q R Z ~> J m-2].
-                                !! or its area integral in mks units [J]
+                                !! the last time that write_ice_statistics was called [Q R Z ~> J m-2]
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2].
-                                !! or its area integral in mks units [kgSalt]
+                                !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2]
     ! These three arrays are only allocated and used for monitoring column-wise conservation.
-    water_col_prev, &           !< The column integrated water that was in the ice and snow the last
+    water_cell_prev, &          !< The cell integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg].
-    heat_col_prev, &            !< The column integrated heat that was in the ice and snow the last
+    heat_cell_prev, &           !< The cell integrated heat that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [J].
-    salt_col_prev               !< The column integrated salt that was in the ice and snow the last
+    salt_cell_prev              !< The cell integrated salt that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kgSalt].
 
   type(EFP_type) :: heat_prev_EFP !<   The total amount of heat in the sea ice the last
@@ -69,7 +66,7 @@ type, public :: SIS_sum_out_CS ; private
                                 !! time that write_ice_statistics was called [gSalt], in EFP form.
   type(EFP_type) :: mass_prev_EFP !<   The total sea ice mass the last time that
                                 !! write_ice_statistics was called [kg], in EFP form.
-  real    :: dt                 !< The dynamics time step [T ~> s].
+  real    :: dt                 !< The ice dynamics time step [T ~> s].
   real    :: timeunit           !<   The length of the units for the time axis [s].
   type(time_type) :: Start_time !< The start time of the simulation.
                                 !< Start_time is set in SIS_initialization.F90
@@ -248,9 +245,12 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: heat_imb     ! The column integrated heat imbalance [J].
   real :: mass_imb     ! The column integrated mass imbalance [kg].
   real :: enth_liq_0   ! The enthalpy of liquid water at the freezing point [Q ~> J kg-1].
-  real :: kg_H_nlay    ! A mass unit conversion factor divided by the number of layers [kg m-2 R-1 Z-1 ~> 1]
-  real :: area_pt      ! The area of a thickness category in a cell [m2].
-  real :: area_h       ! The masked area of a column [m2].
+  real :: I_nlay       ! The inverse of the number of layers [nondim]
+  real :: mass_scale   ! A mass unit conversion factor for area-integrated mass [kg R-1 Z-1 L-2 ~> 1]
+  real :: heat_scale   ! A mass unit conversion factor for area-integrated heat [J Q-1 R-1 Z-1 L-2 ~> 1]
+  real :: area_scale   ! A mass unit conversion factor for cell area [m2 L-2 ~> 1]
+  real :: area_pt      ! The area of a thickness category in a cell [L2 ~> m2].
+  real :: area_h       ! The masked area of a column [L2 ~> m2].
   type(EFP_type) :: &
     fresh_water_in_EFP, & ! The total mass of fresh water added by surface fluxes
                        ! since the last time that write_ice_statistics was called [kg],
@@ -540,7 +540,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     mass_chg = EFP_to_real(mass_chg_EFP) ; mass_anom = EFP_to_real(mass_anom_EFP)
 
     ! net_salt_input needs to be accounted for if mass includes salt.
-    ! mass_anom = mass_anom - 0.001*EFP_to_real(CS%net_salt_in_EFP)
+    ! mass_anom = mass_anom - EFP_to_real(net_salt_in_EFP)
   endif
 
   I_Mass = 0.0 ; if (Mass > 0.0) I_Mass = 1.0/Mass

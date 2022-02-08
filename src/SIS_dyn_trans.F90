@@ -58,8 +58,7 @@ use SIS_transport,     only : ice_cat_transport, finish_ice_transport
 use SIS_types,         only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check
 use SIS_utils,         only : get_avg, post_avg, ice_line !, ice_grid_chksum
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
-use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
 use slab_ice,          only : slab_ice_advect, slab_ice_dynamics
 use ice_bergs,         only : icebergs, icebergs_run, icebergs_init, icebergs_end
 use ice_grid,          only : ice_grid_type

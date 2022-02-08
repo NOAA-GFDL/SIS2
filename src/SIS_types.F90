@@ -26,7 +26,7 @@ use SIS_framework,     only : coupler_type_redistribute_data, coupler_type_copy_
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS2_ice_thm,      only : ice_thermo_type, SIS2_ice_thm_CS, get_SIS2_thermo_coefs
-use SIS2_ice_thm,      only : enth_from_TS, energy_melt_EnthS, temp_from_En_S
+use SIS2_ice_thm,      only : enth_from_TS, temp_from_En_S
 
 implicit none ; private
 

@@ -36,8 +36,7 @@ use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check, ice_rad_type
 use SIS_types,         only : fast_ice_avg_type, simple_OSS_type, total_sfc_flux_type, FIA_chksum
 use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,      only : ice_temp_SIS2, latent_sublimation
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S
+use SIS2_ice_thm,      only : ice_temp_SIS2, latent_sublimation, get_SIS2_thermo_coefs
 
 implicit none ; private
 

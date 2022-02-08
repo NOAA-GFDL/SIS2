@@ -112,8 +112,7 @@ use SIS_types,         only : redistribute_IST_to_IST, redistribute_FIA_to_FIA
 use SIS_types,         only : redistribute_sOSS_to_sOSS, FIA_chksum, IOF_chksum, translate_OSS_to_sOSS
 use SIS_utils,         only : post_avg, ice_grid_chksum
 use SIS2_ice_thm,      only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
-use SIS2_ice_thm,      only : ice_thermo_init, ice_thermo_end, get_SIS2_thermo_coefs
-use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
+use SIS2_ice_thm,      only : ice_thermo_init, ice_thermo_end, T_freeze, ice_thermo_type
 use specified_ice,     only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
 use specified_ice,     only : specified_ice_end, specified_ice_sum_output_CS
 
