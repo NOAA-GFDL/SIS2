@@ -225,7 +225,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
   integer :: nL_ice, nL_snow ! number of tracer levels
   integer :: ncat_out, ntrcr_out, nilyr_out, nslyr_out ! array sizes returned from Icepack query
-  character(len=256) :: mesg
+  character(len=1256) :: mesg
 
   nSlyr = IG%NkSnow
   nIlyr = IG%NkIce
@@ -427,13 +427,22 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         IST%mH_pond(i,j,k) = tr_tmp(k)
         mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
       enddo
-!     if (any(vicen < 0)) then
+      if (any(vicen < 0)) then
 !       print *, "Negative ice volume after ridging: ", i+G%idg_offset, j+G%jdg_offset, vicen
 !       print *, "Before ridging: ", mca_ice(i,j,1:nCat) /Rho_ice
-!       print *, "Negative ice volume after ridging: ", IST%part_size(i,j,1:nCat), aicen
-!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
+!       print *, "Ice concentration before/after ridging: ", IST%part_size(i,j,1:nCat), aicen
+        do k=1,nCat
+          if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
+            write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
+                          i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
+            call SIS_error(WARNING, mesg, all_print=.true.)
+          endif
+          vicen(k) = max(vicen(k),0.0)
+        enddo
+!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
+!                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
 !       call SIS_error(WARNING, mesg, all_print=.true.)
-!     endif
+      endif
 
       if (TrReg%ntr>0) then
         ! unload tracer array reversing order of load -- stack-like fashion
