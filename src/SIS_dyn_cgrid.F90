@@ -127,6 +127,8 @@ type, public :: SIS_C_dyn_CS ; private
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
+  integer :: ncat_b           ! number of bathymetry categories
+  integer :: ncat_i           ! number of ice thickness categories (log-normal)
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
@@ -355,6 +357,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                    units="m", default=2.5, scale=US%m_to_Z)
     CS%sigma_b(:,:) = min(max(sqrt(CS%sigma_b(:,:)), CS%bathy_roughness_min), CS%bathy_roughness_max)
     call pass_var(CS%sigma_b, G%Domain)
+    call get_param(param_file, mdl, "BASAL_STRESS_NCAT_B", CS%ncat_b, &
+                   "Number of bathymetric depth categories in landfast ice computation.", &
+                   default=100)
+    call get_param(param_file, mdl, "BASAL_STRESS_NCAT_I", CS%ncat_i, &
+                   "Number of ice thickness categories in landfast ice computation.", &
+                   default=100)
   endif
 
 !  if (len_trim(dirs%output_directory) > 0) then
@@ -1811,24 +1819,20 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   real, dimension(SZI_(G),SZJ_(G)),   intent(in)  :: sea_lev !< Sea level [Z ~> m]
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
-  integer, parameter :: &
-           ncat_b = 100, &  ! number of bathymetry categories
-           ncat_i = 100     ! number of ice thickness categories (log-normal)
-
-  real, dimension(ncat_i) :: & ! log-normal for ice thickness
+  real, dimension(CS%ncat_i) :: & ! log-normal for ice thickness
            x_k, & ! center of thickness categories (m)
            g_k, & ! probability density function (thickness, 1/m)
            P_x    ! probability for each thickness category
 
-  real, dimension(ncat_b) :: & ! normal dist for bathymetry
+  real, dimension(CS%ncat_b) :: & ! normal dist for bathymetry
            y_n, & ! center of bathymetry categories (m)
            b_n, & ! probability density function (bathymetry, 1/m)
            P_y    ! probability for each bathymetry category
 
-  integer, dimension(ncat_b) :: tmp
+  integer, dimension(CS%ncat_b) :: tmp
   real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
 
-  logical, dimension (ncat_b) :: gt    ! result of comparison between x_k and y_n
+  logical, dimension (CS%ncat_b) :: gt    ! result of comparison between x_k and y_n
 
   real, dimension(IG%CatIce) :: vcat   ! category limits (m)
   real, dimension(IG%CatIce) :: acat   ! category limits (m)
@@ -1842,7 +1846,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   real :: m_i       ! (m)
   real :: v_i       ! (m2)
 
-  real, dimension(ncat_i):: tb_tmp
+  real, dimension(CS%ncat_i):: tb_tmp
   real, dimension (SZI_(G),SZJ_(G)):: Tbt ! seabed stress factor at t point [R Z L T-2 -> kg m-1 s-2]
   real :: atot       ! [nondim]
   real :: x_kmax     ! thickest ice? [m]
@@ -1890,12 +1894,12 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
           sea_lev(i,j) < CS%basal_stress_max_depth) then
 
         mu_b = G%bathyT(i,j) + sea_lev(i,j)         ! (hwater) mean of PDF (normal dist) bathymetry
-        wid_i = CS%basal_stress_max_depth/ncat_i    ! width of ice categories
-        wid_b = 6.0*CS%sigma_b(i,j)/ncat_b          ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
+        wid_i = CS%basal_stress_max_depth/CS%ncat_i    ! width of ice categories
+        wid_b = 6.0*CS%sigma_b(i,j)/CS%ncat_b          ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
 
-        x_k(:) = (/( wid_i*( real(ii) - 0.5 ), ii=1, ncat_i )/)
-        y_n(:) = (/( ( mu_b - 3.0*CS%sigma_b(i,j) ) + (real(ii) - 0.5) * (6.0*CS%sigma_b(i,j)/ncat_b), &
-                         ii=1, ncat_b )/)
+        x_k(:) = (/( wid_i*( real(ii) - 0.5 ), ii=1, CS%ncat_i )/)
+        y_n(:) = (/( ( mu_b - 3.0*CS%sigma_b(i,j) ) + (real(ii) - 0.5) * (6.0*CS%sigma_b(i,j)/CS%ncat_b), &
+                         ii=1, CS%ncat_b )/)
 
         v_i=0.0
         do n =1, ncat
@@ -1914,7 +1918,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
 
         ! Set x_kmax to hlev of the last category where there is ice
         ! when there is no ice in the last category
-        cut = x_k(ncat_i)
+        cut = x_k(CS%ncat_i)
         do n = ncat,-1,1
           if (acat(n) < CS%puny) then
             cut = hin_max(n-1)
@@ -1931,12 +1935,12 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         P_x(:) = g_k(:) * wid_i
         P_y(:) = b_n(:) * wid_b
 
-        do n =1, ncat_i
+        do n =1, CS%ncat_i
           if (x_k(n) > x_kmax) P_x(n)=0.0
         enddo
 
         ! calculate Tb factor at t-location
-        do n=1, ncat_i
+        do n=1, CS%ncat_i
           gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
           tmp(:) = merge(1,0,gt(:))
           ii = sum(tmp)
