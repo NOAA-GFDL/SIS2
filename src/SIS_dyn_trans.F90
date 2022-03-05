@@ -42,6 +42,7 @@ use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
 use SIS_dyn_cgrid,     only : SIS_C_dyn_register_restarts, SIS_C_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_read_alt_restarts, basal_stress_coeff_C
+use SIS_dyn_cgrid,     only : basal_stress_coeff_itd
 use SIS_restart,       only : SIS_restart_CS
 use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data, safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
@@ -120,7 +121,8 @@ type dyn_trans_CS ; private
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                    !! timing of diagnostic output.
-  logical :: lemieux_landfast !< If true, use the Lemieux landfast ice parameterization.
+  logical :: lemieux_landfast !< If true, use the lemieux landfast ice parameterization.
+  logical :: itd_landfast     !< If true, use the probabilistic landfast ice parameterization.
 
   !>@{ Diagnostic IDs
   integer :: id_fax=-1, id_fay=-1
@@ -395,7 +397,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
       call convert_IST_to_simple_state(IST, CS%DS2d, CS%CAS, G, US, IG, CS)
 
       ! Update the category-merged dynamics and use the merged continuity equation.
-      call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, US, IG, CS)
+      call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, IST, dt_adv_cycle, Time_cycle_start, G, US, IG, CS)
 
       ! Complete the category-resolved mass and tracer transport and update the ice state type.
       call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, US, IG, CS)
@@ -455,6 +457,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
 
           if (CS%lemieux_landfast) then
             call basal_stress_coeff_C(G, mi_sum, ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
+          elseif (CS%itd_landfast) then
+            call basal_stress_coeff_itd(G, IG, IST, OSS%sea_lev, CS%SIS_C_dyn_CSp)
           endif
 
           if (CS%debug) then
@@ -698,7 +702,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     ! This could be called as many times as necessary.
     Time_cycle_start = CS%Time - real_to_time((nadv_cycle-(nac-1))*US%T_to_s*dt_adv_cycle)
     end_of_cycle = (nac < nadv_cycle) .or. cycle_end
-    call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, dt_adv_cycle, Time_cycle_start, G, US, IG, CS, &
+    call SIS_merged_dyn_cont(OSS, FIA, IOF, CS%DS2d, IST, dt_adv_cycle, Time_cycle_start, G, US, IG, CS, &
                              end_call=end_of_cycle)
 
     ! Complete the category-resolved mass and tracer transport and update the ice state type.
@@ -887,7 +891,7 @@ end subroutine convert_IST_to_simple_state
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Update the category-merged ice state and call the merged continuity update.
-subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US, IG, CS, end_call)
+subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, IST, dt_cycle, Time_start, G, US, IG, CS, end_call)
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
   type(fast_ice_avg_type),    intent(in)    :: FIA !< A type containing averages of fields
@@ -896,6 +900,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
                                                    !! the ocean that are calculated by the ice model.
   type(dyn_state_2d),         intent(inout) :: DS2d !< A simplified 2-d description of the ice state
                                                    !! integrated across thickness categories and layers.
+  type(ice_state_type),       intent(in)    :: IST !< A type describing the state of the sea ice.
   real,                       intent(in)    :: dt_cycle !< The slow ice dynamics timestep [T ~> s].
   type(time_type),            intent(in)    :: TIme_start !< The starting time for this update cycle.
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
@@ -977,6 +982,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, dt_cycle, Time_start, G, US,
 
       if (CS%lemieux_landfast) then
         call basal_stress_coeff_C(G, DS2d%mi_sum, DS2d%ice_cover, OSS%sea_lev, CS%SIS_C_dyn_CSp)
+      elseif (CS%itd_landfast) then
+        call basal_stress_coeff_itd(G, IG, IST, OSS%sea_lev, CS%SIS_C_dyn_CSp)
       endif
 
       if (CS%debug) then
@@ -2240,6 +2247,11 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   call get_param(param_file, mdl, "LEMIEUX_LANDFAST", CS%lemieux_landfast, &
                    "If true, turn on Lemieux landfast ice parameterization.", default=.false., &
                    do_not_log=.true.)
+  call get_param(param_file, mdl, "ITD_LANDFAST", CS%itd_landfast, &
+                   "If true, turn on probabilistic landfast ice parameterization.", default=.false., &
+                   do_not_log=.true.)
+! if (CS%merged_cont .and. CS%itd_landfast) &
+!   call SIS_error(FATAL, "ITD_LANDFAST can not be true if MERGED_CONTINUITY=True.")
 
   call get_param(param_file, mdl, "TIMEUNIT", Time_unit, &
                  "The time unit for ICE_STATS_INTERVAL.", &

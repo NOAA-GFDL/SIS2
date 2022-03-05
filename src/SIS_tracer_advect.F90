@@ -153,7 +153,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
   integer :: max_iter           ! The maximum number of iterations in
                                 ! each layer.
   integer :: domore_k(SZCAT_(IG))
-  integer :: stensil            ! The stencil of the advection scheme.
+  integer :: stencil            ! The stencil of the advection scheme.
   integer :: nsten_halo         ! The number of stencils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
@@ -162,7 +162,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20*US%m_to_L**2 ! This is arbitrary, but must be positive.
-  stensil = 2                   ! The scheme's stencil; 2 for PLM.
+  stencil = 2                   ! The scheme's stencil; 2 for PLM.
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_tracer_advect: "// &
        "SIS_tracer_advect_init must be called before advect_tracer.")
@@ -257,7 +257,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
 
   do itt=1,max_iter
 
-    if (isv > is-stensil) then
+    if (isv > is-stencil) then
       call cpu_clock_begin(id_clock_pass)
       call pass_vector(uhr, vhr, G%Domain)
       do m=1,ntr ; do l=1,Tr(m)%nL
@@ -266,22 +266,22 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
       call pass_var(hprev, G%Domain)
       call cpu_clock_end(id_clock_pass)
 
-      nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stensil
-      isv = is-nsten_halo*stensil ; jsv = js-nsten_halo*stensil
-      iev = ie+nsten_halo*stensil ; jev = je+nsten_halo*stensil
+      nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stencil
+      isv = is-nsten_halo*stencil ; jsv = js-nsten_halo*stencil
+      iev = ie+nsten_halo*stencil ; jev = je+nsten_halo*stencil
       ! Reevaluate domore_u & domore_v unless the valid range is the same size as
       ! before.  Also, do this if there is Strang splitting.
       if ((nsten_halo > 1) .or. (itt==1)) then
-!$OMP parallel do default(none) shared(ncat,domore_k,isv,iev,jsv,jev,stensil, &
+!$OMP parallel do default(none) shared(ncat,domore_k,isv,iev,jsv,jev,stencil, &
 !$OMP                                  domore_u,uhr,vhr,domore_v)
         do k=1,ncat ; if (domore_k(k) > 0) then
           do j=jsv,jev ; if (.not.domore_u(j,k)) then
-            do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
+            do i=isv+stencil-1,iev-stencil; if (uhr(I,j,k) /= 0.0) then
               domore_u(j,k) = .true. ; exit
             endif ; enddo ! i-loop
           endif ; enddo
-          do J=jsv+stensil-1,jev-stensil ; if (.not.domore_v(J,k)) then
-            do i=isv+stensil,iev-stensil; if (vhr(i,J,k) /= 0.0) then
+          do J=jsv+stencil-1,jev-stencil ; if (.not.domore_v(J,k)) then
+            do i=isv+stencil,iev-stencil; if (vhr(i,J,k) /= 0.0) then
               domore_v(J,k) = .true. ; exit
             endif ; enddo ! i-loop
           endif ; enddo
@@ -290,15 +290,15 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
           ! whether any work is needed on a layer on this processor.
           domore_k(k) = 0
           do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
-          do J=jsv+stensil-1,jev-stensil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+          do J=jsv+stencil-1,jev-stencil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
 
         endif ; enddo ! k-loop
       endif
     endif
 
     ! Set the range of valid points after this iteration.
-    isv = isv + stensil ; iev = iev - stensil
-    jsv = jsv + stensil ; jev = jev - stensil
+    isv = isv + stencil ; iev = iev - stencil
+    jsv = jsv + stencil ; jev = jev - stencil
     !$OMP parallel do default(shared)
     do k=1,ncat ; if (domore_k(k) > 0) then
       !   To ensure positive definiteness of the mass at each iteration, the
@@ -310,7 +310,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
       if (x_first) then
         ! First, advect zonally.
         call advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, &
-                      isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, &
+                      isv, iev, jsv-stencil, jev+stencil, k, G, US, IG, &
                       CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
         ! Next, advect meridionally.
@@ -319,12 +319,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
                       CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
         domore_k(k) = 0
-        do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
+        do j=jsv-stencil,jev+stencil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
         do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
       else
         ! First, advect meridionally.
         call advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, &
-                      isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, &
+                      isv-stencil, iev+stencil, jsv, jev, k, G, US, IG, &
                       CS%usePPM, CS%usePCM, CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
         ! Next, advect zonally.
@@ -343,7 +343,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
     if (itt >= max_iter) exit
 
     ! Exit if there are no layers that need more iterations.
-    if (isv > is-stensil) then
+    if (isv > is-stencil) then
       do_any = 0
       call cpu_clock_begin(id_clock_sync)
       call sum_across_PEs(domore_k(:), ncat)
@@ -407,7 +407,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
   real    :: Ivol_end   ! Inverse of the cell mass at the end of a step [R-1 Z-1 L-2 ~> kg-1]
 
   integer :: domore_k(SZCAT_(IG))
-  integer :: stensil            ! The stencil of the advection scheme.
+  integer :: stencil            ! The stencil of the advection scheme.
   integer :: nsten_halo         ! The number of stencils that fit in the halos.
   integer :: i, j, k, l, m, is, ie, js, je, isd, ied, jsd, jed
   integer :: ncat, nL_max, itt, do_any
@@ -416,7 +416,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   landvolfill = 1.0e-20*US%m_to_L**2 ! This is arbitrary, but must be positive.
-  stensil = 2                   ! The scheme's stencil; 2 for PLM.
+  stencil = 2                   ! The scheme's stencil; 2 for PLM.
 
   if (.not. associated(CS)) call SIS_error(FATAL, "advect_scalar: "// &
        "SIS_tracer_advect_init must be called before advect_scalar.")
@@ -510,29 +510,29 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
 
     do itt=1,max_iter
 
-      if (isv > is-stensil) then
+      if (isv > is-stencil) then
         call cpu_clock_begin(id_clock_pass)
         call pass_vector(uhr, vhr, G%Domain)
         call pass_var(scalar, G%Domain, complete=.false.)
         call pass_var(hprev, G%Domain)
         call cpu_clock_end(id_clock_pass)
 
-        nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stensil
-        isv = is-nsten_halo*stensil ; jsv = js-nsten_halo*stensil
-        iev = ie+nsten_halo*stensil ; jev = je+nsten_halo*stensil
+        nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stencil
+        isv = is-nsten_halo*stencil ; jsv = js-nsten_halo*stencil
+        iev = ie+nsten_halo*stencil ; jev = je+nsten_halo*stencil
         ! Reevaluate domore_u & domore_v unless the valid range is the same size as
         ! before.  Also, do this if there is Strang splitting.
         if ((nsten_halo > 1) .or. (itt==1)) then
 !$OMP parallel do default(none) shared(isv,iev,jsv,jev,ncat,domore_k,domore_u,domore_v, &
-!$OMP                                  stensil,uhr,vhr)
+!$OMP                                  stencil,uhr,vhr)
           do k=1,ncat ; if (domore_k(k) > 0) then
             do j=jsv,jev ; if (.not.domore_u(j,k)) then
-              do i=isv+stensil-1,iev-stensil; if (uhr(I,j,k) /= 0.0) then
+              do i=isv+stencil-1,iev-stencil; if (uhr(I,j,k) /= 0.0) then
                 domore_u(j,k) = .true. ; exit
               endif ; enddo ! i-loop
             endif ; enddo
-            do J=jsv+stensil-1,jev-stensil ; if (.not.domore_v(J,k)) then
-              do i=isv+stensil,iev-stensil; if (vhr(i,J,k) /= 0.0) then
+            do J=jsv+stencil-1,jev-stencil ; if (.not.domore_v(J,k)) then
+              do i=isv+stencil,iev-stencil; if (vhr(i,J,k) /= 0.0) then
                 domore_v(J,k) = .true. ; exit
               endif ; enddo ! i-loop
             endif ; enddo
@@ -541,15 +541,15 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
             ! whether any work is needed on a layer on this processor.
             domore_k(k) = 0
             do j=jsv,jev ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
-            do J=jsv+stensil-1,jev-stensil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
+            do J=jsv+stencil-1,jev-stencil ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
 
           endif ; enddo ! k-loop
         endif
       endif
 
       ! Set the range of valid points after this iteration.
-      isv = isv + stensil ; iev = iev - stensil
-      jsv = jsv + stensil ; jev = jev - stensil
+      isv = isv + stencil ; iev = iev - stencil
+      jsv = jsv + stencil ; jev = jev - stencil
       !$OMP parallel do default(shared)
       do k=1,ncat ; if (domore_k(k) > 0) then
         !   To ensure positive definiteness of the mass at each iteration, the
@@ -561,7 +561,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
         if (x_first) then
           ! First, advect zonally.
           call advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, &
-                        isv, iev, jsv-stensil, jev+stensil, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        isv, iev, jsv-stencil, jev+stencil, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
           ! Next, advect meridionally.
@@ -570,12 +570,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
           domore_k(k) = 0
-          do j=jsv-stensil,jev+stensil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
+          do j=jsv-stencil,jev+stencil ; if (domore_u(j,k)) domore_k(k) = 1 ; enddo
           do J=jsv-1,jev ; if (domore_v(J,k)) domore_k(k) = 1 ; enddo
         else
           ! First, advect meridionally.
           call advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, &
-                        isv-stensil, iev+stensil, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
+                        isv-stencil, iev+stencil, jsv, jev, k, G, US, IG, CS%usePPM, CS%usePCM, &
                         CS%fixed_mass_neglect, CS%Adcroft_CFL) !(, OBC)
 
           ! Next, advect zonally.
@@ -594,7 +594,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
       if (itt >= max_iter) exit
 
       ! Exit if there are no layers that need more iterations.
-      if (isv > is-stensil) then
+      if (isv > is-stencil) then
         do_any = 0
         call cpu_clock_begin(id_clock_sync)
         call sum_across_PEs(domore_k(:), ncat)
