@@ -887,7 +887,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     if (sum_area <= 0.0) then
       ! This is a land point.
       mi_ratio_A_q(I,J) = 0.0
-    elseif (G%mask2dBu(I,J)>0.5) then
+    elseif (G%mask2dBu(I,J)>0.0) then
       ! This is an interior ocean point.
       !   Determine an appropriately averaged mass on q-points. The following
       ! expression for mi_q is mi when the masses are all equal, and goes to 4
@@ -1610,7 +1610,7 @@ subroutine limit_stresses(pres_mice, mice, str_d, str_t, str_s, G, US, CS, limit
 !        ! The factor of 2 here arises because of the definitions of the str_#.
 !        stress_mag = 2.0 * sqrt(min(0.0, str_d_q + 0.5*pres_avg)**2 + &
 !                                EC2 * (str_s(I,J)**2 + str_t_q**2))
-!        if ((stress_mag > pres_avg) .and. (G%mask2dBu(I,j)>0.5)) &
+!        if ((stress_mag > pres_avg) .and. (G%mask2dBu(I,j)>0.0)) &
 !          str_s(I,J) = str_s(I,J) * (pres_avg / stress_mag)
 !      endif
 !    endif
@@ -1928,7 +1928,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         enddo
         x_kmax = min(cut, x_kmax)
 
-        g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / (x_k(:) * sigma_i * sqrt(2.0 * pi))
+        g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
+                 (x_k(:) * sigma_i * sqrt(2.0 * pi))
 
         b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0 * pi))
 

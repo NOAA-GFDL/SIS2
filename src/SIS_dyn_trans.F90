@@ -864,7 +864,7 @@ subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, US, IG, CS)
   enddo ; enddo ; enddo
   do j=jsd,jed ; do i=isd,ied
     DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + DS2d%mi_sum(i,j)
-!    if ((abs(max(1.0-DS2d%ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.5)) then
+!    if ((abs(max(1.0-DS2d%ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.0)) then
 !      write(mesg, '(3(ES13.5))') max(1.0 - DS2d%ice_cover(i,j), 0.0) - IST%part_size(i,j,0), &
 !         max(1.0 - DS2d%ice_cover(i,j), 0.0), IST%part_size(i,j,0)
 !      call SIS_error(FATAL, "Mismatch in ice_free values exceeding roundoff: "//trim(mesg))
@@ -1525,7 +1525,7 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
             ((windstr_y_water(I,J) + windstr_y_water(I-1,J-1)) + &
              (windstr_y_water(I-1,J) + windstr_y_water(I,J-1)))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
         IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) + part_size(i,j,k) * 0.25 * &
             ((str_ice_oce_x(I,J) + str_ice_oce_x(I-1,J-1)) + &
              (str_ice_oce_x(I-1,J) + str_ice_oce_x(I,J-1)))
@@ -1538,13 +1538,13 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do J=jsc-1,jec
       do I=isc-1,iec
-        ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
-                           0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
-                                 (part_size(i+1,j,0) + part_size(i,j+1,0)) )
+        ps_vel = 1.0
+        if (G%mask2dBu(I,J)>0.0) ps_vel = 0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
+                                                (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + windstr_x_water(I,J) * ps_vel
         IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + windstr_y_water(I,J) * ps_vel
       enddo
-      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.0) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
         IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + str_ice_oce_x(I,J) * ps_vel
@@ -1555,12 +1555,11 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
       do I=isc-1,iec
-        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
-                           0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.0) ps_vel = 0.5*(part_size(i+1,j,0) + part_size(i,j,0))
         IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
                 0.5 * (windstr_x_water(I,J) + windstr_x_water(I,J-1))
       enddo
-      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.0) then
         ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
         IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * &
                 0.5 * (str_ice_oce_x(I,J) + str_ice_oce_x(I,J-1))
@@ -1569,12 +1568,11 @@ subroutine set_ocean_top_stress_Bgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do J=jsc-1,jec
       do i=isc,iec
-        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
-                           0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.0) ps_vel = 0.5*(part_size(i,j+1,0) + part_size(i,j,0))
         IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
                 0.5 * (windstr_y_water(I,J) + windstr_y_water(I-1,J))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.0) then
         ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
         IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * &
                 0.5 * (str_ice_oce_y(I,J) + str_ice_oce_y(I-1,J))
@@ -1633,7 +1631,7 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
         IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + ps_vel * 0.5 * &
                             (windstr_y_water(i,J) + windstr_y_water(i,J-1))
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
         IOF%flux_u_ocn(i,j) = IOF%flux_u_ocn(i,j) +  part_size(i,j,k) * 0.5 * &
                             (str_ice_oce_x(I,j) + str_ice_oce_x(I-1,j))
         IOF%flux_v_ocn(i,j) = IOF%flux_v_ocn(i,j) + part_size(i,j,k) * 0.5 * &
@@ -1644,15 +1642,15 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do J=jsc-1,jec
       do I=isc-1,iec
-        ps_vel = 1.0 ; if (G%mask2dBu(I,J)>0.5) ps_vel = &
-                           0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
-                                 (part_size(i+1,j,0) + part_size(i,j+1,0)) )
+        ps_vel = 1.0
+        if (G%mask2dBu(I,J)>0.0) ps_vel = 0.25*((part_size(i+1,j+1,0) + part_size(i,j,0)) + &
+                                                (part_size(i+1,j,0) + part_size(i,j+1,0)) )
         IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_x_water(I,j) + windstr_x_water(I,j+1))
         IOF%flux_v_ocn(I,J) = IOF%flux_v_ocn(I,J) + ps_vel * G%mask2dBu(I,J) * 0.5 * &
                 (windstr_y_water(i,J) + windstr_y_water(i+1,J))
       enddo
-      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dBu(I,J)>0.0) then
         ps_vel = 0.25 * ((part_size(i+1,j+1,k) + part_size(i,j,k)) + &
                          (part_size(i+1,j,k) + part_size(i,j+1,k)) )
         IOF%flux_u_ocn(I,J) = IOF%flux_u_ocn(I,J) + ps_vel * 0.5 * &
@@ -1665,11 +1663,10 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do j=jsc,jec
       do I=Isc-1,iec
-        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
-                           0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.0) ps_vel = 0.5*(part_size(i+1,j,0) + part_size(i,j,0))
         IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
       enddo
-      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.0) then
         ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
         IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
       endif ; enddo ; enddo
@@ -1677,11 +1674,10 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_vel)
     do J=jsc-1,jec
       do i=isc,iec
-        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
-                           0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.0) ps_vel = 0.5*(part_size(i,j+1,0) + part_size(i,j,0))
         IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.0) then
         ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
         IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
       endif ; enddo ; enddo
@@ -1751,7 +1747,7 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do I=isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dBu(I,J)>0.5) then
+      if (G%mask2dBu(I,J)>0.0) then
         ps_ocn = 0.25 * ((ice_free(i+1,j+1) + ice_free(i,j)) + &
                          (ice_free(i+1,j) + ice_free(i,j+1)) )
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
@@ -1764,7 +1760,7 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do j=jsc,jec ; do I=isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCu(I,j)>0.5) then
+      if (G%mask2dCu(I,j)>0.0) then
         ps_ocn = 0.5*(ice_free(i+1,j) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i+1,j) + ice_cover(i,j))
       endif
@@ -1775,7 +1771,7 @@ subroutine set_ocean_top_stress_B2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do i=isc,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCv(i,J)>0.5) then
+      if (G%mask2dCv(i,J)>0.0) then
         ps_ocn = 0.5*(ice_free(i,j+1) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i,j+1) + ice_cover(i,j))
       endif
@@ -1842,7 +1838,7 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do I=isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dBu(I,J)>0.5) then
+      if (G%mask2dBu(I,J)>0.0) then
         ps_ocn = 0.25 * ((ice_free(i+1,j+1) + ice_free(i,j)) + &
                          (ice_free(i+1,j) + ice_free(i,j+1)) )
         ps_ice = 0.25 * ((ice_cover(i+1,j+1) + ice_cover(i,j)) + &
@@ -1859,7 +1855,7 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do j=jsc,jec ; do I=Isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCu(I,j)>0.5) then
+      if (G%mask2dCu(I,j)>0.0) then
         ps_ocn = 0.5*(ice_free(i+1,j) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i+1,j) + ice_cover(i,j))
       endif
@@ -1869,7 +1865,7 @@ subroutine set_ocean_top_stress_C2(IOF, windstr_x_water, windstr_y_water, &
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do i=isc,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCv(i,J)>0.5) then
+      if (G%mask2dCv(i,J)>0.0) then
         ps_ocn = 0.5*(ice_free(i,j+1) + ice_free(i,j))
         ps_ice = 0.5*(ice_cover(i,j+1) + ice_cover(i,j))
       endif
