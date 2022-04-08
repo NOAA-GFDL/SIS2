@@ -82,6 +82,7 @@ use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
+use SIS_open_boundary, only : ice_OBC_type
 use SIS_optics,        only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
 use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_slow_thermo,   only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
@@ -1766,6 +1767,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16) :: stagger, dflt_stagger
+  type(ice_OBC_type), pointer :: OBC_in => NULL()
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -2079,12 +2081,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. new_sim))
 
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-    call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory)
+    call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory, OBC_in)
 
     call set_hor_grid(sG, param_file, global_indexing=global_indexing)
     call copy_dyngrid_to_SIS_horgrid(dG, sG)
     call destroy_dyn_horgrid(dG)
     Ice%sCS%G%US => US
+    Ice%OBC => OBC_in
 
   ! Allocate and register fields for restarts.
 
@@ -2206,12 +2209,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, dG%Domain)
 
       ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-      call SIS_initialize_fixed(dG, US, param_file, .false., dirs%output_directory)
+      call SIS_initialize_fixed(dG, US, param_file, .false., dirs%output_directory, OBC_in)
 
       call set_hor_grid(Ice%fCS%G, param_file, global_indexing=global_indexing)
       call copy_dyngrid_to_SIS_horgrid(dG, Ice%fCS%G)
       call destroy_dyn_horgrid(dG)
       Ice%fCS%G%US => US
+      Ice%OBC => OBC_in
     endif
 
     Ice%fCS%bounds_check = bounds_check
