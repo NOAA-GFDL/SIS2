@@ -324,7 +324,7 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
                             sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
   else ! This is the typical branch used by SIS2.
     call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, Ice%OBC)
   endif
 
  ! Set up the stresses and surface pressure in the externally visible structure Ice.

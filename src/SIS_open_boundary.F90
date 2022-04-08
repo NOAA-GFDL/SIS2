@@ -10,6 +10,8 @@ use MOM_file_parser,          only : get_param, log_version, param_file_type, lo
 use MOM_grid,                 only : ocean_grid_type, hor_index_type
 use MOM_dyn_horgrid,          only : dyn_horgrid_type
 use MOM_interpolate,          only : init_external_field, time_interp_external, time_interp_external_init
+use MOM_open_boundary,        only : OBC_NONE
+use MOM_open_boundary,        only : OBC_DIRECTION_E, OBC_DIRECTION_W, OBC_DIRECTION_N, OBC_DIRECTION_S
 use MOM_open_boundary,        only : parse_segment_str, flood_fill, flood_fill2
 use MOM_string_functions,     only : remove_spaces
 use MOM_time_manager,         only : set_date, time_type, time_type_to_real, operator(-)
@@ -23,11 +25,6 @@ public open_boundary_config
 !public open_boundary_init
 public open_boundary_impose_land_mask
 
-integer, parameter, public :: OBC_NONE = 0          !< Indicates the use of no open boundary
-integer, parameter, public :: OBC_DIRECTION_N = 100 !< Indicates the boundary is an effective northern boundary
-integer, parameter, public :: OBC_DIRECTION_S = 200 !< Indicates the boundary is an effective southern boundary
-integer, parameter, public :: OBC_DIRECTION_E = 300 !< Indicates the boundary is an effective eastern boundary
-integer, parameter, public :: OBC_DIRECTION_W = 400 !< Indicates the boundary is an effective western boundary
 integer, parameter         :: MAX_OBC_FIELDS = 100  !< Maximum number of data fields needed for OBC segments
 
 !> Open boundary segment data from files (mostly).

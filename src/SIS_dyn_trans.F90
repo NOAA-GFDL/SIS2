@@ -23,6 +23,8 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
 use MOM_hor_index,     only : hor_index_type
+use MOM_open_boundary, only : OBC_NONE
+use MOM_open_boundary, only : OBC_DIRECTION_E, OBC_DIRECTION_W, OBC_DIRECTION_N, OBC_DIRECTION_S
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager,  only : operator(+), operator(-)
 use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
@@ -48,6 +50,7 @@ use SIS_framework,     only : coupler_type_initialized, coupler_type_send_data, 
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_ice_diags,     only : ice_state_diags_type, register_ice_state_diagnostics
 use SIS_ice_diags,     only : post_ocean_sfc_diagnostics, post_ice_state_diagnostics
+use SIS_open_boundary, only : ice_OBC_type, OBC_segment_type
 use SIS_sum_output,    only : write_ice_statistics, SIS_sum_output_init, SIS_sum_out_CS
 use SIS_tracer_flow_control, only : SIS_tracer_flow_control_CS
 use SIS_transport,     only : SIS_transport_init, SIS_transport_end
@@ -312,7 +315,7 @@ end subroutine update_icebergs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dynamics_trans makes the calls to do ice dynamics and mass and tracer transport
-subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, US, IG, tracer_CSp)
+subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, US, IG, tracer_CSp, OBC)
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   type(ocean_sfc_state_type), intent(in)    :: OSS !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
@@ -328,6 +331,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
   type(icebergs),             pointer       :: icebergs_CS !< A control structure for the iceberg model.
   type(SIS_tracer_flow_control_CS), pointer :: tracer_CSp !< The structure for controlling calls to
                                                    !! auxiliary ice tracer packages
+  type(ice_OBC_type),         pointer       :: OBC  !< Open boundary structure.
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -506,7 +510,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           ! Store all mechanical ocean forcing.
           if (CS%Warsaw_sum_order) then
             call set_ocean_top_stress_Cgrid(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
-                                            str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, US, IG)
+                                            str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, IST%part_size, G, US, IG, OBC)
           else
             call set_ocean_top_stress_C2(IOF, WindStr_x_ocn_Cu, WindStr_y_ocn_Cv, &
                                          str_x_ice_ocn_Cu, str_y_ice_ocn_Cv, ice_free, ice_cover, G, US)
@@ -1592,7 +1596,7 @@ end subroutine set_ocean_top_stress_Bgrid
 !! appropriate staggering, and store them in the public ice data type for use by the ocean
 !! model.  This version of the routine uses wind and ice-ocean stresses on a C-grid.
 subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
-                                      str_ice_oce_x, str_ice_oce_y, part_size, G, US, IG)
+                                      str_ice_oce_x, str_ice_oce_y, part_size, G, US, IG, OBC)
   type(ice_ocean_flux_type), intent(inout) :: IOF !< A structure containing fluxes from the ice to
                                                   !! the ocean that are calculated by the ice model.
   type(SIS_hor_grid_type),   intent(inout) :: G   !< The horizontal grid type
@@ -1611,20 +1615,38 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
   real, dimension(SZI_(G),SZJ_(G),0:IG%CatIce), &
                              intent(in)    :: part_size !< The fractional area coverage of the ice
                                                   !! thickness categories [nondim], 0-1
+  type(ice_OBC_type),        pointer       :: OBC  !< Open boundary structure.
 
   real    :: ps_vel ! part_size interpolated to a velocity point [nondim].
+  real, dimension(SZIB_(G),SZJ_(G)) :: tmp_x    ! work array on u points
+  real, dimension(SZI_(G),SZJB_(G)) :: tmp_y    ! work array on v points
   integer :: i, j, k, isc, iec, jsc, jec, ncat
+  integer :: l_seg
+  logical :: local_open_u_BC, local_open_v_BC
+  type(OBC_segment_type), pointer :: segment => NULL()
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   if (IOF%stress_count == 0) then
     IOF%flux_u_ocn(:,:) = 0.0 ; IOF%flux_v_ocn(:,:) = 0.0
   endif
 
+  local_open_u_BC = .false. ; local_open_v_BC = .false.
+  if (associated(OBC)) then ; if (OBC%OBC_pe) then
+    local_open_u_BC = OBC%open_u_BCs_exist_globally
+    local_open_v_BC = OBC%open_v_BCs_exist_globally
+  endif ; endif
+
+  if ((local_open_u_BC .or. local_open_v_BC) .and. &
+      (IOF%flux_uv_stagger == AGRID) .or. (IOF%flux_uv_stagger == BGRID_NE)) &
+        call SIS_error(FATAL, "No open boundaries for given flux staggering")
+
   !   Copy and interpolate the ice-ocean stress_Cgrid.  This code is slightly
   ! complicated because there are 3 different staggering options supported.
 
   if (IOF%flux_uv_stagger == AGRID) then
     !$OMP parallel do default(shared) private(ps_vel)
+
     do j=jsc,jec
       do i=isc,iec
         ps_vel = G%mask2dT(i,j) * part_size(i,j,0)
@@ -1662,30 +1684,96 @@ subroutine set_ocean_top_stress_Cgrid(IOF, windstr_x_water, windstr_y_water, &
       endif ; enddo ; enddo
     enddo
   elseif (IOF%flux_uv_stagger == CGRID_NE) then
-    !$OMP parallel do default(shared) private(ps_vel)
-    do j=jsc,jec
-      do I=Isc-1,iec
-        ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
-                           0.5*(part_size(i+1,j,0) + part_size(i,j,0))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
+    if (local_open_u_BC) then
+      !$OMP parallel do default(shared) private(ps_vel)
+      do j=jsc,jec
+        do I=Isc-1,iec
+          l_seg = OBC%segnum_u(I,j)
+          ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
+                             0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+          if (l_seg /= OBC_NONE) then
+            if (OBC%segment(l_seg)%open) then
+              if (OBC%segment(l_seg)%direction == OBC_DIRECTION_E) then
+                ps_vel = part_size(i,j,0)
+              else
+                ps_vel = part_size(i+1,j,0)
+              endif
+          endif ; endif
+          IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
+        enddo
+        do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+          l_seg = OBC%segnum_u(I,j)
+          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+          if (l_seg /= OBC_NONE) then
+            if (OBC%segment(l_seg)%open) then
+              if (OBC%segment(l_seg)%direction == OBC_DIRECTION_E) then
+                ps_vel = part_size(i,j,k)
+              else
+                ps_vel = part_size(i+1,j,k)
+              endif
+          endif ; endif
+          IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
+        endif ; enddo ; enddo
       enddo
-      do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
-        ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
-        IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
-      endif ; enddo ; enddo
-    enddo
-    !$OMP parallel do default(shared) private(ps_vel)
-    do J=jsc-1,jec
-      do i=isc,iec
-        ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
-                           0.5*(part_size(i,j+1,0) + part_size(i,j,0))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
+    else
+      !$OMP parallel do default(shared) private(ps_vel)
+      do j=jsc,jec
+        do I=Isc-1,iec
+          ps_vel = 1.0 ; if (G%mask2dCu(I,j)>0.5) ps_vel = &
+                             0.5*(part_size(i+1,j,0) + part_size(i,j,0))
+          IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * windstr_x_water(I,j)
+        enddo
+        do k=1,ncat ; do I=isc-1,iec ; if (G%mask2dCu(I,j)>0.5) then
+          ps_vel = 0.5 * (part_size(i+1,j,k) + part_size(i,j,k))
+          IOF%flux_u_ocn(I,j) = IOF%flux_u_ocn(I,j) + ps_vel * str_ice_oce_x(I,j)
+        endif ; enddo ; enddo
       enddo
-      do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
-        ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
-        IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
-      endif ; enddo ; enddo
-    enddo
+    endif
+    if (local_open_v_BC) then
+      !$OMP parallel do default(shared) private(ps_vel)
+      do J=jsc-1,jec
+        do i=isc,iec
+          l_seg = OBC%segnum_v(i,J)
+          ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
+                             0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+          if (l_seg /= OBC_NONE) then
+            if (OBC%segment(l_seg)%open) then
+              if (OBC%segment(l_seg)%direction == OBC_DIRECTION_N) then
+                ps_vel = part_size(i,j,0)
+              else
+                ps_vel = part_size(i,j+1,0)
+              endif
+          endif ; endif
+          IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
+        enddo
+        do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+          l_seg = OBC%segnum_v(i,J)
+          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+          if (l_seg /= OBC_NONE) then
+            if (OBC%segment(l_seg)%open) then
+              if (OBC%segment(l_seg)%direction == OBC_DIRECTION_N) then
+                ps_vel = part_size(i,j,k)
+              else
+                ps_vel = part_size(i,j+1,k)
+              endif
+          endif ; endif
+          IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
+        endif ; enddo ; enddo
+      enddo
+    else
+      !$OMP parallel do default(shared) private(ps_vel)
+      do J=jsc-1,jec
+        do i=isc,iec
+          ps_vel = 1.0 ; if (G%mask2dCv(i,J)>0.5) ps_vel = &
+                             0.5*(part_size(i,j+1,0) + part_size(i,j,0))
+          IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * windstr_y_water(i,J)
+        enddo
+        do k=1,ncat ; do i=isc,iec ; if (G%mask2dCv(i,J)>0.5) then
+          ps_vel = 0.5 * (part_size(i,j+1,k) + part_size(i,j,k))
+          IOF%flux_v_ocn(i,J) = IOF%flux_v_ocn(i,J) + ps_vel * str_ice_oce_y(i,J)
+        endif ; enddo ; enddo
+      enddo
+    endif
   else
     call SIS_error(FATAL, "set_ocean_top_stress_Cgrid: Unrecognized flux_uv_stagger.")
   endif
