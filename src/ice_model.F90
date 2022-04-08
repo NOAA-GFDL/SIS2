@@ -318,10 +318,10 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
   elseif (do_multi_trans) then
     call SIS_multi_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
                              Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, &
-                             start_cycle, end_cycle, cycle_length)
+                             Ice%OBC, start_cycle, end_cycle, cycle_length)
   elseif (Ice%sCS%slab_ice) then ! Use a very old slab ice model.
     call slab_ice_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, Ice%OBC)
   else ! This is the typical branch used by SIS2.
     call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
                             Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, Ice%OBC)
