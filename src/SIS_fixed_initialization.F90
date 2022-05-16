@@ -162,7 +162,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
 !                 " \t Phillips - ACC-like idealized topography used in the Phillips config.\n"//&
 !                 " \t USER - call a user modified routine.", &
 !                 fail_if_missing=.true.)
-  max_depth = -1.e9; call read_param(PF, "MAXIMUM_DEPTH", max_depth)
+  max_depth = -1.e9; call read_param(PF, "MAXIMUM_DEPTH", max_depth, scale=US%m_to_Z)
   select case ( trim(config) )
     case ("file");      call initialize_topography_from_file(D, G, PF, US)
     case ("flat");      call initialize_topography_named(D, G, PF, config, max_depth, US)

@@ -60,10 +60,10 @@ type, public :: SIS_tracer_type
     pointer :: ad3d_y => NULL() !< The vertically summed y-direction advective flux [Conc R Z L2 T-1 ~> Conc kg s-1].
   real, dimension(:,:,:,:), &
     pointer :: ad4d_x => NULL() !< The x-direction advective flux by ice category and layer in
-                                !! units of [Conc R Z L2 T-1 ~> CONC kg s-1].
+                                !! units of [Conc R Z L2 T-1 ~> Conc kg s-1].
   real, dimension(:,:,:,:), &
     pointer :: ad4d_y => NULL() !< The y-direction advective flux by ice category and layer in
-                                !! units of [Conc R Z L2 T-1 ~> CONC kg s-1].
+                                !! units of [Conc R Z L2 T-1 ~> Conc kg s-1].
 !  real, dimension(:,:), &
 !    pointer :: snow_flux_tr => NULL() !< Concentration of the tracer in snow (for salinity = 0.0)
   real, dimension(:,:,:), &
@@ -412,23 +412,24 @@ subroutine update_SIS_tracer_halos(TrReg, G, complete)
 end subroutine update_SIS_tracer_halos
 
 !> Set the properties of the ice tracers where there is no ice mass
-subroutine set_massless_SIS_tracers(mass, TrReg, G, IG, compute_domain, do_snow, do_ice)
+subroutine set_massless_SIS_tracers(mass, TrReg, G, IG, halos, do_snow, do_ice)
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                   intent(in)    :: mass !< The ice or snow mass [R Z ~> kg m-2].
   type(SIS_tracer_registry_type), intent(inout) :: TrReg !< A pointer to the SIS tracer registry
-  logical,              optional, intent(in) :: compute_domain !< If true, work over the whole data domain
-  logical,              optional, intent(in) :: do_snow !< If true, work on snow tracers; the default is true.
-  logical,              optional, intent(in) :: do_ice  !< If true, work on ice tracers; the default is true.
+  integer,              optional, intent(in)    :: halos !< The halo size to work over, 0 by default
+  logical,              optional, intent(in)    :: do_snow !< If true, work on snow tracers; the default is true.
+  logical,              optional, intent(in)    :: do_ice  !< If true, work on ice tracers; the default is true.
 
   integer :: i, j, k, m, n, is, ie, js, je, nCat
   logical :: do_snow_tr, do_ice_tr
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nCat = IG%CatIce
-  if (present(compute_domain)) then ; if (compute_domain) then
-    is = G%isd ; ie = G%ied ; js = G%jsd ; je = G%jed
-  endif ; endif
+  if (present(halos)) then
+    is = max(G%isc-halos, G%isd) ; ie = min(G%iec+halos, G%ied)
+    js = max(G%jsc-halos, G%jsd) ; je = min(G%jec+halos, G%jed)
+  endif
 
   do_snow_tr = .true. ; do_ice_tr = .true.
   if (present(do_snow)) do_snow_tr = do_snow

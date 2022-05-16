@@ -57,8 +57,8 @@ type, public :: SIS_hor_grid_type
   integer :: JsgB !< The start j-index of cell vertices within the global domain
   integer :: JegB !< The end j-index of cell vertices within the global domain
 
-  integer :: isd_global !< The value of isd in the global index space (decompoistion invariant).
-  integer :: jsd_global !< The value of isd in the global index space (decompoistion invariant).
+  integer :: isd_global !< The value of isd in the global index space (decomposition invariant).
+  integer :: jsd_global !< The value of isd in the global index space (decomposition invariant).
   integer :: idg_offset !< The offset between the corresponding global and local i-indices.
   integer :: jdg_offset !< The offset between the corresponding global and local j-indices.
   logical :: symmetric  !< True if symmetric memory is used.
@@ -159,7 +159,7 @@ type, public :: SIS_hor_grid_type
   real :: west_lon      !< The longitude (or x-coordinate) of the first u-line
   real :: len_lat = 0.  !< The latitudinal (or y-coord) extent of physical domain
   real :: len_lon = 0.  !< The longitudinal (or x-coord) extent of physical domain
-  real :: Rad_Earth = 6.378e6 !< The radius of the planet [m].
+  real :: Rad_Earth     !< The radius of the planet [L ~> m], by default 6.378e6 m
   real :: max_depth     !< The maximum depth of the ocean [m].
 end type SIS_hor_grid_type
 
@@ -417,7 +417,7 @@ end function isPointInCell
 !> Specify which direction to work on first in directionally split algorithms.
 subroutine set_first_direction(G, y_first)
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  integer, intent(in) :: y_first !< A flag indicating which diretion to work on first
+  integer, intent(in) :: y_first !< A flag indicating which direction to work on first
                                  !! in split algorithms. Even for x, odd for y.
 
   G%first_direction = y_first
@@ -488,10 +488,10 @@ subroutine allocate_metrics(G)
   ALLOC_(G%sin_rot(isd:ied,jsd:jed)) ; G%sin_rot(:,:) = 0.0
   ALLOC_(G%cos_rot(isd:ied,jsd:jed)) ; G%cos_rot(:,:) = 1.0
 
-  allocate(G%gridLonT(isg:ieg))   ; G%gridLonT(:) = 0.0
-  allocate(G%gridLonB(isg-1:ieg)) ; G%gridLonB(:) = 0.0
-  allocate(G%gridLatT(jsg:jeg))   ; G%gridLatT(:) = 0.0
-  allocate(G%gridLatB(jsg-1:jeg)) ; G%gridLatB(:) = 0.0
+  allocate(G%gridLonT(isg:ieg), source=0.0)
+  allocate(G%gridLonB(isg-1:ieg), source=0.0)
+  allocate(G%gridLatT(jsg:jeg), source=0.0)
+  allocate(G%gridLatB(jsg-1:jeg), source=0.0)
 
 end subroutine allocate_metrics
 

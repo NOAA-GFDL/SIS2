@@ -20,8 +20,7 @@ use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
-use SIS2_ice_thm,      only : ice_thermo_type, enth_from_TS, energy_melt_EnthS
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, temp_from_En_S
+use SIS2_ice_thm,      only : ice_thermo_type, energy_0degC, get_SIS2_thermo_coefs
 use iso_fortran_env,   only : int64
 
 implicit none ; private
@@ -48,7 +47,7 @@ type ice_data_type !  ice_public_type
   logical  :: slow_ice_pe = .false. !< If true, this is a slow ice PE
   logical  :: fast_ice_pe = .false. !< If true, this is a fast ice PE
   logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
-                                    !! and domain decomposiion
+                                    !! and domain decomposition
   integer  :: xtype          !< An integer specifying the type for the exchange
   integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
   integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
@@ -81,7 +80,7 @@ type ice_data_type !  ice_public_type
     t_surf      => NULL(), &  !< The surface temperature for the ocean or for
                               !! each ice-thickness category [Kelvin].
     u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
-    v_surf      => NULL()     !< The northward surface elocities of the ocean (:,:,1) or sea-ice [m s-1].
+    v_surf      => NULL()     !< The northward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
     s_surf         =>NULL()   !< The ocean's surface salinity [gSalt kg-1].
 
@@ -115,7 +114,7 @@ type ice_data_type !  ice_public_type
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2].
+    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2 s-1].
 
   real, pointer, dimension(:,:) :: &
     area => NULL() , &    !< The area of ocean cells [m2].  Land cells have
@@ -176,7 +175,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                                               !! ocean, ice, and atmosphere.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
-  ! registers the appopriate ones for inclusion in the restart file.
+  ! registers the appropriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
   call get_domain_extent(domain, isc, iec, jsc, jec )
@@ -268,7 +267,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
                                               !! tracer fluxes.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
-  ! registers the appopriate ones for inclusion in the restart file.
+  ! registers the appropriate ones for inclusion in the restart file.
   integer :: isc, iec, jsc, jec, km, idr
 
   call get_domain_extent(domain, isc, iec, jsc, jec )
@@ -281,7 +280,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
   call safe_alloc_ptr(Ice%u_surf, isc, iec, jsc, jec, km)
   call safe_alloc_ptr(Ice%v_surf, isc, iec, jsc, jec, km)
   if (.not.associated(Ice%ocean_pt)) then
-    allocate(Ice%ocean_pt(isc:iec, jsc:jec)) ; Ice%ocean_pt(:,:) = .false. !derived
+    allocate(Ice%ocean_pt(isc:iec, jsc:jec), source=.false.) !derived
   endif
 
   call safe_alloc_ptr(Ice%rough_mom, isc, iec, jsc, jec, km)
@@ -434,7 +433,7 @@ end subroutine Ice_public_type_chksum
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Ice_public_type_bounds_check checks for unphysical values in a publicly
-!! visible ice data type, and writes out dianostics for any offending columns
+!! visible ice data type, and writes out diagnostics for any offending columns
 subroutine Ice_public_type_bounds_check(Ice, G, msg)
   type(ice_data_type),     intent(in)    :: Ice !< The publicly visible ice data type.
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
@@ -456,25 +455,25 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
   t_min = T_0degC-100. ; t_max = T_0degC+60.
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     if ((Ice%t_surf(i2,j2,k2) < t_min) .or. (Ice%t_surf(i2,j2,k2) > t_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
-  enddo ; enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    endif ; enddo ; enddo ; enddo
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then ; i2 = i+i_off ; j2 = j+j_off
     if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
-  enddo ; enddo
-  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
+    endif ; enddo ; enddo
+  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then ; i2 = i+i_off ; j2 = j+j_off
     if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
-  enddo ; enddo ; endif
+    endif ; enddo ; enddo ; endif
 
   if (n_bad > 0) then
     i2 = i_bad+i_off ; j2 = j_bad+j_off ; k2 = k_bad+1
@@ -535,7 +534,9 @@ subroutine ice_stock_pe(Ice, index, value)
   type(ice_state_type), pointer :: IST => NULL()
   real :: icebergs_value
   real :: LI  ! Latent heat of fusion [Q ~> J kg-1]
-  real :: part_wt, I_NkIce, kg_H, kg_H_Nk
+  real :: part_area ! The area of an ice thickness partition in a cell [m2]
+  real :: kg_H    ! A conversion factor from the ice thickness units to kg m-2 [kg m-2 H-1 ~> 1]
+  real :: kg_H_Nk ! The ice thickness unit conversion factor divided by the number of ice layers [kg m-2 H-1 ~> 1]
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce
   logical :: slab_ice    ! If true, use the very old slab ice thermodynamics,
                          ! with effectively zero heat capacity of ice and snow.
@@ -547,11 +548,11 @@ subroutine ice_stock_pe(Ice, index, value)
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST
     G => Ice%sCS%G
-    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
+    ncat = Ice%sCS%IG%CatIce ; NkIce = Ice%sCS%IG%NkIce
   elseif (associated(Ice%fCS)) then
     IST => Ice%fCS%IST
     G => Ice%fCS%G
-    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce ; kg_H = G%US%RZ_to_kg_m2
+    ncat = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
   else
     call SIS_error(WARNING, "ice_stock_pe called with an ice_data_type "//&
                    "without either sCS or fCS associated.")
@@ -560,20 +561,20 @@ subroutine ice_stock_pe(Ice, index, value)
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
-  I_NkIce = 1.0 / NkIce  ; kg_H_Nk = kg_H / NkIce
+  kg_H = G%US%RZ_to_kg_m2 ; kg_H_Nk = G%US%RZ_to_kg_m2 / NkIce
   call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LI, slab_ice=slab_ice)
+
+  value = 0.0
 
   select case (index)
 
     case (ISTOCK_WATER)
-      value = 0.0
       do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + kg_H * (IST%mH_ice(i,j,k) + (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))) * &
                IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))
       enddo ; enddo ; enddo
 
     case (ISTOCK_HEAT)
-      value = 0.0
       if (slab_ice) then
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
           if (IST%part_size(i,j,k)*IST%mH_ice(i,j,k) > 0.0) then
@@ -581,31 +582,30 @@ subroutine ice_stock_pe(Ice, index, value)
                               (kg_H * IST%mH_ice(i,j,k)) * LI*G%US%Q_to_J_kg
           endif
         enddo ; enddo ; enddo
-      else !### Should this be changed to raise the temperature to 0 degC?
+      else
         do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
-          part_wt = (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
-          if (part_wt*IST%mH_ice(i,j,k) > 0.0) then
-            value = value - (part_wt * (kg_H * IST%mH_snow(i,j,k))) * &
-                Energy_melt_enthS(IST%enth_snow(i,j,k,1), 0.0, IST%ITV)
+          part_area = (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j)) * IST%part_size(i,j,k)
+          if (part_area*IST%mH_ice(i,j,k) > 0.0) then
+            value = value - (part_area * kg_H * IST%mH_snow(i,j,k)) * &
+                  Energy_0degC(IST%enth_snow(i,j,k,1), IST%ITV)
+            ! The pond contribution here is 0 because ponds are assumed be at 0 degC already.
+            ! Otherwise add something like:
+            ! value = value - (part_area * kg_H * IST%mH_pond(i,j,k)) * &
+            !     Energy_0degC(enthalpy_liquid(IST%Temperature_pond(i,j,k), 0.0, IST%ITV), IST%ITV)
             do m=1,NkIce
-              value = value - (part_wt * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
-                  Energy_melt_enthS(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
+              value = value - (part_area * (kg_H_Nk * IST%mH_ice(i,j,k))) * &
+                  Energy_0degC(IST%enth_ice(i,j,k,m), IST%ITV)
             enddo
           endif
         enddo ; enddo ; enddo
       endif
 
     case (ISTOCK_SALT)
-      !There is no salt in the snow.
-      value = 0.0
+      !There is no salt in the snow or in the ponds.
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))) * &
             (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
-
-    case default
-
-      value = 0.0
 
   end select
 

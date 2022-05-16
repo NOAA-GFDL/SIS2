@@ -1499,7 +1499,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "varying rate as a form of outflow open boundary condition.", default=.false.)
   if (CS%transmute_ice) then
 
-    allocate(CS%transmutation_rate(SZI_(G), SZJ_(G))) ; CS%transmutation_rate(:,:) = 0.0
+    allocate(CS%transmutation_rate(SZI_(G), SZJ_(G)), source=0.0)
     call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
     call get_param(param_file, mdl, "TRANSMUTATION_RATE_FILE", transmute_file, &
                  "The file from which the transmutation rate should be read.", &

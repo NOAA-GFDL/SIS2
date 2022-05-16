@@ -28,7 +28,7 @@ integer, parameter :: NIR_DIF=4 !< Indicates the near-infrared diffuse band
 !> This type contains the parameters regulating sea-ice optics.
 type, public :: SIS_optics_CS ; private
 
-  ! albedos are from CSIM4 assumming 0.53 visible and 0.47 near-ir insolation
+  ! albedos are from CSIM4 assuming 0.53 visible and 0.47 near-ir insolation
   real :: alb_snow        !< albedo of snow (not melting) [nondim]
   real :: alb_ice         !< albedo of ice (not melting) [nondim]
   real :: pen_ice         !< ice surface penetrating solar fraction [nondim]
@@ -46,7 +46,7 @@ type, public :: SIS_optics_CS ; private
   logical :: slab_optics = .false. !< If true use the very old slab ice optics
                                    !! from the supersource model.
   real :: slab_crit_thick !< The thickness beyond which the slab ice optics no
-                          !! longer exhibits a thickness dependencs on albedo [Z ~> m].
+                          !! longer exhibits a thickness dependence on albedo [Z ~> m].
   real :: slab_alb_ocean  !< The ocean albedo as used in the slab ice optics [nondim].
   real :: slab_min_ice_alb !< The minimum thick ice albedo with the slab ice optics [nondim].
 

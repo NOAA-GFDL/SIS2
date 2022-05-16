@@ -25,7 +25,7 @@ use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracer
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
 use SIS_types,         only : ice_state_type
 use ice_grid,          only : ice_grid_type
-use ice_ridging_mod,   only : ice_ridging
+use ice_ridging_mod,   only : ice_ridging_init, ice_ridging, ice_ridging_CS
 
 implicit none ; private
 
@@ -65,6 +65,8 @@ type, public :: SIS_transport_CS ; private
           !< The control structure for the SIS tracer advection module
   type(SIS_tracer_advect_CS), pointer :: SIS_thick_adv_CSp => NULL()
           !< The control structure for the SIS thickness advection module
+  type(ice_ridging_CS),       pointer :: ice_ridging_CSp => NULL()
+          !< Pointer to the control structure for the ice ridging
 
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
@@ -153,8 +155,8 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
   if (CAS%dt_sum <= 0.0) then
-    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+    call set_massless_SIS_tracers(CAS%m_snow, TrReg, G, IG, halos=0, do_ice=.false.)
+    call set_massless_SIS_tracers(CAS%m_ice, TrReg, G, IG, halos=0, do_snow=.false.)
 
     if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 1")
   endif
@@ -262,7 +264,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
 
   if (CS%do_ridging) then
     ! Compress the ice using the ridging scheme taken from the CICE-Icepack module
-    call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, US, dt, IST%rdg_rate)
+    call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, CS%ice_ridging_CSp, US, &
+                     dt, rdg_rate=IST%rdg_rate, rdg_height=IST%rdg_height)
     ! Clean up any residuals
     call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
   else
@@ -287,8 +290,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
     mca0_ice(i,j,k) = IST%part_size(i,j,k)*IST%mH_ice(i,j,k)
     mca0_snow(i,j,k) = IST%part_size(i,j,k)*IST%mH_snow(i,j,k)
   enddo ; enddo ; enddo
-  call set_massless_SIS_tracers(mca0_snow, TrReg, G, IG, compute_domain=.true., do_ice=.false.)
-  call set_massless_SIS_tracers(mca0_ice, TrReg, G, IG, compute_domain=.true., do_snow=.false.)
+  call set_massless_SIS_tracers(mca0_snow, TrReg, G, IG, halos=0, do_ice=.false.)
+  call set_massless_SIS_tracers(mca0_ice, TrReg, G, IG, halos=0, do_snow=.false.)
 
   if (CS%bounds_check) call check_SIS_tracer_bounds(TrReg, G, IG, "SIS_transport set massless 2")
 
@@ -556,7 +559,7 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   real, dimension(SZI_(G),SZJ_(G),0:SZCAT_(IG)), &
                            intent(inout) :: part_sz !< The fractional ice concentration
                                                 !! within a cell in each thickness
-                                                !! camcategory [nondim], 0-1.
+                                                !! category [nondim], 0-1.
   type(SIS_tracer_registry_type), &
                            pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(SIS_transport_CS),  pointer       :: CS  !< A pointer to the control structure for this module
@@ -576,11 +579,12 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
     mca_ice, mca_snow, mca_pond, &
     ! Initial ice, snow and pond masses per unit cell area [R Z ~> kg m-2].
     mca0_ice, mca0_snow, mca0_pond, &
-    ! Cross-catagory transfers of ice, snow and pond mass [R Z ~> kg m-2].
+    ! Cross-category transfers of ice, snow and pond mass [R Z ~> kg m-2].
     trans_ice, trans_snow, trans_pond
   real, dimension(SZI_(G)) :: ice_cover ! The summed fractional ice coverage [nondim].
   logical :: do_any, do_j(SZJ_(G)), resum_cat(SZI_(G), SZJ_(G))
   integer :: i, j, k, m, is, ie, js, je, nCat
+  character(len=256) :: mesg
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   nCat = IG%CatIce
 
@@ -591,6 +595,8 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
   ! Zero out the part_size of any massless categories.
   do k=1,nCat ; do j=js,je ; do i=is,ie ; if (mH_ice(i,j,k) <= 0.0) then
     if (mH_ice(i,j,k) < 0.0) then
+      write(mesg,'("Negative ice mass at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, mH_ice(i,j,k)
+      call SIS_error(WARNING, mesg, all_print=.true.)
       call SIS_error(FATAL, "Input to adjust_ice_categories, negative ice mass.")
     endif
     if (mH_snow(i,j,k) > 0.0) then
@@ -1122,11 +1128,12 @@ end subroutine get_total_enthalpy
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_transport_init initializes the ice transport and sets parameters.
-subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
+subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_CSp, cover_trans_CSp)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
-  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
+  type(ice_grid_type),         intent(in)    :: IG   !< The sea-ice specific grid type
+  type(unit_scale_type),       intent(in)    :: US   !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_transport_CS),      pointer       :: CS   !< The control structure for this module
@@ -1174,7 +1181,6 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
                  "in categories with less than this coverage to be discarded.", &
                  units="nondim", default=-1.0)
 
-
   call get_param(param_file, mdl, "CHECK_ICE_TRANSPORT_CONSERVATION", CS%check_conservation, &
                  "If true, use add multiple diagnostics of ice and snow "//&
                  "mass conservation in the sea-ice transport code.  This "//&
@@ -1217,6 +1223,8 @@ subroutine SIS_transport_init(Time, G, US, param_file, diag, CS, continuity_CSp,
   call SIS_continuity_init(Time, G, US, param_file, diag, CS%continuity_CSp, &
                            CS_cvr=cover_trans_CSp)
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+  if (CS%do_ridging) &
+      call ice_ridging_init(G, IG, param_file, CS%ice_ridging_CSp, US)
 
   if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp
 

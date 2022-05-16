@@ -1,11 +1,11 @@
-!> This module is used to initalize the sea ice state for SIS2
+!> This module is used to initialize the sea ice state for SIS2
 module SIS_state_initialization
 
 ! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !   This module has code that initializes the sea ice state at the start of a  !
-! run.  If a run segment is initialzed from a restart file, some of these      !
+! run.  If a run segment is initialized from a restart file, some of these     !
 ! routines have options that just read and log their input parameters.         !
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
@@ -494,7 +494,7 @@ subroutine initialize_concentration_from_latitudes(part_size, G, IG, US, PF, jus
 
   ! Local variables
   real :: Arctic_ice_edge    ! The southern latitude of Arctic ice in an initial condition [degrees of latitude]
-  real :: Antarctic_ice_edge ! The nouthern latitude of Antarctic ice in an initial condition [degrees of latitude]
+  real :: Antarctic_ice_edge ! The northern latitude of Antarctic ice in an initial condition [degrees of latitude]
   logical :: just_read    ! If true, just read parameters but set nothing.
   character(len=40)  :: mdl = "initialize_concentration_from_latitudes" ! This subroutine's name.
   integer :: i, j, k, is, ie, js, je, CatIce
@@ -638,7 +638,7 @@ subroutine initialize_salinity_from_file(salin, G, IG, US, PF, just_read_params)
   type(param_file_type),   intent(in)  :: PF   !< A structure indicating the open file
                                                !! to parse for model parameter values.
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
-                                               !! only read parameters without changing salinty.
+                                               !! only read parameters without changing salinity.
 
   ! Local variables
   logical :: just_read    ! If true, just read parameters but set nothing.
@@ -705,7 +705,7 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
                            intent(out) :: enth_ice !< The ice enthalpy that is being initialized [Q ~> J kg-1]
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce), &
                            intent(in)  :: sal_ice !< The ice salinity [gSalt kg-1]
-  type(ice_thermo_type),   intent(in)  :: ITV  !< The ice themodynamics parameter structure.
+  type(ice_thermo_type),   intent(in)  :: ITV  !< The ice thermodynamics parameter structure.
   type(param_file_type),   intent(in)  :: PF   !< A structure indicating the open file
                                                !! to parse for model parameter values.
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
@@ -824,7 +824,7 @@ subroutine initialize_snow_enthalpy_from_file(enth_snow, G, IG, US, ITV, PF, jus
   type(unit_scale_type),   intent(in)  :: US   !< A dimensional unit scaling type
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,1), &
                            intent(out) :: enth_snow !< The snow enthalpy that is being initialized [Q ~> J kg-1]
-  type(ice_thermo_type),   intent(in)  :: ITV  !< The ice themodynamics parameter structure.
+  type(ice_thermo_type),   intent(in)  :: ITV  !< The ice thermodynamics parameter structure.
   type(param_file_type),   intent(in)  :: PF   !< A structure indicating the open file
                                                !! to parse for model parameter values.
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
@@ -958,7 +958,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   if (.not.query_initialized(Ice%Ice_restart, 'sal_ice')) then
     ! Initialize the ice salinity from separate variables for each layer, perhaps from a SIS1 restart.
-    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce)) ; sal_ice_tmp(:,:,:) = 0.0
+    allocate(sal_ice_tmp(SZI_(G), SZJ_(G), CatIce), source=0.0)
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 'sal_ice'//trim(nstr), sal_ice_tmp(:,:,:), &
@@ -980,7 +980,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
   read_t_ice(:) = .false.
   if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
       (.not.query_initialized(Ice%Ice_restart, 'enth_snow'))) then
-    allocate(t_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce)) ; t_ice_tmp(:,:,:,:) = 0.0
+    allocate(t_ice_tmp(SZI_(G), SZJ_(G), CatIce, NkIce), source=0.0)
 
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
@@ -1021,7 +1021,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
   if (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) then
     ! Try to initialize the snow enthalpy from separate temperature variables for each layer,
     ! perhaps from a SIS1 restart.
-    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce)) ; t_snow_tmp(:,:,:) = 0.0
+    allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce), source=0.0)
     call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, G%domain, &
                                  directory=dirs%restart_input_dir, success=read_values)
     if (.not.read_values) then ! Try reading the ice temperature if snow is not available.

@@ -26,7 +26,7 @@ use SIS_framework,     only : coupler_type_redistribute_data, coupler_type_copy_
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type
 use SIS2_ice_thm,      only : ice_thermo_type, SIS2_ice_thm_CS, get_SIS2_thermo_coefs
-use SIS2_ice_thm,      only : enth_from_TS, energy_melt_EnthS, temp_from_En_S
+use SIS2_ice_thm,      only : enth_from_TS, temp_from_En_S
 
 implicit none ; private
 
@@ -95,6 +95,8 @@ type ice_state_type
   real, allocatable, dimension(:,:) :: rdg_rate !< The rate of fractional area loss by ridging [T-1 ~> s-1]
   real, allocatable, dimension(:,:,:) :: &
     rdg_mice    !< A diagnostic of the ice load that was formed by ridging [R Z ~> kg m-2].
+  real, allocatable, dimension(:,:,:) :: &
+    rdg_height    ! height of ridged ice per category [Z ~> m]
 
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
   logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
@@ -205,19 +207,19 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:,:) :: flux_sw_dn !< The total downward shortwave flux
                     !! by wavelength band, averaged across all thickness categories [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:) :: &
-    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
-    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R L Z T-2 ~> Pa].
-    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R L Z T-2 ~> Pa].
-    runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2].
-    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2].
+    WindStr_x  , &  !< The zonal wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_y  , &  !< The meridional wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_ocn_x, & !< The zonal wind stress on open water on an A-grid [R Z L T-2 ~> Pa].
+    WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R Z L T-2 ~> Pa].
+    p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R Z L T-2 ~> Pa].
+    runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2 s-1].
+    calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
                     !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_hflx !< The heat flux associated with calving, based
                     !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: calving_preberg !< Calving of ice or runoff of frozen fresh
-                    !! water into the ocean, exclusive of any iceberg contributions [R Z T-1 ~> kg m-2].
+                    !! water into the ocean, exclusive of any iceberg contributions [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:) :: calving_hflx_preberg !< The heat flux associated with calving
                     !! exclusive of any iceberg contributions, based on the temperature difference
                     !! relative to a reference temperature [Q R Z T-1 ~> W m-2]
@@ -275,8 +277,8 @@ type total_sfc_flux_type
   ! These are the arrays that are averaged over the categories and in time over
   ! the fast thermodynamics.
   real, allocatable, dimension(:,:) :: &
-    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R L Z T-2 ~> Pa].
-    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R L Z T-2 ~> Pa].
+    flux_u  , & !< The downward flux of zonal momentum on an A-grid [R Z L T-2 ~> Pa].
+    flux_v  , & !< The downward flux of meridional momentum on an A-grid [R Z L T-2 ~> Pa].
     flux_sh , & !< The upward sensible heat flux at the ice top [Q R Z T-1 ~> W m-2].
     evap    , & !< The upward evaporative moisture flux at top of the ice [R Z T-1 ~> kg m-2 s-1].
     flux_lw , & !< The downward flux of longwave radiation at  the top of the ice [Q R Z T-1 ~> W m-2].
@@ -444,43 +446,44 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   IST%valid_IST = .true.
-  allocate(IST%part_size(isd:ied, jsd:jed, 0:CatIce)) ; IST%part_size(:,:,:) = 0.0
-  allocate(IST%mH_pond(  isd:ied, jsd:jed, CatIce)) ; IST%mH_pond(:,:,:) = 0.0
-  allocate(IST%mH_snow(  isd:ied, jsd:jed, CatIce)) ; IST%mH_snow(:,:,:) = 0.0
-  allocate(IST%enth_snow(isd:ied, jsd:jed, CatIce, 1)) ; IST%enth_snow(:,:,:,:) = 0.0
-  allocate(IST%mH_ice(   isd:ied, jsd:jed, CatIce)) ; IST%mH_ice(:,:,:) = 0.0
-  allocate(IST%enth_ice( isd:ied, jsd:jed, CatIce, NkIce)) ; IST%enth_ice(:,:,:,:) = 0.0
-  allocate(IST%sal_ice(  isd:ied, jsd:jed, CatIce, NkIce)) ; IST%sal_ice(:,:,:,:) = 0.0
+  allocate(IST%part_size(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(IST%mH_pond(  isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(IST%mH_snow(  isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(IST%enth_snow(isd:ied, jsd:jed, CatIce, 1), source=0.0)
+  allocate(IST%mH_ice(   isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(IST%enth_ice( isd:ied, jsd:jed, CatIce, NkIce), source=0.0)
+  allocate(IST%sal_ice(  isd:ied, jsd:jed, CatIce, NkIce), source=0.0)
 
   if (present(do_ridging)) then ; if (do_ridging) then
-    allocate(IST%snow_to_ocn(isd:ied, jsd:jed)) ; IST%snow_to_ocn(:,:) = 0.0
-    allocate(IST%water_to_ocn(isd:ied, jsd:jed)) ; IST%water_to_ocn(:,:) = 0.0
-    allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed)) ; IST%enth_snow_to_ocn(:,:) = 0.0
-    allocate(IST%rdg_rate(isd:ied, jsd:jed)) ; IST%rdg_rate(:,:) = 0.0
-    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce)) ; IST%rdg_mice(:,:,:) = 0.0
+    allocate(IST%snow_to_ocn(isd:ied, jsd:jed), source=0.0)
+    allocate(IST%water_to_ocn(isd:ied, jsd:jed), source=0.0)
+    allocate(IST%enth_snow_to_ocn(isd:ied, jsd:jed), source=0.0)
+    allocate(IST%rdg_rate(isd:ied, jsd:jed), source=0.0)
+    allocate(IST%rdg_mice(isd:ied, jsd:jed, CatIce), source=0.0)
+    allocate(IST%rdg_height(isd:ied, jsd:jed, CatIce), source=0.0)
   endif ; endif
 
   if (do_vel) then
     ! These velocities are only required for the slow ice processes, and hence
     ! can use the memory macros.
-    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI))) ; IST%u_ice_C(:,:) = 0.0
-    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI))) ; IST%v_ice_C(:,:) = 0.0
+    allocate(IST%u_ice_C(SZIB_(HI), SZJ_(HI)), source=0.0)
+    allocate(IST%v_ice_C(SZI_(HI), SZJB_(HI)), source=0.0)
     if (.not.IST%Cgrid_dyn) then
-      allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%u_ice_B(:,:) = 0.0
-      allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI))) ; IST%v_ice_B(:,:) = 0.0
+      allocate(IST%u_ice_B(SZIB_(HI), SZJB_(HI)), source=0.0)
+      allocate(IST%v_ice_B(SZIB_(HI), SZJB_(HI)), source=0.0)
     endif
   endif
 
   if (do_Tsurf) then
     ! IST%tsurf is only used with some older options.
-    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce)) ; IST%t_surf(:,:,:) = T_0degC
+    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce), source=T_0degC)
   endif
 
 end subroutine alloc_IST_arrays
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
-!!     that need to be includedin the restart files.
+!!     that need to be included in the restart files.
 subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
@@ -704,9 +707,9 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice,
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   real,                    intent(in)    :: H_to_kg_m2 !< The mass conversion_factor that will be
-                                                     !! used for the run [kg m-2 H-1 ~> 1].
-  real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-2]
-  real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-2]
+                                                     !! used for the run [kg m-2 R-1 Z-1 ~> 1].
+  real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-3]
+  real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-3]
 
   ! Local variables
   real :: vel_rescale, Q_rescale, RZ_rescale, H_rescale_ice, H_rescale_snow
@@ -771,7 +774,7 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice,
       IST%enth_snow(i,j,k,m) = Q_rescale * IST%enth_snow(i,j,k,m)
     enddo ; enddo ; enddo ; enddo
   endif
-  if (allocated(IST%snow_to_ocn) .and. (Q_rescale /= 1.0) .or. (RZ_rescale /= 1.0)) then
+  if (allocated(IST%snow_to_ocn) .and. ((Q_rescale /= 1.0) .or. (RZ_rescale /= 1.0))) then
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
       IST%snow_to_ocn(i,j) = RZ_rescale * IST%snow_to_ocn(i,j)
       IST%enth_snow_to_ocn(i,j) = Q_rescale * IST%enth_snow_to_ocn(i,j)
@@ -792,9 +795,11 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(SIS_hor_grid_type),   intent(in)  :: G       !< The horizontal grid type
   type(unit_scale_type),     intent(in)  :: US      !< A structure with unit conversion factors
-  type(ice_grid_type),       intent(in)  :: IG  !< The sea-ice specific grid type
+  type(ice_grid_type),       intent(in)  :: IG      !< The sea-ice specific grid type
 
-  real :: QRZ_T_rescale, RZ_T_rescale, RZL_T2_rescale ! Rescaling correction factors [all ~> 1.0]
+  real :: QRZ_T_rescale  ! Restart rescaling correction factor for heat fluxes [nondim]
+  real :: RZ_T_rescale   ! Restart rescaling correction factor for mass fluxes [nondim]
+  real :: RZL_T2_rescale ! Restart rescaling correction factor for stresses [nondim]
   integer :: i, j, k, b
 
   QRZ_T_rescale = 1.0 ; RZ_T_rescale = 1.0 ; RZL_T2_rescale = 1.0
@@ -852,7 +857,7 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
     FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
     FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
     FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
-    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [Q R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
+    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
 !    ! Do not rescale FIA%Tskin_cat(i,j,k) =  FIA%Tskin_cat(i,j,k)  ! [degC]
   enddo ; enddo ; enddo ; endif
 
@@ -896,46 +901,46 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
   FIA%avg_count = 0
-  allocate(FIA%flux_u_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_u_top(:,:,:) = 0.0
-  allocate(FIA%flux_v_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_v_top(:,:,:) = 0.0
-  allocate(FIA%flux_sh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sh_top(:,:,:) = 0.0
-  allocate(FIA%evap_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%evap_top(:,:,:) = 0.0
-  allocate(FIA%flux_sw_top(isd:ied, jsd:jed, 0:CatIce, NBANDS)) ; FIA%flux_sw_top(:,:,:,:) = 0.0
-  allocate(FIA%flux_lw_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lw_top(:,:,:) = 0.0
-  allocate(FIA%flux_lh_top(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lh_top(:,:,:) = 0.0
-  allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%lprec_top(:,:,:) = 0.0
-  allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce)) ;  FIA%fprec_top(:,:,:) = 0.0
-  allocate(FIA%runoff(isd:ied, jsd:jed)) ; FIA%runoff(:,:) = 0.0
-  allocate(FIA%calving(isd:ied, jsd:jed)) ; FIA%calving(:,:) = 0.0
-  allocate(FIA%calving_preberg(isd:ied, jsd:jed)) ; FIA%calving_preberg(:,:) = 0.0 ! diag
-  allocate(FIA%runoff_hflx(isd:ied, jsd:jed)) ; FIA%runoff_hflx(:,:) = 0.0
-  allocate(FIA%calving_hflx(isd:ied, jsd:jed)) ; FIA%calving_hflx(:,:) = 0.0
-  allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed)) ; FIA%calving_hflx_preberg(:,:) = 0.0 ! diag
+  allocate(FIA%flux_u_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%flux_v_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%flux_sh_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%evap_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%flux_sw_top(isd:ied, jsd:jed, 0:CatIce, NBANDS), source=0.0)
+  allocate(FIA%flux_lw_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%flux_lh_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+  allocate(FIA%runoff(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%calving(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%calving_preberg(isd:ied, jsd:jed), source=0.0) ! diag
+  allocate(FIA%runoff_hflx(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%calving_hflx(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%calving_hflx_preberg(isd:ied, jsd:jed), source=0.0) ! diag
 
-  allocate(FIA%frazil_left(isd:ied, jsd:jed)) ; FIA%frazil_left(:,:) = 0.0
-  allocate(FIA%tmelt(isd:ied, jsd:jed, CatIce)) ; FIA%tmelt(:,:,:) = 0.0
-  allocate(FIA%bmelt(isd:ied, jsd:jed, CatIce)) ; FIA%bmelt(:,:,:) = 0.0
-  allocate(FIA%WindStr_x(isd:ied, jsd:jed)) ; FIA%WindStr_x(:,:) = 0.0
-  allocate(FIA%WindStr_y(isd:ied, jsd:jed)) ; FIA%WindStr_y(:,:) = 0.0
-  allocate(FIA%WindStr_ocn_x(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_x(:,:) = 0.0
-  allocate(FIA%WindStr_ocn_y(isd:ied, jsd:jed)) ; FIA%WindStr_ocn_y(:,:) = 0.0
-  allocate(FIA%p_atm_surf(isd:ied, jsd:jed)) ; FIA%p_atm_surf(:,:) = 0.0
-  allocate(FIA%Tskin_avg(isd:ied, jsd:jed)) ; FIA%Tskin_avg(:,:) = 0.0 ! diag
-  allocate(FIA%ice_free(isd:ied, jsd:jed))  ; FIA%ice_free(:,:) = 0.0
-  allocate(FIA%ice_cover(isd:ied, jsd:jed)) ; FIA%ice_cover(:,:) = 0.0
+  allocate(FIA%frazil_left(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%tmelt(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(FIA%bmelt(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(FIA%WindStr_x(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%WindStr_y(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%WindStr_ocn_x(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%WindStr_ocn_y(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%p_atm_surf(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%Tskin_avg(isd:ied, jsd:jed), source=0.0) ! diag
+  allocate(FIA%ice_free(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%ice_cover(isd:ied, jsd:jed), source=0.0)
 
   if (interp_fluxes) then
-    allocate(FIA%flux_sh0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_sh0(:,:,:) = 0.0
-    allocate(FIA%evap0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%evap0(:,:,:) = 0.0
-    allocate(FIA%flux_lw0(isd:ied, jsd:jed, 0:CatIce)) ; FIA%flux_lw0(:,:,:) = 0.0
-    allocate(FIA%dshdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dshdt(:,:,:) = 0.0
-    allocate(FIA%devapdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%devapdt(:,:,:) = 0.0
-    allocate(FIA%dlwdt(isd:ied, jsd:jed, 0:CatIce)) ; FIA%dlwdt(:,:,:) = 0.0
-    allocate(FIA%Tskin_cat(isd:ied, jsd:jed, 0:CatIce)) ; FIA%Tskin_cat(:,:,:) = 0.0
+    allocate(FIA%flux_sh0(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%evap0(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%flux_lw0(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%dshdt(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%devapdt(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%dlwdt(isd:ied, jsd:jed, 0:CatIce), source=0.0)
+    allocate(FIA%Tskin_cat(isd:ied, jsd:jed, 0:CatIce), source=0.0)
   endif
 
-  allocate(FIA%flux_sw_dn(isd:ied, jsd:jed, NBANDS)) ; FIA%flux_sw_dn(:,:,:) = 0.0
-  allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; FIA%sw_abs_ocn(:,:,:) = 0.0
+  allocate(FIA%flux_sw_dn(isd:ied, jsd:jed, NBANDS), source=0.0)
+  allocate(FIA%sw_abs_ocn(isd:ied, jsd:jed, CatIce), source=0.0)
 
   if (present(gas_fluxes)) &
     call coupler_type_spawn(gas_fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
@@ -960,15 +965,15 @@ subroutine alloc_total_sfc_flux(TSF, HI, gas_fluxes)
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
-  allocate(TSF%flux_u(isd:ied, jsd:jed)) ; TSF%flux_u(:,:) = 0.0
-  allocate(TSF%flux_v(isd:ied, jsd:jed)) ; TSF%flux_v(:,:) = 0.0
-  allocate(TSF%flux_sh(isd:ied, jsd:jed)) ; TSF%flux_sh(:,:) = 0.0
-  allocate(TSF%flux_sw(isd:ied, jsd:jed, NBANDS)) ; TSF%flux_sw(:,:,:) = 0.0
-  allocate(TSF%flux_lw(isd:ied, jsd:jed)) ; TSF%flux_lw(:,:) = 0.0
-  allocate(TSF%flux_lh(isd:ied, jsd:jed)) ; TSF%flux_lh(:,:) = 0.0
-  allocate(TSF%evap(isd:ied, jsd:jed)) ; TSF%evap(:,:) = 0.0
-  allocate(TSF%lprec(isd:ied, jsd:jed)) ;  TSF%lprec(:,:) = 0.0
-  allocate(TSF%fprec(isd:ied, jsd:jed)) ;  TSF%fprec(:,:) = 0.0
+  allocate(TSF%flux_u(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%flux_v(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%flux_sh(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%flux_sw(isd:ied, jsd:jed, NBANDS), source=0.0)
+  allocate(TSF%flux_lw(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%flux_lh(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%evap(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%lprec(isd:ied, jsd:jed), source=0.0)
+  allocate(TSF%fprec(isd:ied, jsd:jed), source=0.0)
   if (present(gas_fluxes)) &
     call coupler_type_spawn(gas_fluxes, TSF%tr_flux, (/isd, isc, iec, ied/), &
                             (/jsd, jsc, jec, jed/))
@@ -1000,7 +1005,7 @@ subroutine ice_rad_register_restarts(HI, IG, param_file, Rad, Ice_restart)
   call safe_alloc(Rad%sw_abs_sfc, isd, ied, jsd, jed, CatIce)
   call safe_alloc(Rad%sw_abs_snow, isd, ied, jsd, jed, CatIce)
   if (.not. allocated(Rad%sw_abs_ice)) then
-    allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
+    allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce), source=0.0)
   endif
   call safe_alloc(Rad%sw_abs_ocn, isd, ied, jsd, jed, CatIce)
   call safe_alloc(Rad%sw_abs_int, isd, ied, jsd, jed, CatIce)
@@ -1025,17 +1030,17 @@ subroutine alloc_ice_rad(Rad, HI, IG)
   CatIce = IG%CatIce ; NkIce = IG%NkIce
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
-  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce)) ; Rad%t_skin(:,:,:) = 0.0
-  allocate(Rad%Tskin_rad(isd:ied, jsd:jed, CatIce)) ; Rad%Tskin_rad(:,:,:) = 0.0
+  allocate(Rad%t_skin(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(Rad%Tskin_rad(isd:ied, jsd:jed, CatIce), source=0.0)
 
-  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_sfc(:,:,:) = 0.0
-  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_snow(:,:,:) = 0.0
-  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce)) ; Rad%sw_abs_ice(:,:,:,:) = 0.0
-  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_ocn(:,:,:) = 0.0
-  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce)) ; Rad%sw_abs_int(:,:,:) = 0.0
+  allocate(Rad%sw_abs_sfc(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(Rad%sw_abs_snow(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(Rad%sw_abs_ice(isd:ied, jsd:jed, CatIce, NkIce), source=0.0)
+  allocate(Rad%sw_abs_ocn(isd:ied, jsd:jed, CatIce), source=0.0)
+  allocate(Rad%sw_abs_int(isd:ied, jsd:jed, CatIce), source=0.0)
 
-  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed)) ; Rad%coszen_nextrad(:,:) = 0.0
-  allocate(Rad%coszen_lastrad(isd:ied, jsd:jed)) ; Rad%coszen_lastrad(:,:) = 0.0
+  allocate(Rad%coszen_nextrad(isd:ied, jsd:jed), source=0.0)
+  allocate(Rad%coszen_lastrad(isd:ied, jsd:jed), source=0.0)
 
 end subroutine alloc_ice_rad
 
@@ -1060,40 +1065,40 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_tr
 
   if (.not.associated(IOF)) allocate(IOF)
 
-  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI))) ; IOF%flux_salt(:,:) = 0.0
+  allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI)), source=0.0)
   if (do_transmute) then
-    allocate(IOF%transmutation_salt_flux(SZI_(HI), SZJ_(HI))) ; IOF%transmutation_salt_flux(:,:) = 0.0
+    allocate(IOF%transmutation_salt_flux(SZI_(HI), SZJ_(HI)), source=0.0)
   endif
 
-  allocate(IOF%flux_sh_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%flux_sh_ocn_top(:,:) = 0.0
-  allocate(IOF%evap_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%evap_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lw_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI))) ; IOF%flux_lh_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_sw_ocn(SZI_(HI), SZJ_(HI), NBANDS)) ;  IOF%flux_sw_ocn(:,:,:) = 0.0
-  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%lprec_ocn_top(:,:) = 0.0
-  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI))) ;  IOF%fprec_ocn_top(:,:) = 0.0
-  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_u_ocn(:,:) = 0.0
-  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)))    ;  IOF%flux_v_ocn(:,:) = 0.0
+  allocate(IOF%flux_sh_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%evap_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%flux_lw_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%flux_lh_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%flux_sw_ocn(SZI_(HI), SZJ_(HI), NBANDS), source=0.0)
+  allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
   if (alloc_stress_mag) then
-    allocate(IOF%stress_mag(SZI_(HI), SZJ_(HI)))  ;  IOF%stress_mag(:,:) = 0.0
+    allocate(IOF%stress_mag(SZI_(HI), SZJ_(HI)), source=0.0)
   endif
-  allocate(IOF%pres_ocn_top(SZI_(HI), SZJ_(HI)))  ; IOF%pres_ocn_top(:,:) = 0.0
-  allocate(IOF%mass_ice_sn_p(SZI_(HI), SZJ_(HI))) ; IOF%mass_ice_sn_p(:,:) = 0.0
+  allocate(IOF%pres_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%mass_ice_sn_p(SZI_(HI), SZJ_(HI)), source=0.0)
 
-  allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_atm(:,:) = 0.0
-  allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_atm(:,:) = 0.0
-  allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)))  ; IOF%Enth_Mass_in_ocn(:,:) = 0.0
-  allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI))) ; IOF%Enth_Mass_out_ocn(:,:) = 0.0
+  allocate(IOF%Enth_Mass_in_atm(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%Enth_Mass_out_atm(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%Enth_Mass_in_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%Enth_Mass_out_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
   if (do_transmute) then
-    allocate(IOF%transmutation_enth(SZI_(HI), SZJ_(HI))) ; IOF%transmutation_enth(:,:) = 0.0
+    allocate(IOF%transmutation_enth(SZI_(HI), SZJ_(HI)), source=0.0)
   endif
   ! Allocating iceberg fields (only used if pass_iceberg_area_to_ocean=.True.)
   ! Please note that these are only allocated on the computational domain so that they
   ! can be passed conveniently to the iceberg code.
   if (alloc_bergs) then
-    allocate(IOF%mass_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%mass_berg(:,:) = 0.0
-    allocate(IOF%ustar_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%ustar_berg(:,:) = 0.0
-    allocate(IOF%area_berg(HI%isc:HI%iec, HI%jsc:HI%jec)) ; IOF%area_berg(:,:) = 0.0
+    allocate(IOF%mass_berg(HI%isc:HI%iec, HI%jsc:HI%jec), source=0.0)
+    allocate(IOF%ustar_berg(HI%isc:HI%iec, HI%jsc:HI%jec), source=0.0)
+    allocate(IOF%area_berg(HI%isc:HI%iec, HI%jsc:HI%jec), source=0.0)
   endif
 
 end subroutine alloc_ice_ocean_flux
@@ -1119,19 +1124,19 @@ subroutine alloc_ocean_sfc_state(OSS, HI, Cgrid_dyn, gas_fields_ocn)
   if (.not.associated(OSS)) allocate(OSS)
 
   ! The ocean_sfc_state_type only occurs on slow ice PEs, so it can use the memory macros.
-  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI))) ; OSS%s_surf(:,:) = 0.0
-  allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)))  ; OSS%SST_C(:,:) = 0.0
-  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI))) ; OSS%T_fr_ocn(:,:) = 0.0
-  allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI))) ; OSS%sea_lev(:,:) = 0.0
-  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)))  ; OSS%bheat(:,:) = 0.0
-  allocate(OSS%frazil(SZI_(HI), SZJ_(HI))) ; OSS%frazil(:,:) = 0.0
+  allocate(OSS%s_surf(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(OSS%SST_C(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(OSS%T_fr_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(OSS%sea_lev(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(OSS%bheat(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(OSS%frazil(SZI_(HI), SZJ_(HI)), source=0.0)
 
   if (Cgrid_dyn) then
-    allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI))) ; OSS%u_ocn_C(:,:) = 0.0
-    allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI))) ; OSS%v_ocn_C(:,:) = 0.0
+    allocate(OSS%u_ocn_C(SZIB_(HI), SZJ_(HI)), source=0.0)
+    allocate(OSS%v_ocn_C(SZI_(HI), SZJB_(HI)), source=0.0)
   else
-    allocate(OSS%u_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%u_ocn_B(:,:) = 0.0
-    allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI))) ; OSS%v_ocn_B(:,:) = 0.0
+    allocate(OSS%u_ocn_B(SZIB_(HI), SZJB_(HI)), source=0.0)
+    allocate(OSS%v_ocn_B(SZIB_(HI), SZJB_(HI)), source=0.0)
   endif
 
   OSS%Cgrid_dyn = Cgrid_dyn
@@ -1162,14 +1167,14 @@ subroutine alloc_simple_OSS(OSS, HI, gas_fields_ocn)
   isc = HI%isc ; iec = HI%iec ; jsc = HI%jsc ; jec = HI%jec
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed
 
-  allocate(OSS%s_surf(isd:ied, jsd:jed)) ; OSS%s_surf(:,:) = 0.0
-  allocate(OSS%SST_C(isd:ied, jsd:jed))  ; OSS%SST_C(:,:) = 0.0
-  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed)) ; OSS%T_fr_ocn(:,:) = 0.0
-  allocate(OSS%bheat(isd:ied, jsd:jed))   ; OSS%bheat(:,:) = 0.0
-  allocate(OSS%u_ocn_A(isd:ied, jsd:jed)) ; OSS%u_ocn_A(:,:) = 0.0
-  allocate(OSS%v_ocn_A(isd:ied, jsd:jed)) ; OSS%v_ocn_A(:,:) = 0.0
-  allocate(OSS%u_ice_A(isd:ied, jsd:jed)) ; OSS%u_ice_A(:,:) = 0.0
-  allocate(OSS%v_ice_A(isd:ied, jsd:jed)) ; OSS%v_ice_A(:,:) = 0.0
+  allocate(OSS%s_surf(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%SST_C(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%T_fr_ocn(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%bheat(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%u_ocn_A(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%v_ocn_A(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%u_ice_A(isd:ied, jsd:jed), source=0.0)
+  allocate(OSS%v_ice_A(isd:ied, jsd:jed), source=0.0)
   if (present(gas_fields_ocn)) &
     call coupler_type_spawn(gas_fields_ocn, OSS%tr_fields, (/isd, isc, iec, ied/), &
                             (/jsd, jsc, jec, jed/))
@@ -1225,7 +1230,7 @@ subroutine copy_IST_to_IST(IST_in, IST_out, HI_in, HI_out, IG)
     IST_out%sal_ice(i2,j2,k,m) = IST_in%sal_ice(i,j,k,m)
   enddo ; enddo ; enddo ; enddo
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, rdg_height, TrReg, and ITV are deliberately not being copied.
 
 end subroutine copy_IST_to_IST
 
@@ -1241,7 +1246,7 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
   real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
 
-  ! The velocity components, rdg_mice, TrReg, and ITV are deliberately not being copied.
+  ! The velocity components, rdg_mice, rdg_height, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
     call redistribute_data(domain_in, IST_in%part_size, domain_out, &
                            IST_out%part_size, complete=.true.)
