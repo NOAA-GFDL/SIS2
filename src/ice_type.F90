@@ -19,6 +19,7 @@ use SIS_restart,       only : register_restart_field, save_restart, SIS_restart_
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_open_boundary, only : ice_OBC_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : ice_thermo_type, energy_0degC, get_SIS2_thermo_coefs
 use iso_fortran_env,   only : int64
@@ -152,6 +153,8 @@ type ice_data_type !  ice_public_type
           !< A pointer to the slow ice restart control structure
   type(SIS_restart_CS), pointer :: Ice_fast_restart => NULL()
           !< A pointer to the fast ice restart control structure
+  type(ice_OBC_type), pointer :: OBC => NULL()
+          !< A pointer to the ice OBC control structure
   character(len=240) :: restart_output_dir = './RESTART/'
           !< The directory into which to write restart files.
 end type ice_data_type !  ice_public_type
