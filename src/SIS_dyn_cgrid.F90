@@ -483,11 +483,14 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             missing_value=missing, interp_method='none')
 
   CS%id_str_d   = register_diag_field('ice_model', 'str_d', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_str_t   = register_diag_field('ice_model', 'str_t', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_str_s   = register_diag_field('ice_model', 'str_s', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_sh_d   = register_diag_field('ice_model', 'sh_d', diag%axesT1, Time,   &
             'ice divergence strain rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t   = register_diag_field('ice_model', 'sh_t', diag%axesT1, Time,   &
@@ -506,11 +509,14 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             'ice velocity - y component', 'm/s', missing_value=missing,        &
             interp_method='none, conversion=US%L_T_to_m_s')
   CS%id_str_d_hifreq = register_diag_field('ice_model', 'str_d_hf', diag%axesT1, Time, &
-            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice divergence internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_str_t_hifreq = register_diag_field('ice_model', 'str_t_hf', diag%axesT1, Time, &
-            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice tension internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_str_s_hifreq = register_diag_field('ice_model', 'str_s_hf', diag%axesB1, Time, &
-            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing)
+            'ice shearing internal stress', 'Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, &
+            missing_value=missing)
   CS%id_sh_d_hifreq = register_diag_field('ice_model', 'sh_d_hf', diag%axesT1, Time, &
             'ice divergence rate', 's-1', conversion=US%s_to_T, missing_value=missing)
   CS%id_sh_t_hifreq = register_diag_field('ice_model', 'sh_t_hf', diag%axesT1, Time, &
@@ -1931,7 +1937,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
                  (x_k(:) * sigma_i * sqrt(2.0 * pi))
 
-        b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0 * pi))
+        b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0*pi))
 
         P_x(:) = g_k(:) * wid_i
         P_y(:) = b_n(:) * wid_b
@@ -1975,10 +1981,11 @@ end subroutine basal_stress_coeff_itd
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_C_dyn_register_restarts allocates and registers any variables for the
 !!   SIS C-grid dynamics module that need to be included in the restart files.
-subroutine SIS_C_dyn_register_restarts(HI, param_file, CS, Ice_restart)
+subroutine SIS_C_dyn_register_restarts(HI, param_file, CS, US, Ice_restart)
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_C_dyn_CS),      pointer    :: CS    !< The control structure for this module
+  type(unit_scale_type),   intent(in) :: US    !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer    :: Ice_restart  !< The control structure for the ice restarts
 
 !   This subroutine registers the restart variables associated with the
@@ -1999,12 +2006,16 @@ subroutine SIS_C_dyn_register_restarts(HI, param_file, CS, Ice_restart)
   call safe_alloc(CS%str_s, HI%IsdB, HI%IedB, HI%JsdB, HI%JedB)
 
   if (associated(Ice_restart)) then
-    call register_restart_field(Ice_restart, 'str_d', CS%str_d, mandatory=.false.)
-    call register_restart_field(Ice_restart, 'str_t', CS%str_t, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'str_d', CS%str_d, mandatory=.false., &
+                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+    call register_restart_field(Ice_restart, 'str_t', CS%str_t, mandatory=.false., &
+                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
     if (HI%symmetric) then
-      call register_restart_field(Ice_restart, 'sym_str_s', CS%str_s, position=CORNER, mandatory=.false.)
+      call register_restart_field(Ice_restart, 'sym_str_s', CS%str_s, position=CORNER, mandatory=.false., &
+                                  units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
     else
-      call register_restart_field(Ice_restart, 'str_s', CS%str_s, position=CORNER, mandatory=.false.)
+      call register_restart_field(Ice_restart, 'str_s', CS%str_s, position=CORNER, mandatory=.false., &
+                                  units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
     endif
   endif
 end subroutine SIS_C_dyn_register_restarts
@@ -2067,11 +2078,9 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
   if (associated(domain_tmp)) then ; deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp) ; endif
 
   ! Now redo the dimensional rescaling of the stresses if necessary.
-  if ((US%s_to_T_restart*US%m_to_L_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) .and. &
-      ((US%kg_m3_to_R * US%m_to_Z * (US%m_to_L*US%s_to_T_restart)**2) /= &
-       (US%kg_m3_to_R_restart * US%m_to_Z_restart * (US%m_to_L_restart*US%s_to_T)**2) ) ) then
-    stress_rescale = (US%kg_m3_to_R * US%m_to_Z * (US%m_to_L * US%s_to_T_restart)**2) / &
-                     (US%kg_m3_to_R_restart * US%m_to_Z_restart * (US%m_to_L_restart * US%s_to_T)**2)
+  if (US%s_to_T_restart*US%m_to_L_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) then
+    stress_rescale = US%s_to_T_restart**2 / &
+                     (US%kg_m3_to_R_restart * US%m_to_Z_restart * US%m_to_L_restart**2)
     do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
       CS%str_s(I,J) = stress_rescale * CS%str_s(I,J)
     enddo ; enddo

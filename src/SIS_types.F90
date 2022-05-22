@@ -484,10 +484,11 @@ end subroutine alloc_IST_arrays
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_register_restarts registers any variables in the ice state type
 !!     that need to be included in the restart files.
-subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
+subroutine ice_state_register_restarts(IST, G, IG, US, Ice_restart)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
 
   ! Now register some of these arrays to be read from the restart files.
@@ -498,52 +499,52 @@ subroutine ice_state_register_restarts(IST, G, IG, Ice_restart)
                                   mandatory=.false., units="deg K")
     endif
     call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, &
-                                mandatory=.false., units="H_to_kg_m2 kg m-2")
+                                mandatory=.false., units="kg m-2", conversion=US%RZ_to_kg_m2)
     call register_restart_field(Ice_restart, 'h_snow', IST%mH_snow, &
-                                mandatory=.true., units="H_to_kg_m2 kg m-2")
+                                mandatory=.true., units="kg m-2", conversion=US%RZ_to_kg_m2)
     call register_restart_field(Ice_restart, 'enth_snow', IST%enth_snow, dim_4='z_snow', &
-                                mandatory=.false.)
+                                mandatory=.false., units="J kg-1", conversion=US%Q_to_J_kg)
     call register_restart_field(Ice_restart, 'h_ice', IST%mH_ice, &
-                                mandatory=.true., units="H_to_kg_m2 kg m-2")
+                                mandatory=.true., units="kg m-2", conversion=US%RZ_to_kg_m2)
     call register_restart_field(Ice_restart, 'H_to_kg_m2', IG%H_to_kg_m2, &
                                 longname="The conversion factor from SIS2 mass-thickness units to kg m-2.", &
                                 mandatory=.false.)
 
     call register_restart_field(Ice_restart, 'enth_ice', IST%enth_ice, &
-                                mandatory=.false., units="J kg-1")
+                                mandatory=.false., units="J kg-1", conversion=US%Q_to_J_kg)
     call register_restart_field(Ice_restart, 'sal_ice', IST%sal_ice, &
                                 mandatory=.false., units="kg/kg")
 
     if (allocated(IST%snow_to_ocn)) then
       call register_restart_field(Ice_restart, 'snow_to_ocn', IST%snow_to_ocn, &
-                                  mandatory=.false., units="kg m-2")
+                                  mandatory=.false., units="kg m-2", conversion=US%RZ_to_kg_m2)
       call register_restart_field(Ice_restart, 'enth_snow_to_ocn', IST%enth_snow_to_ocn, &
-                                  mandatory=.false., units="J kg-1")
+                                  mandatory=.false., units="J kg-1", conversion=US%Q_to_J_kg)
     endif
 
     if (IST%Cgrid_dyn) then
       if (G%symmetric) then
-        call register_restart_field(Ice_restart, 'sym_u_ice_C', IST%u_ice_C, &
-                                    position=EAST_FACE, mandatory=.false.)
-        call register_restart_field(Ice_restart, 'sym_v_ice_C', IST%v_ice_C, &
-                                    position=NORTH_FACE, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_u_ice_C', IST%u_ice_C, position=EAST_FACE, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
+        call register_restart_field(Ice_restart, 'sym_v_ice_C', IST%v_ice_C, position=NORTH_FACE, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
       else
-        call register_restart_field(Ice_restart, 'u_ice_C', IST%u_ice_C, &
-                                    position=EAST_FACE, mandatory=.false.)
-        call register_restart_field(Ice_restart, 'v_ice_C', IST%v_ice_C, &
-                                    position=NORTH_FACE, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'u_ice_C', IST%u_ice_C, position=EAST_FACE, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
+        call register_restart_field(Ice_restart, 'v_ice_C', IST%v_ice_C, position=NORTH_FACE, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
       endif
     else
       if (G%symmetric) then
-        call register_restart_field(Ice_restart, 'sym_u_ice_B', IST%u_ice_B, &
-                                    position=CORNER, mandatory=.false.)
-        call register_restart_field(Ice_restart, 'sym_v_ice_B', IST%v_ice_B, &
-                                    position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'sym_u_ice_B', IST%u_ice_B, position=CORNER, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
+        call register_restart_field(Ice_restart, 'sym_v_ice_B', IST%v_ice_B, position=CORNER, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
       else
-        call register_restart_field(Ice_restart, 'u_ice', IST%u_ice_B, &
-                                    position=CORNER, mandatory=.false.)
-        call register_restart_field(Ice_restart, 'v_ice', IST%v_ice_B, &
-                                    position=CORNER, mandatory=.false.)
+        call register_restart_field(Ice_restart, 'u_ice', IST%u_ice_B, position=CORNER, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
+        call register_restart_field(Ice_restart, 'v_ice', IST%v_ice_B, position=CORNER, &
+                                    mandatory=.false., units="m s-1", conversion=US%L_T_to_m_s)
       endif
     endif
   endif
@@ -576,15 +577,16 @@ end subroutine register_unit_conversion_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_state_read_alt_restarts reads in alternative variables that might have been in the restart
 !! file, specifically dealing with changing between symmetric and non-symmetric memory restart files.
-subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
+subroutine ice_state_read_alt_restarts(IST, G, IG, US, Ice_restart, restart_dir)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer       :: Ice_restart !< The control structure for the ice restarts
   character(len=*),        intent(in)    :: restart_dir !< A directory in which to find the restart file
 
   ! These are temporary variables that will be used only here for reading and then discarded.
-  real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp
+  real, allocatable, target, dimension(:,:) :: u_tmp, v_tmp ! Temporary velocities [L T-1 ~> m s-1]
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
   logical :: u_set, v_set, read_u, read_v
   integer :: i, j
@@ -612,9 +614,9 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
       call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
       call only_read_from_restarts(Ice_restart, 'u_ice_C', u_tmp, domain_tmp, position=EAST_FACE, &
-                   directory=restart_dir, success=read_u)
+                   directory=restart_dir, success=read_u, scale=US%m_s_to_L_T)
       call only_read_from_restarts(Ice_restart, 'v_ice_C', v_tmp, domain_tmp, position=NORTH_FACE, &
-                   directory=restart_dir, success=read_v)
+                   directory=restart_dir, success=read_v, scale=US%m_s_to_L_T)
       if (read_u .and. read_v) then
         ! The non-symmetric variant of this vector has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=CGRID_NE)
@@ -630,9 +632,9 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
       call safe_alloc(u_tmp, G%isd, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd, G%jed)
       call only_read_from_restarts(Ice_restart, 'u_ice', u_tmp, domain_tmp, position=CORNER, &
-                                   directory=restart_dir, success=read_u)
+                                   directory=restart_dir, success=read_u, scale=US%m_s_to_L_T)
       call only_read_from_restarts(Ice_restart, 'v_ice', v_tmp, domain_tmp, position=CORNER, &
-                                   directory=restart_dir, success=read_v)
+                                   directory=restart_dir, success=read_v, scale=US%m_s_to_L_T)
       if (read_u .and. read_v) then
         ! The non-symmetric variant of this variable has been successfully read.
         call pass_vector(u_tmp, v_tmp, domain_tmp, stagger=BGRID_NE)
@@ -662,10 +664,10 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
     if (IST%Cgrid_dyn .and. (.not.u_set)) then
       call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd, G%jed)
       call safe_alloc(v_tmp, G%isd, G%ied, G%jsd-1, G%jed)
-      call only_read_from_restarts(Ice_restart, 'sym_u_ice_C', u_tmp, domain_tmp, &
-                                   position=EAST_FACE, directory=restart_dir, success=read_u)
-      call only_read_from_restarts(Ice_restart, 'sym_v_ice_C', v_tmp, domain_tmp, &
-                                   position=NORTH_FACE, directory=restart_dir, success=read_v)
+      call only_read_from_restarts(Ice_restart, 'sym_u_ice_C', u_tmp, domain_tmp, position=EAST_FACE, &
+                                   directory=restart_dir, success=read_u, scale=US%m_s_to_L_T)
+      call only_read_from_restarts(Ice_restart, 'sym_v_ice_C', v_tmp, domain_tmp, position=NORTH_FACE, &
+                                   directory=restart_dir, success=read_v, scale=US%m_s_to_L_T)
       if (read_u .and. read_v) then
         ! The symmetric variant of this vector has been successfully read.
         do j=G%jsc,G%jec ; do I=G%isc-1,G%iec
@@ -680,9 +682,9 @@ subroutine ice_state_read_alt_restarts(IST, G, IG, Ice_restart, restart_dir)
       call safe_alloc(u_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
       call safe_alloc(v_tmp, G%isd-1, G%ied, G%jsd-1, G%jed)
       call only_read_from_restarts(Ice_restart, 'sym_u_ice_B', u_tmp, domain_tmp, position=CORNER, &
-                                   directory=restart_dir, success=read_u)
+                                   directory=restart_dir, success=read_u, scale=US%m_s_to_L_T)
       call only_read_from_restarts(Ice_restart, 'sym_v_ice_B', v_tmp, domain_tmp, position=CORNER, &
-                                   directory=restart_dir, success=read_v)
+                                   directory=restart_dir, success=read_v, scale=US%m_s_to_L_T)
       if (read_u .and. read_v) then
         ! The symmetric variant of this variable has been successfully read.
         do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
@@ -701,13 +703,11 @@ end subroutine ice_state_read_alt_restarts
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> rescale_ice_state_restart_fields handles any changes in dimensional rescaling of ice state
 !! variables between what is stored in the restart file and what is done for the current run segment.
-subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice, Rho_snow)
+subroutine rescale_ice_state_restart_fields(IST, G, US, IG, Rho_ice, Rho_snow)
   type(ice_state_type),    intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  real,                    intent(in)    :: H_to_kg_m2 !< The mass conversion_factor that will be
-                                                     !! used for the run [kg m-2 R-1 Z-1 ~> 1].
   real,                    intent(in)    :: Rho_ice  !< The nominal density of ice [R ~> kg m-3]
   real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-3]
 
@@ -719,27 +719,25 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, H_to_kg_m2, Rho_ice,
   ! The rescaling of the ice and snow thickness are dealt with in ice_model-init so that
   ! older (SIS1) sea ice restart files can be used.
   vel_rescale = 1.0
-  if ((US%s_to_T_restart*US%m_to_L_restart /= 0.0) .and. &
-      (US%m_to_L*US%s_to_T_restart) /= (US%m_to_L_restart*US%s_to_T)) &
-    vel_rescale = (US%m_to_L*US%s_to_T_restart) / (US%m_to_L_restart*US%s_to_T)
+  if (US%s_to_T_restart*US%m_to_L_restart /= 0.0) &
+    vel_rescale = US%s_to_T_restart / US%m_to_L_restart
   Q_rescale = 1.0
-  if ((US%J_kg_to_Q_restart /= 0.0) .and. &
-      (US%J_kg_to_Q /= US%J_kg_to_Q_restart)) &
-    Q_rescale = US%J_kg_to_Q / US%J_kg_to_Q_restart
+  if ((US%J_kg_to_Q_restart /= 0.0) .and. (US%J_kg_to_Q_restart /= 1.0)) &
+    Q_rescale = 1.0 / US%J_kg_to_Q_restart
   RZ_rescale = 1.0
-  if ((US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) .and. &
-      (US%kg_m3_to_R*US%m_to_Z) /= (US%kg_m3_to_R_restart*US%m_to_Z_restart)) &
-    RZ_rescale = (US%kg_m3_to_R*US%m_to_Z) / (US%kg_m3_to_R_restart*US%m_to_Z_restart)
+  if (US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) &
+    RZ_rescale = 1.0 / (US%kg_m3_to_R_restart*US%m_to_Z_restart)
 
   ! Determine the thickness rescaling factors that are needed.
   H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
   if (IG%H_to_kg_m2 == -1.0) then
     ! This is an older restart file, and the snow and ice thicknesses are in m.
-    H_rescale_ice = US%R_to_kg_m3*Rho_ice / H_to_kg_m2
-    H_rescale_snow = US%R_to_kg_m3*Rho_snow / H_to_kg_m2
-  elseif (IG%H_to_kg_m2 /= H_to_kg_m2) then
-    H_rescale_ice = IG%H_to_kg_m2 / H_to_kg_m2
-    H_rescale_snow = H_rescale_ice
+    H_rescale_ice = US%R_to_kg_m3*Rho_ice
+    H_rescale_snow = US%R_to_kg_m3*Rho_snow
+  else
+    ! Multiplication by IG%H_to_kg_m2 undoes the scaling in the restart file.
+    H_rescale_ice = IG%H_to_kg_m2
+    H_rescale_snow = IG%H_to_kg_m2
   endif
 
   if (H_rescale_ice /= 1.0) then
@@ -803,23 +801,16 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
   integer :: i, j, k, b
 
   QRZ_T_rescale = 1.0 ; RZ_T_rescale = 1.0 ; RZL_T2_rescale = 1.0
-  if ((US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) .and. &
-      ((US%J_kg_to_Q*US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) /= &
-       (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)) ) &
-    QRZ_T_rescale = (US%J_kg_to_Q*US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) / &
-                    (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)
+  if (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) &
+    QRZ_T_rescale = US%s_to_T_restart / &
+                    (US%J_kg_to_Q_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart)
 
-  if ((US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) .and. &
-      ((US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) /= &
-       (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)) ) &
-    RZ_T_rescale = (US%kg_m3_to_R*US%m_to_Z*US%s_to_T_restart) / &
-                   (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%s_to_T)
+  if (US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_Z_restart /= 0.0) &
+    RZ_T_rescale = US%s_to_T_restart / (US%kg_m3_to_R_restart*US%m_to_Z_restart)
 
-  if ((US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_L_restart*US%m_to_Z_restart /= 0.0) .and. &
-      ((US%kg_m3_to_R*US%m_to_Z*US%m_to_L*US%s_to_T_restart**2) /= &
-       (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%m_to_L_restart*US%s_to_T**2)) ) &
-    RZL_T2_rescale = (US%kg_m3_to_R*US%m_to_Z*US%m_to_L*US%s_to_T_restart**2) / &
-                     (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%m_to_L_restart*US%s_to_T**2)
+  if (US%kg_m3_to_R_restart*US%s_to_T_restart*US%m_to_L_restart*US%m_to_Z_restart /= 0.0) &
+    RZL_T2_rescale = US%s_to_T_restart**2 / &
+                     (US%kg_m3_to_R_restart*US%m_to_Z_restart*US%m_to_L_restart)
 
   if ((QRZ_T_rescale == 1.0) .and. (RZ_T_rescale == 1.0) .and. (RZL_T2_rescale == 1.0)) return
 
@@ -849,7 +840,6 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
   do b=1,size(FIA%flux_sw_dn,3) ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
     FIA%flux_sw_dn(i,j,b) = QRZ_T_rescale * FIA%flux_sw_dn(i,j,b) ! [Q R Z T-1 ~> W m-2]
   enddo ; enddo ; enddo
-
 
   if (allocated(FIA%flux_sh0)) then ; do k=0,IG%CatIce ; do j=G%jsc,G%jec ; do i=G%isc,G%iec
     FIA%flux_sh0(i,j,k) = QRZ_T_rescale * FIA%flux_sh0(i,j,k) ! [Q R Z T-1 ~> W m-2]
@@ -2082,11 +2072,12 @@ end subroutine redistribute_Rad_to_Rad
 !!   the model is restart.  These are the fields that would be copied via the
 !!   subroutines copy_FIA_to_FIA, copy_TSF_to_TSF and copy_Rad_to_Rad, and it
 !!   should be called from the fast ice processors when redo_fast_update is true.
-subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart, restart_file)
+subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_restart, restart_file)
   type(fast_ice_avg_type),   pointer     :: FIA     !< The fast ice model's fast_ice_avg_type
   type(ice_rad_type),        pointer     :: Rad     !< The fast ice model's ice_rad_type
   type(total_sfc_flux_type), pointer     :: TSF     !< The fast ice model's total_sfc_flux_type
   type(domain2d),            intent(in)  :: mpp_domain !< The mpp domain descriptor
+  type(unit_scale_type),     intent(in)  :: US      !< A structure with unit conversion factors
   type(SIS_restart_CS),      pointer     :: Ice_restart !< The control structure for the ice restarts
   character(len=*),          intent(in)  :: restart_file !< The name and path to the restart file
 
@@ -2094,37 +2085,37 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
 ! possible to make the fast-to-slow restart file smaller by breaking out the open-ocean
 ! category.
   call register_restart_field(Ice_restart, 'flux_sh_top', FIA%flux_sh_top, dim_3="cat0", &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'evap_top', FIA%evap_top, dim_3="cat0", &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'flux_lw_top', FIA%flux_lw_top, dim_3="cat0", &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'flux_lh_top', FIA%flux_lh_top, dim_3="cat0", &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'lprec_top', FIA%lprec_top, dim_3="cat0", &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'fprec_top', FIA%fprec_top, dim_3="cat0", &
-                              mandatory=.false., units="kg m-2 s-1")
-  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, dim_3="cat0", &
-                              dim_4="band", mandatory=.false., units="W m-2")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
+  call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, dim_3="cat0", dim_4="band", &
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'WindStr_x', FIA%WindStr_x, &
-                              mandatory=.false., units="Pa")
+                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'WindStr_y', FIA%WindStr_y, &
-                              mandatory=.false., units="Pa")
+                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'WindStr_ocn_x', FIA%WindStr_ocn_x, &
-                              mandatory=.false., units="Pa")
+                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'WindStr_ocn_y', FIA%WindStr_ocn_y, &
-                              mandatory=.false., units="Pa")
+                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'p_atm_surf', FIA%p_atm_surf, &
-                              mandatory=.false., units="Pa")
+                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'runoff', FIA%runoff, &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'calving', FIA%calving, &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'runoff_hflx', FIA%runoff_hflx, &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'calving_hflx', FIA%calving_hflx, &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'Tskin_avg', FIA%Tskin_avg, &
                               mandatory=.false., units="degC")
   call register_restart_field(Ice_restart, 'ice_free', FIA%ice_free, &
@@ -2132,21 +2123,21 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
   call register_restart_field(Ice_restart, 'ice_cover', FIA%ice_cover, &
                               mandatory=.false., units="nondim")
   call register_restart_field(Ice_restart, 'flux_sw_dn', FIA%flux_sw_dn, dim_3="band", &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
 
   if (allocated(FIA%flux_sh0)) then
     call register_restart_field(Ice_restart, 'flux_sh_T0', FIA%flux_sh0, dim_3="cat0", &
-                                mandatory=.false., units="W m-2")
+                                mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'flux_lw_T0', FIA%flux_lw0, dim_3="cat0", &
-                                mandatory=.false., units="W m-2")
+                                mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, dim_3="cat0", &
-                                mandatory=.false., units="kg m-2 s-1")
+                                mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
     call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, dim_3="cat0", &
-                                mandatory=.false., units="W m-2 degC-1")
+                                mandatory=.false., units="W m-2 degC-1", conversion=US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, dim_3="cat0", &
-                                mandatory=.false., units="W m-2 degC-1")
+                                mandatory=.false., units="W m-2 degC-1", conversion=US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, dim_3="cat0", &
-                                mandatory=.false., units="kg m-2 s-1 degC-1")
+                                mandatory=.false., units="kg m-2 s-1 degC-1", conversion=US%RZ_T_to_kg_m2s)
     call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, dim_3="cat0", &
                                 mandatory=.false., units="degC")
   endif
@@ -2157,20 +2148,20 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, Ice_restart
                               mandatory=.false., units="nondim")
 
   call register_restart_field(Ice_restart, 'total_flux_sh', TSF%flux_sh, &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'total_flux_lw', TSF%flux_lw, &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'total_flux_lh', TSF%flux_lh, &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'total_evap', TSF%evap, &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'total_lprec', TSF%lprec, &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'total_fprec', TSF%fprec, &
-                              mandatory=.false., units="kg m-2 s-1")
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'total_flux_sw', TSF%flux_sw, dim_3="band", &
                               longname="Total shortwave flux by frequency and angular band", &
-                              mandatory=.false., units="W m-2")
+                              mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
 
   if (coupler_type_initialized(TSF%tr_flux) .and. &
       coupler_type_initialized(FIA%tr_flux)) then

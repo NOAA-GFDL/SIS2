@@ -220,7 +220,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(:,:,:),         pointer    :: Tr_ice_alvl_ptr=>NULL()  !< A pointer to the named tracer
   real, dimension(:,:,:),         pointer    :: Tr_ice_mlvl_ptr=>NULL()  !< A pointer to the named tracer
 
-  real :: rho_ice, rho_snow, divu_adv
+  real :: rho_ice, rho_snow ! Density of ice and snow [R ~> kg m-3]
+  real :: divu_adv
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
   integer :: nL_ice, nL_snow ! number of tracer levels
@@ -258,7 +259,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   hin_max(0)=0.0
   do k=1,nCat
-    hin_max(k) = IG%mH_cat_bound(k)/(Rho_ice*IG%kg_m2_to_H)
+    hin_max(k) = US%Z_to_m * IG%mH_cat_bound(k) / Rho_ice
   end do
 
   trcr_base = 0.0; n_trcr_strata = 0; nt_strata = 0; ! init some tracer vars

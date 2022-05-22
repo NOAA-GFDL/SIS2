@@ -689,11 +689,12 @@ end function sigII
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dyn_register_restarts allocates and registers any variables for this
 !!      module that need to be included in the restart files.
-subroutine SIS_B_dyn_register_restarts(HI, param_file, CS, Ice_restart)
+subroutine SIS_B_dyn_register_restarts(HI, param_file, CS, US, Ice_restart)
   type(hor_index_type),    intent(in) :: HI    !< The horizontal index type describing the domain
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_B_dyn_CS),      pointer    :: CS    !< The control structure for this module that
                                                !! will be allocated here
+  type(unit_scale_type),   intent(in) :: US    !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
 
 !   This subroutine registers the restart variables associated with the
@@ -714,9 +715,12 @@ subroutine SIS_B_dyn_register_restarts(HI, param_file, CS, Ice_restart)
   call safe_alloc_ptr(CS%sig22, isd, ied, jsd, jed)
 
   if (associated(Ice_restart)) then
-    call register_restart_field(Ice_restart, 'sig11', CS%sig11, mandatory=.false.)
-    call register_restart_field(Ice_restart, 'sig22', CS%sig22, mandatory=.false.)
-    call register_restart_field(Ice_restart, 'sig12', CS%sig12, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'sig11', CS%sig11, mandatory=.false., &
+                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+    call register_restart_field(Ice_restart, 'sig22', CS%sig22, mandatory=.false., &
+                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+    call register_restart_field(Ice_restart, 'sig12', CS%sig12, mandatory=.false., &
+                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
   endif
 end subroutine SIS_B_dyn_register_restarts
 

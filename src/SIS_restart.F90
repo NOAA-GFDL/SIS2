@@ -10,7 +10,7 @@ use MOM_dyn_horgrid,   only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
 use MOM_io,            only : create_file, file_type, fieldtype, file_exists, open_file, close_file
-use MOM_io,            only : MOM_read_data, read_data, MOM_write_field, read_field_chksum, field_exists
+use MOM_io,            only : MOM_read_data, MOM_write_field, read_field_chksum, field_exists
 use MOM_io,            only : get_file_info, get_file_fields, get_field_atts, get_file_times
 use MOM_io,            only : axis_info, set_axis_info, delete_axis_info
 use MOM_io,            only : vardesc, var_desc, query_vardesc, modify_vardesc, get_filename_appendix
@@ -65,6 +65,10 @@ type field_restart
                                 !! read from the restart file.
   logical :: initialized        !< .true. if this field has been read from the restart file.
   character(len=32) :: var_name !< A name by which a variable may be queried.
+  real    :: conv = 1.0         !< A factor by which a restart field should be multiplied before it
+                                !! is written to a restart file, usually to convert it to MKS or
+                                !! other standard units.  When read, the restart field is multiplied
+                                !! by the Adcroft reciprocal of this factor.
 end type field_restart
 
 !> A structure to store information about restart fields that are no longer used
@@ -441,14 +445,16 @@ end subroutine SIS_restart_init
 !======================= register_restart_field variants =======================
 
 !> Register a 4-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position, dim_3, dim_4, &
-                                     mandatory)
+subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, conversion, &
+                                     position, dim_3, dim_4, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
+  real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
+                                                      !! before it is written, 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   character(len=*), optional, intent(in) :: dim_3     !< The name of the 3rd dimension axis
@@ -479,6 +485,8 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position,
   CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
 
   CS%restart_field(CS%novars)%initialized = .false.
+  CS%restart_field(CS%novars)%conv = 1.0
+  if (present(conversion)) CS%restart_field(CS%novars)%conv = conversion
 
   CS%var_ptr4d(CS%novars)%p => f_ptr
   CS%var_ptr3d(CS%novars)%p => NULL()
@@ -489,13 +497,15 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, position,
 end subroutine register_restart_field_4d
 
 !> Register a 3-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position, dim_3, mandatory)
+subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, conversion, position, dim_3, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
+  real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
+                                                      !! before it is written, 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   character(len=*), optional, intent(in) :: dim_3     !< The name of the 3rd dimension axis
@@ -524,6 +534,8 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position,
   CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
 
   CS%restart_field(CS%novars)%initialized = .false.
+  CS%restart_field(CS%novars)%conv = 1.0
+  if (present(conversion)) CS%restart_field(CS%novars)%conv = conversion
 
   CS%var_ptr3d(CS%novars)%p => f_ptr
   CS%var_ptr4d(CS%novars)%p => NULL()
@@ -534,13 +546,15 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, position,
 end subroutine register_restart_field_3d
 
 !> Register a 2-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position, mandatory)
+subroutine register_restart_field_2d(CS, name, f_ptr, units, conversion, longname, position, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
+  real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
+                                                      !! before it is written, 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
@@ -564,6 +578,8 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
                                               z_grid='1', position=position)
   CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
   CS%restart_field(CS%novars)%initialized = .false.
+  CS%restart_field(CS%novars)%conv = 1.0
+  if (present(conversion)) CS%restart_field(CS%novars)%conv = conversion
 
   CS%var_ptr2d(CS%novars)%p => f_ptr
   CS%var_ptr4d(CS%novars)%p => NULL()
@@ -574,12 +590,14 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, longname, position,
 end subroutine register_restart_field_2d
 
 !> Register a 1-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name, mandatory)
+subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, conversion, dim_name, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:), target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
+  real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
+                                                      !! before it is written, 1 by default.
   character(len=*), optional, intent(in) :: dim_name  !< The name of the axis
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
@@ -605,6 +623,8 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name,
                                               position=0, dim_names=dim_names)
   CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
   CS%restart_field(CS%novars)%initialized = .false.
+  CS%restart_field(CS%novars)%conv = 1.0
+  if (present(conversion)) CS%restart_field(CS%novars)%conv = conversion
 
   CS%var_ptr1d(CS%novars)%p => f_ptr
   CS%var_ptr4d(CS%novars)%p => NULL()
@@ -615,12 +635,14 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, dim_name,
 end subroutine register_restart_field_1d
 
 !> Register a 0-d field for restarts, providing the metadata as individual arguments
-subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory)
+subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, conversion, mandatory)
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real,               target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
+  real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
+                                                      !! before it is written, 1 by default.
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
 
@@ -642,6 +664,8 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, mandatory
                                               position=0, z_grid='1')
   CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
   CS%restart_field(CS%novars)%initialized = .false.
+  CS%restart_field(CS%novars)%conv = 1.0
+  if (present(conversion)) CS%restart_field(CS%novars)%conv = conversion
 
   CS%var_ptr0d(CS%novars)%p => f_ptr
   CS%var_ptr4d(CS%novars)%p => NULL()
@@ -693,6 +717,7 @@ subroutine register_restart_coupler_type_3d(CS, bc_ptr, varname_prefix, dim_3, m
                                                   position=CENTER, dim_names=dim_names)
       CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
       CS%restart_field(CS%novars)%initialized = .false.
+      CS%restart_field(CS%novars)%conv = 1.0
 
       CS%var_ptr3d(CS%novars)%p => bc_ptr%bc(n)%field(m)%values
       CS%var_ptr4d(CS%novars)%p => NULL() ; CS%var_ptr2d(CS%novars)%p => NULL()
@@ -739,6 +764,7 @@ subroutine register_restart_coupler_type_2d(CS, bc_ptr, varname_prefix, mandator
                                                   z_grid='1', position=CENTER)
       CS%restart_field(CS%novars)%mand_var = set_from_optional(.true., mandatory)
       CS%restart_field(CS%novars)%initialized = .false.
+      CS%restart_field(CS%novars)%conv = 1.0
 
       CS%var_ptr2d(CS%novars)%p => bc_ptr%bc(n)%field(m)%values
       CS%var_ptr4d(CS%novars)%p => NULL() ; CS%var_ptr3d(CS%novars)%p => NULL()
@@ -751,7 +777,7 @@ end subroutine register_restart_coupler_type_2d
 !====================== only_read_from_restarts variants =======================
 
 !> Try to read a named 4-d field from the restart files
-subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directory, success)
+subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directory, success, scale)
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:,:),        intent(inout) :: f_ptr     !< The array for the field to be read
@@ -760,6 +786,7 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
+  real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names.
@@ -777,7 +804,8 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
   num_files = open_restart_units('r', directory, domain, CS, file_paths=file_paths, global_files=global_file)
 
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
-    call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, global_file=global_file(n))
+    call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
+                       scale=scale, global_file=global_file(n))
     if (present(success)) success=.true.
     exit
   endif ; enddo
@@ -787,7 +815,7 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
 end subroutine only_read_restart_field_4d
 
 !> Try to read a named 3-d field from the restart files
-subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directory, success)
+subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directory, success, scale)
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:),          intent(inout) :: f_ptr     !< The array for the field to be read
@@ -796,6 +824,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
+  real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names
@@ -814,7 +843,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
 
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
     call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
-                       global_file=global_file(n), file_may_be_4d=.true.)
+                       scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
     if (present(success)) success=.true.
     exit
   endif ; enddo
@@ -824,7 +853,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
 end subroutine only_read_restart_field_3d
 
 !> Try to read a named 2-d field from the restart files
-subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directory, success)
+subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directory, success, scale)
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:),            intent(inout) :: f_ptr     !< The array for the field to be read
@@ -833,6 +862,7 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directo
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
+  real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names.
@@ -851,7 +881,7 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directo
 
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
     call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
-                       global_file=global_file(n), file_may_be_4d=.true.)
+                       scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
     if (present(success)) success=.true.
     exit
   endif ; enddo
@@ -1027,6 +1057,7 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
   integer :: num_files                  ! The number of restart files that will be used.
   character(len=8) :: hor_grid, z_grid, t_grid ! Variable grid info.
   character(len=64) :: var_name         ! A variable's name.
+  real :: conv                          ! Shorthand for the conversion factor
   real :: restart_time
   character(len=32), dimension(5) :: dim_names ! Non-time dimension names to use with this variable
   character(len=32) :: filename_appendix = '' ! Appendix to filename for ensemble runs
@@ -1127,6 +1158,7 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
     enddo
 
     do m=start_var,next_var-1
+      conv = CS%restart_field(m)%conv
       ! This gets the full range to do checksums on for arrays with halos.
       ! Note that some sea-ice restart variables are allocated only on the computational grid and
       ! use the coupler's indexing convention, not that of the sea-ice, so offsets are needed.  The
@@ -1134,17 +1166,17 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
       call query_vardesc(vars(m), position=pos, caller="save_restart")
       if (associated(CS%var_ptr4d(m)%p)) then
         call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, lbound(CS%var_ptr4d(m)%p), ubound(CS%var_ptr4d(m)%p))
-        check_val(m-start_var+1,1) = chksum(CS%var_ptr4d(m)%p(isL:ieL,jsL:jeL,:,:))
+        check_val(m-start_var+1,1) = chksum(conv*CS%var_ptr4d(m)%p(isL:ieL,jsL:jeL,:,:))
       elseif (associated(CS%var_ptr3d(m)%p)) then
         call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, lbound(CS%var_ptr3d(m)%p), ubound(CS%var_ptr3d(m)%p))
-        check_val(m-start_var+1,1) = chksum(CS%var_ptr3d(m)%p(isL:ieL,jsL:jeL,:))
+        check_val(m-start_var+1,1) = chksum(conv*CS%var_ptr3d(m)%p(isL:ieL,jsL:jeL,:))
       elseif (associated(CS%var_ptr2d(m)%p)) then
         call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, lbound(CS%var_ptr2d(m)%p), ubound(CS%var_ptr2d(m)%p))
-        check_val(m-start_var+1,1) = chksum(CS%var_ptr2d(m)%p(isL:ieL,jsL:jeL))
+        check_val(m-start_var+1,1) = chksum(conv*CS%var_ptr2d(m)%p(isL:ieL,jsL:jeL))
       elseif (associated(CS%var_ptr1d(m)%p)) then
-        check_val(m-start_var+1,1) = chksum(CS%var_ptr1d(m)%p) !?, pelist=(/PE_here()/))
+        check_val(m-start_var+1,1) = chksum(conv*CS%var_ptr1d(m)%p(:)) !?, pelist=(/PE_here()/))
       elseif (associated(CS%var_ptr0d(m)%p)) then
-        check_val(m-start_var+1,1) = chksum(CS%var_ptr0d(m)%p, pelist=(/PE_here()/))
+        check_val(m-start_var+1,1) = chksum(conv*CS%var_ptr0d(m)%p, pelist=(/PE_here()/))
       endif
     enddo
 
@@ -1159,18 +1191,20 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
 
     do m=start_var,next_var-1
       if (associated(CS%var_ptr3d(m)%p)) then
-        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, &
-                         CS%var_ptr3d(m)%p, restart_time)
+        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, CS%var_ptr3d(m)%p, &
+                             restart_time, scale=CS%restart_field(m)%conv)
       elseif (associated(CS%var_ptr2d(m)%p)) then
-        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, &
-                         CS%var_ptr2d(m)%p, restart_time)
+        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, CS%var_ptr2d(m)%p, &
+                             restart_time, scale=CS%restart_field(m)%conv)
       elseif (associated(CS%var_ptr4d(m)%p)) then
-        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, &
-                         CS%var_ptr4d(m)%p, restart_time)
+        call MOM_write_field(IO_handle, fields(m-start_var+1), G%Domain, CS%var_ptr4d(m)%p, &
+                             restart_time, scale=CS%restart_field(m)%conv)
       elseif (associated(CS%var_ptr1d(m)%p)) then
-        call MOM_write_field(IO_handle, fields(m-start_var+1), CS%var_ptr1d(m)%p, restart_time)
+        call MOM_write_field(IO_handle, fields(m-start_var+1), CS%var_ptr1d(m)%p, &
+                             restart_time, scale=CS%restart_field(m)%conv)
       elseif (associated(CS%var_ptr0d(m)%p)) then
-        call MOM_write_field(IO_handle, fields(m-start_var+1), CS%var_ptr0d(m)%p, restart_time)
+        call MOM_write_field(IO_handle, fields(m-start_var+1), CS%var_ptr0d(m)%p, &
+                             restart_time, scale=CS%restart_field(m)%conv)
       endif
     enddo
 
@@ -1196,6 +1230,8 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
   type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
 
   ! Local variables
+  real :: scale  ! A scaling factor for reading a field
+  real :: conv   ! The output conversion factor for writing a field
   character(len=200) :: filepath  ! The path (dir/file) to the file being opened.
   character(len=80)  :: fname     ! The name of the current file.
   character(len=8)   :: suffix    ! A suffix (like "_2") that is added to any
@@ -1277,10 +1313,12 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
         case ('1') ; pos = 0
         case default ; pos = 0
       end select
+      conv = CS%restart_field(m)%conv
+      if (conv == 0.0) then ; scale = 1.0 ; else ; scale = 1.0 / conv ; endif
 
       call SIS_mesg("Attempting to read "//trim(CS%restart_field(m)%var_name), 9)
 
-      do i=1, nvar  ! Loop through the fields that are in the file.
+      do i=1,nvar  ! Loop through the fields that are in the file.
         call get_field_atts(fields(i), name=varname)
         if (lowercase(trim(varname)) == lowercase(trim(CS%restart_field(m)%var_name))) then
           checksum_data = -1
@@ -1293,17 +1331,17 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
 
           if (associated(CS%var_ptr1d(m)%p))  then
             ! Read a 1d array, which should be invariant to domain decomposition.
-            call MOM_read_data(unit_path(n), varname, CS%var_ptr1d(m)%p, timelevel=1, MOM_Domain=G%Domain, &
-                               global_file=global_file(n), file_may_be_4d=.true.)
-            if (is_there_a_checksum) checksum_data = chksum(CS%var_ptr1d(m)%p) !?, pelist=(/PE_here()/))
+            call MOM_read_data(unit_path(n), varname, CS%var_ptr1d(m)%p, timelevel=1, scale=scale, &
+                               MOM_Domain=G%Domain, global_file=global_file(n), file_may_be_4d=.true.)
+            if (is_there_a_checksum) checksum_data = chksum(conv*CS%var_ptr1d(m)%p(:)) !?, pelist=(/PE_here()/))
           elseif (associated(CS%var_ptr0d(m)%p)) then ! Read a scalar...
-            call MOM_read_data(unit_path(n), varname, CS%var_ptr0d(m)%p, timelevel=1, MOM_Domain=G%Domain, &
-                               global_file=global_file(n), file_may_be_4d=.true.)
-            if (is_there_a_checksum) checksum_data = chksum(CS%var_ptr0d(m)%p, pelist=(/PE_here()/))
+            call MOM_read_data(unit_path(n), varname, CS%var_ptr0d(m)%p, timelevel=1, scale=scale, &
+                               MOM_Domain=G%Domain, global_file=global_file(n), file_may_be_4d=.true.)
+            if (is_there_a_checksum) checksum_data = chksum(conv*CS%var_ptr0d(m)%p, pelist=(/PE_here()/))
           elseif (associated(CS%var_ptr2d(m)%p)) then  ! Read a 2d array.
             if (pos /= 0) then
               call MOM_read_data(unit_path(n), varname, CS%var_ptr2d(m)%p, G%Domain, timelevel=1, &
-                                 position=pos, global_file=global_file(n), file_may_be_4d=.true.)
+                                 position=pos, scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
             else ! This array is not domain-decomposed.  This variant is not yet implemented.
               call SIS_error(FATAL, &
                         "SIS_restart does not support 2-d arrays without domain decomposition.")
@@ -1312,12 +1350,12 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
             if (is_there_a_checksum) then
               call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, &
                                             lbound(CS%var_ptr2d(m)%p), ubound(CS%var_ptr2d(m)%p))
-              checksum_data = chksum(CS%var_ptr2d(m)%p(isL:ieL,jsL:jeL))
+              checksum_data = chksum(conv*CS%var_ptr2d(m)%p(isL:ieL,jsL:jeL))
             endif
           elseif (associated(CS%var_ptr3d(m)%p)) then  ! Read a 3d array.
             if (pos /= 0) then
               call MOM_read_data(unit_path(n), varname, CS%var_ptr3d(m)%p, G%Domain, timelevel=1, &
-                                 position=pos, global_file=global_file(n), file_may_be_4d=.true.)
+                                 position=pos, scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
             else ! This array is not domain-decomposed.  This variant is not yet implemented.
               call SIS_error(FATAL, &
                         "SIS_restart does not support 3-d arrays without domain decomposition.")
@@ -1326,12 +1364,12 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
             if (is_there_a_checksum) then
               call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, &
                                             lbound(CS%var_ptr3d(m)%p), ubound(CS%var_ptr3d(m)%p))
-              checksum_data = chksum(CS%var_ptr3d(m)%p(isL:ieL,jsL:jeL,:))
+              checksum_data = chksum(conv*CS%var_ptr3d(m)%p(isL:ieL,jsL:jeL,:))
             endif
           elseif (associated(CS%var_ptr4d(m)%p)) then  ! Read a 4d array.
             if (pos /= 0) then
               call MOM_read_data(unit_path(n), varname, CS%var_ptr4d(m)%p, G%Domain, timelevel=1, &
-                                 position=pos, global_file=global_file(n))
+                                 position=pos, scale=scale, global_file=global_file(n))
             else ! This array is not domain-decomposed.  This variant may be under-tested.
               call SIS_error(FATAL, &
                         "SIS_restart does not support 4-d arrays without domain decomposition.")
@@ -1340,7 +1378,7 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
             if (is_there_a_checksum) then
               call get_checksum_loop_ranges(G, pos, isL, ieL, jsL, jeL, &
                                             lbound(CS%var_ptr4d(m)%p), ubound(CS%var_ptr4d(m)%p))
-              checksum_data = chksum(CS%var_ptr4d(m)%p(isL:ieL,jsL:jeL,:,:))
+              checksum_data = chksum(conv*CS%var_ptr4d(m)%p(isL:ieL,jsL:jeL,:,:))
             endif
           else
             call SIS_error(FATAL, "SIS_restart restore_state: No pointers set for "//trim(varname))
