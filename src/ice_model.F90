@@ -1680,10 +1680,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
 
   ! Parameters that properly belong exclusively to ice_thm.
-  real :: H_to_kg_m2_tmp ! A temporary variable for holding the intended value
-                         ! of the thickness to mass-per-unit-area conversion factor.
   real :: massless_ice_enth, massless_snow_enth ! Enthalpy fill values [Q ~> J kg-1]
-  real :: massless_ice_salin
+  real :: massless_ice_salin  ! A salinity fill value [ppt]
 
   real, allocatable, dimension(:,:) :: &
     h_ice_input, dummy   ! Temporary arrays.
@@ -2095,7 +2093,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                       param_file, Ice, Ice%Ice_restart)
 
     call alloc_IST_arrays(sHI, sIG, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
-    call ice_state_register_restarts(sIST, sG, sIG, Ice%Ice_restart)
+    call ice_state_register_restarts(sIST, sG, sIG, US, Ice%Ice_restart)
     call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
@@ -2116,7 +2114,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     if (.not.specified_ice) &
-      call SIS_dyn_trans_register_restarts(sHI, sIG, param_file, Ice%sCS%dyn_trans_CSp, &
+      call SIS_dyn_trans_register_restarts(sHI, sIG, param_file, Ice%sCS%dyn_trans_CSp, US, &
                                            Ice%Ice_restart)
 
     call SIS_diag_mediator_init(sG, sIG, param_file, Ice%sCS%diag, component="SIS", &
@@ -2266,7 +2264,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if (Concurrent) then
       call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
-                       fGD%mpp_domain, Ice%Ice_fast_restart, fast_rest_file)
+                       fGD%mpp_domain, US, Ice%Ice_fast_restart, fast_rest_file)
     endif
 
     allocate(Ice%fCS%diag)
@@ -2303,10 +2301,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     new_sim = is_new_run(Ice%Ice_restart)
     if (.not.new_sim) then
       call callTree_enter("ice_model_init():restore_from_restart_files "//trim(restart_file))
-      ! Set values of IG%H_to_kg_m2 that will permit its absence from the restart
-      ! file to be detected, and its difference from the value in this run to
-      ! be corrected for.
-      H_to_kg_m2_tmp = sIG%H_to_kg_m2
+      ! Set a value of IG%H_to_kg_m2 that will permit its absence from the restart file to be
+      ! detected, as a way to detect an archaic restart file format.
       sIG%H_to_kg_m2 = -1.0
       is_restart = .true.
       recategorize_ice = .false. ! Assume that the ice is already in the right thickness categories.
@@ -2315,14 +2311,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
       ! If the velocity and other fields have not been initialized, check for
       ! the fields that would have been read if symmetric were toggled.
-      call ice_state_read_alt_restarts(sIST, sG, sIG, Ice%Ice_restart, dirs%restart_input_dir)
+      call ice_state_read_alt_restarts(sIST, sG, sIG, US, Ice%Ice_restart, dirs%restart_input_dir)
       if (.not.specified_ice) &
         call SIS_dyn_trans_read_alt_restarts(Ice%sCS%dyn_trans_CSp, sG, US, Ice%Ice_restart, &
                                              dirs%restart_input_dir)
 
-      call rescale_ice_state_restart_fields(sIST, sG, US, sIG, H_to_kg_m2_tmp, Rho_ice, Rho_snow)
-
-      sIG%H_to_kg_m2 = H_to_kg_m2_tmp
+      call rescale_ice_state_restart_fields(sIST, sG, US, sIG, Rho_ice, Rho_snow)
+      sIG%H_to_kg_m2 = 1.0
 
       if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
           (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) .or. &
@@ -2611,7 +2606,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
   endif ! fast_ice_PE
 
-  call fix_restart_unit_scaling(US)
+  call fix_restart_unit_scaling(US, unscaled=.true.)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
   !but it should be called after restore_SIS_state() otherwise it causes a restart mismatch

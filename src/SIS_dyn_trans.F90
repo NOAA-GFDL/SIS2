@@ -2269,11 +2269,12 @@ end subroutine set_wind_stresses_B
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_dyn_trans_register_restarts allocates and registers any variables associated
 !!      slow ice dynamics and transport that need to be included in the restart files.
-subroutine SIS_dyn_trans_register_restarts(HI, IG, param_file, CS, Ice_restart)
+subroutine SIS_dyn_trans_register_restarts(HI, IG, param_file, CS, US, Ice_restart)
   type(hor_index_type),    intent(in) :: HI     !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in) :: IG     !< The sea-ice grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(dyn_trans_CS),      pointer    :: CS     !< The control structure for the SIS_dyn_trans module
+  type(unit_scale_type),   intent(in) :: US     !< A structure with unit conversion factors
   type(SIS_restart_CS),    pointer    :: Ice_restart !< The control structure for the ice restarts
 
 !   This subroutine registers the restart variables associated with the
@@ -2289,9 +2290,9 @@ subroutine SIS_dyn_trans_register_restarts(HI, IG, param_file, CS, Ice_restart)
   CS%Cgrid_dyn = .true. ; call read_param(param_file, "CGRID_ICE_DYNAMICS", CS%Cgrid_dyn)
 
   if (CS%Cgrid_dyn) then
-    call SIS_C_dyn_register_restarts(HI, param_file, CS%SIS_C_dyn_CSp, Ice_restart)
+    call SIS_C_dyn_register_restarts(HI, param_file, CS%SIS_C_dyn_CSp, US, Ice_restart)
   else
-    call SIS_B_dyn_register_restarts(HI, param_file, CS%SIS_B_dyn_CSp, Ice_restart)
+    call SIS_B_dyn_register_restarts(HI, param_file, CS%SIS_B_dyn_CSp, US, Ice_restart)
   endif
 !  call SIS_transport_register_restarts(G, param_file, CS%SIS_transport_CSp, Ice_restart)
 
