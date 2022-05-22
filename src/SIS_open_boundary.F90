@@ -33,19 +33,15 @@ type, public :: OBC_segment_data_type
   integer :: fid_dz                         !< handle from FMS associated with segment thicknesses on disk
   character(len=8)                :: name   !< a name identifier for the segment data
   real, allocatable :: buffer_src(:,:,:)    !< buffer for segment data located at cell faces
-                                            !! and on the original
-                                            !vertical grid
   integer                         :: nk_src !< Number of vertical levels in the source data
   real, allocatable :: dz_src(:,:,:)        !< vertical grid cell spacing of the incoming segment
                                             !! data, set in [Z ~> m]
-                                            !then scaled to [H ~> m or !kg m-2]
   real, allocatable :: buffer_dst(:,:,:)    !< buffer src data remapped to the target vertical grid
   real              :: value                !< constant value if fid is equal to -1
 end type OBC_segment_data_type
 
 
-!> Tracer on OBC segment data structure, for putting into a segment
-!tracer registry.
+!> Tracer on OBC segment data structure, for putting into a segment tracer registry.
 type, public :: OBC_segment_tracer_type
   real, allocatable          :: t(:,:,:)              !< tracer concentration array
   real                       :: OBC_inflow_conc = 0.0 !< tracer concentration for generic inflows
@@ -208,12 +204,11 @@ character(len=40)  :: mdl = "SIS_open_boundary" !< This module's name.
 contains
 
 !> Enables OBC module and reads configuration parameters
-!> This routine is called from SIS_initialize_fixed which
-!> occurs before the initialization of the vertical coordinate.
-!> Therefore segment data are not fully initialized
-!> here. The remainder of the segment data are initialized in a
-!> later call to update_open_boundary_data
-
+!! This routine is called from SIS_initialize_fixed which
+!! occurs before the initialization of the vertical coordinate.
+!! Therefore segment data are not fully initialized
+!! here. The remainder of the segment data are initialized in a
+!! later call to update_open_boundary_data
 subroutine open_boundary_config(G, US, param_file, OBC)
   type(dyn_horgrid_type),  intent(inout) :: G   !< Ocean grid structure
   type(unit_scale_type),   intent(in)    :: US  !< A dimensional unit scaling type
@@ -316,7 +311,7 @@ subroutine open_boundary_config(G, US, param_file, OBC)
                  "If true, do additional calls to help debug the performance "//&
                  "of the open boundary condition code.", default=.false., &
                  debuggingParam=.true.)
-   call get_param(param_file, mdl, "OBC_SILLY_THICK", OBC%silly_h, &
+    call get_param(param_file, mdl, "OBC_SILLY_THICK", OBC%silly_h, &
                  "A silly value of thicknesses used outside of open boundary "//&
                  "conditions for debugging.", units="m", default=0.0, scale=US%m_to_Z, &
                  do_not_log=.not.debug_OBC, debuggingParam=.true.)
@@ -420,8 +415,8 @@ subroutine open_boundary_config(G, US, param_file, OBC)
        "MOM_open_boundary, open_boundary_config: "//&
        "Symmetric memory must be used when using Flather OBCs.")
 
-  if (.not.(OBC%specified_u_BCs_exist_globally .or.  OBC%specified_v_BCs_exist_globally .or. &
-              OBC%open_u_BCs_exist_globally .or. OBC%open_v_BCs_exist_globally)) then
+  if (.not.(OBC%specified_u_BCs_exist_globally .or. OBC%specified_v_BCs_exist_globally .or. &
+            OBC%open_u_BCs_exist_globally .or. OBC%open_v_BCs_exist_globally)) then
     ! No open boundaries have been requested
     call open_boundary_dealloc(OBC)
   endif
@@ -489,7 +484,7 @@ subroutine setup_segment_indices(G, seg, Is_obc, Ie_obc, Js_obc, Je_obc)
   !
   ! x-x----------------x-x
   ! | |        N       | |
- ! x-x   W         E  x-x
+  ! x-x   W         E  x-x
   !   |        S         |
   ! x-x----------------x-x
   ! | |                | |
@@ -577,7 +572,7 @@ subroutine setup_segment_indices(G, seg, Is_obc, Ie_obc, Js_obc, Je_obc)
 end subroutine setup_segment_indices
 
 !> Parse an OBC_SEGMENT_%%% string starting with "I=" and configure placement
-!and type of OBC accordingly
+!! and type of OBC accordingly
 subroutine setup_u_point_obc(OBC, G, US, segment_str, l_seg, PF, reentrant_y)
   type(ice_OBC_type),   intent(inout) :: OBC !< Open boundary control structure
   type(dyn_horgrid_type),  intent(in) :: G   !< Ocean grid structure
@@ -887,7 +882,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
       do j=segment%HI%jsd,segment%HI%jed
         if (segment%direction == OBC_DIRECTION_E) then
           areaCu(I,j) = G%areaT(i,j)   ! Both of these are in [L2 ~> m2]
-       else   ! West
+        else   ! West
           areaCu(I,j) = G%areaT(i+1,j) ! Both of these are in [L2 ~> m2]
         endif
       enddo
@@ -957,8 +952,8 @@ subroutine mask_outside_OBCs(G, US, param_file, OBC)
 
   call get_param(param_file, mdl, "MINIMUM_DEPTH", min_depth, &
                  units="m", default=0.0, scale=US%m_to_Z, do_not_log=.true.)
-  ! The reference depth on a dyn_horgrid is 0, otherwise would need:  min_depth
-  ! = min_depth - G%Z_ref
+  ! The reference depth on a dyn_horgrid is 0, otherwise would need:
+  !   min_depth = min_depth - G%Z_ref
 
   allocate(color(G%isd:G%ied, G%jsd:G%jed), source=0.0)
   allocate(color2(G%isd:G%ied, G%jsd:G%jed), source=0.0)
