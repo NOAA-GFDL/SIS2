@@ -2400,15 +2400,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! and needs to be updated for each run segment, regardless of whether a restart file is used.
       call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_domain=Ice%slow_domain_NH)
       if (.not.is_restart) then
-      !### Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
-      allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
-      call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
-                            ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
-      do j=jsc,jec ; do i=isc,iec
-         sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
-         sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
-      enddo ; enddo
-      deallocate(h_ice_input)
+        ! Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
+        allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+        call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
+                             ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
+        do j=jsc,jec ; do i=isc,iec
+          sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
+          sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
+        enddo ; enddo
+        deallocate(h_ice_input)
       endif
     else
       call SIS_dyn_trans_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
