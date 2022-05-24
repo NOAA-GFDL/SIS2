@@ -88,7 +88,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     rdg_frac    ! fraction of ridged ice per category [nondim]
   real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
-                                     ! ice layer if spec_thermo_sal is true.
+                                     ! ice layer if spec_thermo_sal is true [S ~> gSalt kg-1]
   real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
   real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
   real :: Spec_vol_ice ! The nominal sea ice specific volume [R-1 ~> m3 kg-1]
@@ -158,8 +158,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
         if (spec_thermo_sal) then ; do m=1,NkIce
           temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
         enddo ; else ; do m=1,NkIce
-          temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), &
-                                              IST%sal_ice(i,j,k,m), IST%ITV)
+          temp_ice(i,j,k,m) = temp_from_En_S(IST%enth_ice(i,j,k,m), IST%sal_ice(i,j,k,m), IST%ITV)
         enddo ; endif
       else
         do m=1,NkIce ; temp_ice(i,j,k,m) = 0.0 ; enddo
@@ -362,7 +361,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', 'C', missing_value=missing)
   IDs%id_s_iceav = register_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
-               'Volume-averaged ice salinity', 'g/kg', missing_value=missing)
+               'Volume-averaged ice salinity', 'g/kg', conversion=US%S_to_ppt, missing_value=missing)
   call safe_alloc_ids_1d(IDs%id_t, nLay)
   call safe_alloc_ids_1d(IDs%id_sal, nLay)
   do n=1,nLay
@@ -372,7 +371,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                  'C',  missing_value=missing)
     IDs%id_sal(n)   = register_diag_field('ice_model', 'Sal'//trim(nstr), &
                diag%axesT1, Time, 'ice layer '//trim(nstr)//' salinity', &
-               'g/kg',  missing_value=missing)
+               'g/kg', conversion=US%S_to_ppt, missing_value=missing)
   enddo
 
   IDs%id_mi   = register_diag_field('ice_model', 'MI', diag%axesT1, Time, &

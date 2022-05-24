@@ -211,6 +211,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness in the units used for icebergs [m].
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
+    Saln_sfc, &       ! A local copy of the surface salinity in the units used for icebergs [gSalt kg-1]
     calving, &        ! A local copy of the calving rate in the units used for icebergs [kg m-2 s-1]
     calving_hflx, &   ! A local copy of the calving heat flux in the units used for icebergs [W m-2]
     windstr_x, &      ! The area-weighted average ice thickness in the units used for icebergs [Pa].
@@ -265,6 +266,10 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     stress_stagger = AGRID
   endif
 
+  do j=jsc,jec ; do i=isc,iec
+    Saln_sfc(i,j) = US%S_to_ppt*OSS%s_surf(i,j)
+  enddo ; enddo
+
   if (IST%Cgrid_dyn) then
     do j=jsc-1,jec+1 ; do I=isc-2,iec+1
       u_ice_C(I,j) = US%L_T_to_m_s*IST%u_ice_C(I,j) ; u_ocn_C(I,j) = US%L_T_to_m_s*OSS%u_ocn_C(I,j)
@@ -277,7 +282,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
             sea_lev, OSS%SST_C(isc:iec,jsc:jec), &
             calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
-            stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger, sss=Saln_sfc, &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   else
@@ -290,7 +295,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
             sea_lev, OSS%SST_C(isc:iec,jsc:jec),  &
             calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
-            stress_stagger=stress_stagger, sss=OSS%s_surf(isc:iec,jsc:jec), &
+            stress_stagger=stress_stagger, sss=Saln_sfc, &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
             area_berg=IOF%area_berg )
   endif

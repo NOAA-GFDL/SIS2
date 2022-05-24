@@ -87,7 +87,7 @@ type ice_state_type
                    !! ocean due to recent mechanical activities like ridging or drifting [Q ~> J kg-1].
 
   real, allocatable, dimension(:,:,:,:) :: sal_ice  !< The salinity of the sea ice
-                !! in each category and fractional thickness layer [gSalt kg-1].
+                !! in each category and fractional thickness layer [S ~> gSalt kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_ice !< The enthalpy of the sea ice
                 !! in each category and fractional thickness layer [Q ~> J kg-1].
   real, allocatable, dimension(:,:,:,:) :: enth_snow !< The enthalpy of the snow
@@ -113,7 +113,7 @@ end type ice_state_type
 type ocean_sfc_state_type
   ! 7 of the following 9 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
-    s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
+    s_surf , &  !< The ocean's surface salinity [S ~> gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [L T-1 ~> m s-1].
@@ -153,7 +153,7 @@ type simple_OSS_type
   ! The following 5 variables describe the ocean state as seen by the
   ! atmosphere and use for the rapid thermodynamic sea ice changes.
   real, allocatable, dimension(:,:) :: &
-    s_surf , &  !< The ocean's surface salinity [gSalt kg-1].
+    s_surf , &  !< The ocean's surface salinity [S ~> gSalt kg-1].
     SST_C  , &  !< The ocean's bulk surface temperature [degC].
     T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
     u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [L T-1 ~> m s-1].
@@ -366,10 +366,10 @@ type ice_ocean_flux_type
     stress_mag, &      !< The area-weighted time-mean of the magnitude of the stress on the ocean [R Z L T-2 ~> Pa].
     melt_nudge, &      !< A downward fresh water flux into the ocean that acts to nudge the ocean
                        !! surface salinity to facilitate the retention of sea ice [R Z T-1 ~> kg m-2 s-1].
-    flux_salt, &       !< The flux of salt out of the ocean [kgSalt kg-1 R Z T-1 ~> kgSalt m-2 s-1].
+    flux_salt, &       !< The flux of salt out of the ocean [1e3 S R Z T-1 ~> kgSalt m-2 s-1].
     transmutation_salt_flux, & !< The difference between the salt flux extracted from the ice and the
                        !! salt flux added to the ocean when the ice is transmuted directly into seawater
-                       !! as a form of open boundary condition [kgSalt kg-1 R Z T-1 ~> kgSalt m-2 s-1].
+                       !! as a form of open boundary condition [1e3 S R Z T-1 ~> kgSalt m-2 s-1].
     mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [R Z ~> kg m-2].
     pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
                        !! snow and ponds, exclusive of atmospheric pressure [R Z L T-2 ~> Pa].
@@ -513,7 +513,7 @@ subroutine ice_state_register_restarts(IST, G, IG, US, Ice_restart)
     call register_restart_field(Ice_restart, 'enth_ice', IST%enth_ice, &
                                 mandatory=.false., units="J kg-1", conversion=US%Q_to_J_kg)
     call register_restart_field(Ice_restart, 'sal_ice', IST%sal_ice, &
-                                mandatory=.false., units="kg/kg")
+                                mandatory=.false., units="g/kg", conversion=US%S_to_ppt)
 
     if (allocated(IST%snow_to_ocn)) then
       call register_restart_field(Ice_restart, 'snow_to_ocn', IST%snow_to_ocn, &
@@ -2349,9 +2349,9 @@ subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
   if (present(thermo_fluxes)) then ; do_thermo = thermo_fluxes ; endif
 
   if (do_thermo) then
-    call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
     if (allocated(IOF%transmutation_salt_flux)) call hchksum(IOF%transmutation_salt_flux, &
-          trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%RZ_T_to_kg_m2s)
+          trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
 
     call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
     call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
@@ -2457,7 +2457,7 @@ subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
   ! and js...je as their extent.
   hs=0 ; if (present(haloshift)) hs=haloshift
 
-  call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs)
+  call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs, scale=US%S_to_ppt)
   call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs)
   call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs)
   call hchksum(OSS%sea_lev, trim(mesg)//" OSS%sea_lev", G%HI, haloshift=hs, scale=US%Z_to_m)
@@ -2531,7 +2531,8 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
     write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, &
                  haloshift=hs, scale=US%Q_to_J_kg)
-    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, haloshift=hs)
+    call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, &
+                 haloshift=hs, scale=US%S_to_ppt)
   enddo
   call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
   call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs, scale=US%Q_to_J_kg)
@@ -2565,7 +2566,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
-  real, dimension(IG%NkIce) :: S_col
+  real, dimension(IG%NkIce) :: S_col  ! A column of salinities [S ~> ppt]
   real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
   real    :: enth_min, enth_max
   real    :: m_max ! Maximum mass per unit area [R Z ~> kg m-2]
@@ -2588,7 +2589,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   tOcn_min = -100. ; tOcn_max = 60.
   if (present(OSS)) then
     do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
-      if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0) .or. &
+      if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0*US%ppt_to_S) .or. &
           (OSS%SST_C(i,j) < tOcn_min) .or. (OSS%SST_C(i,j) > tOcn_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "t_ocn" ; endif
@@ -2604,8 +2605,8 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
 
   tsurf_min = tOcn_min ; tsurf_max = tOcn_max
   tice_min = -100. ; tice_max = 1.0
-  enth_min = enth_from_TS(tice_min, 0., IST%ITV)
-  enth_max = enth_from_TS(tice_max, 0., IST%ITV)
+  enth_min = enth_from_TS(tice_min, 0.0, IST%ITV)
+  enth_max = enth_from_TS(tice_max, 0.0, IST%ITV)
   if (present(Rad)) then
     do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if ((Rad%t_skin(i,j,k) < tsurf_min) .or. (Rad%t_skin(i,j,k) > tsurf_max)) then
@@ -2631,7 +2632,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif
     endif
-    if ((IST%sal_ice(i,j,k,m) < 0.0) .or. (IST%sal_ice(i,j,k,m) > 1000.0)) then
+    if ((IST%sal_ice(i,j,k,m) < 0.0) .or. (IST%sal_ice(i,j,k,m) > 1000.0*US%ppt_to_S)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "sal_ice" ; endif
     endif
@@ -2650,10 +2651,10 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
     elseif (present(OSS)) then
       if (sum_part_sz(i,j) < 0.9999) then
         write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
-              OSS%SST_C(i,j), OSS%s_surf(i,j), sum_part_sz(i,j)
+              OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), sum_part_sz(i,j)
       else
         write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = 1 - ",1pe12.4)') &
-              OSS%SST_C(i,j), OSS%s_surf(i,j), 1.0-sum_part_sz(i,j)
+              OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), 1.0-sum_part_sz(i,j)
       endif
     else
       if (sum_part_sz(i,j) < 0.9999) then
@@ -2685,9 +2686,9 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)
-      write(mesg1,'("salin_ice = ",1pe12.4)') IST%sal_ice(i,j,k,1)
+      write(mesg1,'("salin_ice = ",1pe12.4)') US%S_to_ppt*IST%sal_ice(i,j,k,1)
       do m=2,NkIce
-        write(mesg2,'(", ", 1pe12.4)') IST%sal_ice(i,j,k,m)
+        write(mesg2,'(", ", 1pe12.4)') US%S_to_ppt*IST%sal_ice(i,j,k,m)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)

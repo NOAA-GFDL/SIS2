@@ -34,6 +34,7 @@ type, public :: SIS_optics_CS ; private
   real :: pen_ice         !< ice surface penetrating solar fraction [nondim]
   real :: opt_dep_ice     !< ice optical depth [Z ~> m]
   real :: t_range_melt    !< melt albedos scaled in below melting T [degC]
+  real :: salin_max       !< The maximum attainable salinity [S ~> gSalt kg-1].
 
   logical :: do_deltaEdd = .true.  !< If true, use a delta-Eddington radiative
                           !! transfer calculation for the shortwave radiation
@@ -155,6 +156,9 @@ subroutine SIS_optics_init(param_file, US, CS, slab_optics)
                  "The minimum thick ice albedo with the slab ice optics.", &
                  units="nondim", default=0.55, do_not_log=.not.CS%slab_optics)
 
+  ! This should be changed into a runtime parameter
+  CS%salin_max = 40.0*US%ppt_to_S
+
 end subroutine SIS_optics_init
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -196,7 +200,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
   real :: rho_water       ! The nominal density of sea water [R ~> kg m-3].
   real :: pen             ! The fraction of the shortwave flux that will pass below
                           ! the surface (frac 1-pen absorbed at the surface) [nondim]
-  real :: sal_ice_top(1)  ! A specified surface salinity of ice [gSalt kg-1].
+  real :: sal_ice_top(1)  ! A specified surface salinity of ice [S ~> gSalt kg-1].
   real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
   real :: max_mp          ! The maximum melt pond mass at the waterline [R Z ~> kg m-2]
   integer :: m, b, nb
@@ -407,16 +411,13 @@ end subroutine ice_optics_SIS2
 !! and ice attain their greatest brightness and albedo no longer varies, for
 !! the highest attainable salinity.
 function bright_ice_temp(CS, ITV) result(bright_temp)
-  type(SIS_optics_CS), intent(in)   :: CS  !< The ice optics control structure
+  type(SIS_optics_CS),   intent(in) :: CS  !< The ice optics control structure
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   real :: bright_temp
 
-  real :: salin_max       ! The maximum attainable salinity [gSalt kg-1].
   real :: temp_freeze_min ! The freezing temperature of water at salin_max [degC].
 
-  salin_max = 40.0
-
-  temp_freeze_min = T_freeze(salin_max, ITV)
+  temp_freeze_min = T_freeze(CS%salin_max, ITV)
 
   if (CS%do_deltaEdd) then ! This is hard-coded for the delta-Eddington scheme.
     bright_temp = temp_freeze_min - 1.0

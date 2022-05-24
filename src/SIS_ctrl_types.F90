@@ -234,7 +234,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
-               'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, missing_value=missing)
   FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT', diag%axesT1, Time, &
                'upper surface melting energy flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
   FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT', diag%axesT1, Time, &
@@ -310,7 +310,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
              'sea surface temperature', 'deg-C', missing_value=missing)
   OSS%id_sss   = register_SIS_diag_field('ice_model', 'SSS', diag%axesT1, Time, &
-             'sea surface salinity', 'psu', missing_value=missing)
+             'sea surface salinity', 'psu', conversion=US%S_to_ppt, missing_value=missing)
   OSS%id_ssh   = register_SIS_diag_field('ice_model', 'SSH', diag%axesT1, Time, &
              'sea surface height', 'm', conversion=US%Z_to_m, missing_value=missing)
 
