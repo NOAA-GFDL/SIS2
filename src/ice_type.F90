@@ -607,7 +607,7 @@ subroutine ice_stock_pe(Ice, index, value)
       !There is no salt in the snow or in the ponds.
       do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ;  do i=isc,iec
         value = value + (IST%part_size(i,j,k) * (G%US%L_to_m**2*G%areaT(i,j)*G%mask2dT(i,j))) * &
-            (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * IST%sal_ice(i,j,k,m)
+            (0.001*(kg_H_Nk*IST%mH_ice(i,j,k))) * G%US%S_to_ppt*IST%sal_ice(i,j,k,m)
       enddo ; enddo ; enddo ; enddo
 
   end select

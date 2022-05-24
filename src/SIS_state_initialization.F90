@@ -245,15 +245,15 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
 !
   ! Local variables
   real :: enth_spec_snow, enth_spec_ice  ! Specified enthalpy of snow and ice [Q ~> J kg-1]
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
-  real :: ice_salin_IC   ! The initial ice bulk salinity [gSalt kg-1] = [ppt]
+  real :: ice_salin_IC   ! The initial ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
   real :: ice_temp_IC    ! The initial ice temperature [degC]
   real :: ice_rel_temp_IC ! The initial ice temperature relative to the freezing point [degC]
-  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [gSalt kg-1]
-  real, dimension(SZI_(G),SZJ_(G)) :: salin_input  ! Temporary ice salinity [gSalt kg-1]
+  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [S ~> gSalt kg-1]
+  real, dimension(SZI_(G),SZJ_(G)) :: salin_input  ! Temporary ice salinity [S ~> gSalt kg-1]
   real, dimension(SZI_(G),SZJ_(G)) :: temp_input   ! Temporary ice temperature [degC]
 # include "version_variable.h"
   character(len=40)  :: mdl = "SIS_state_initialization" ! This module's name.
@@ -296,8 +296,8 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
             default='uniform_temp', do_not_log=just_read)
 
   call get_param(PF, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "g/kg", &
-                 default=4.0, do_not_log=.true.)
+                 "The fixed bulk salinity of sea ice.", &
+                 units = "g/kg", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(PF, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
@@ -322,7 +322,8 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("uniform")
       call get_param(PF, mdl, "ICE_SALINITY_IC", ice_salin_IC, &
                  "The uniform sea ice salinity used for the initial condition", &
-                 units="g kg-1", default=ice_bulk_salin, do_not_log=just_read)
+                 units="g kg-1", default=US%S_to_ppt*ice_bulk_salin, scale=US%ppt_to_S, &
+                 do_not_log=just_read)
       if (.not.just_read) then ; do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         !### This should not change answers but does:  if (IST%part_size(i,j,k) > 0.0)
         IST%sal_ice(i,j,k,n) = ice_salin_IC
@@ -330,7 +331,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("data_override")
       if (.not.just_read) then
         salin_input(:,:) = 0.0
-        call data_override('ICE', 'si_salin_obs', salin_input(isc:iec,jsc:jec), init_Time)
+        call data_override(G%Domain, 'si_salin_obs', salin_input, init_Time, scale=US%ppt_to_S, is_ice=.true.)
         do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%sal_ice(i,j,k,n) = salin_input(i,j)
         enddo ; enddo ; enddo ; enddo
@@ -364,7 +365,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
       if (spec_thermo_sal .and. (.not.just_read)) then
         do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%enth_ice(i,j,k,n) = Enth_from_TS(T_Freeze(S_col(n), IST%ITV) + ice_rel_temp_IC, &
-                                                S_col(n), IST%ITV)
+                                               S_col(n), IST%ITV)
         enddo ; enddo ; enddo ; enddo
       elseif (.not.just_read) then
         do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
@@ -634,7 +635,7 @@ subroutine initialize_salinity_from_file(salin, G, IG, US, PF, just_read_params)
   type(ice_grid_type),     intent(in)  :: IG   !< The sea-ice specific grid type
   type(unit_scale_type),   intent(in)  :: US   !< A dimensional unit scaling type
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce), &
-                           intent(out) :: salin !< The ice salinity that is being initialized [gSalt kg-1]
+                           intent(out) :: salin !< The ice salinity that is being initialized [S ~> gSalt kg-1]
   type(param_file_type),   intent(in)  :: PF   !< A structure indicating the open file
                                                !! to parse for model parameter values.
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
@@ -677,12 +678,12 @@ subroutine initialize_salinity_from_file(salin, G, IG, US, PF, just_read_params)
          " initialize_salinity_from_file: Unable to open "//trim(filename))
 
   if (file_is_2d) then
-    call MOM_read_data(filename, salin_var, salin(:,:,1,1), G%Domain, scale=salin_scale)
+    call MOM_read_data(filename, salin_var, salin(:,:,1,1), G%Domain, scale=salin_scale*US%ppt_to_S)
     do n=1,NkIce ; do k=1,CatIce ; do j=js,je ; do i=is,ie
       salin(i,j,k,n) = salin(i,j,1,1)
     enddo ; enddo ; enddo ; enddo
   else
-    call MOM_read_data(filename, salin_var, salin(:,:,1,:), G%Domain, scale=salin_scale)
+    call MOM_read_data(filename, salin_var, salin(:,:,1,:), G%Domain, scale=salin_scale*US%ppt_to_S)
     do n=1,NkIce ; do k=1,CatIce ; do j=js,je ; do i=is,ie
       salin(i,j,k,n) = salin(i,j,1,n)
     enddo ; enddo ; enddo ; enddo
@@ -704,7 +705,7 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce), &
                            intent(out) :: enth_ice !< The ice enthalpy that is being initialized [Q ~> J kg-1]
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce,IG%NkIce), &
-                           intent(in)  :: sal_ice !< The ice salinity [gSalt kg-1]
+                           intent(in)  :: sal_ice !< The ice salinity [S ~> gSalt kg-1]
   type(ice_thermo_type),   intent(in)  :: ITV  !< The ice thermodynamics parameter structure.
   type(param_file_type),   intent(in)  :: PF   !< A structure indicating the open file
                                                !! to parse for model parameter values.
@@ -716,7 +717,7 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
     temp_input_2d         ! Temporary 2-d (horizontal position) ice temperature array [degC]
   real, dimension(SZI_(G),SZJ_(G),IG%NkIce) :: &
     temp_input_3d         ! Temporary 3-d (horizontal position and depth) ice temperature array [degC]
-  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [gSalt kg-1]
+  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [S ~> gSalt kg-1]
   logical :: just_read    ! If true, just read parameters but set nothing.
   logical :: file_is_2d   ! If true, the ice_enthalpy file has 2-d data.  Otherwise it includes a depth profile.
   logical :: enthalpy_file   ! If true, the file has enthalpy data in [J kg-1]; otherwise it has
@@ -907,7 +908,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
                                                           !! the directory comes from dirs.
 
   ! Local variables
-  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [gSalt kg-1]
+  real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [S ~> gSalt kg-1]
   logical :: spec_thermo_sal
   character(len=240) :: restart_path
   ! This include declares and sets the variable "version".
@@ -915,9 +916,10 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
   character(len=40)  :: mdl = "SIS_state_initialization" ! This module's name.
   character(len=8)   :: nstr
   real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp
-  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp, sal_ice_tmp
+  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
+  real, allocatable, target, dimension(:,:,:) :: sal_ice_tmp ! A temporary array of ice salinities [S ~> gSalt kg-1]
 
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
@@ -944,8 +946,8 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 !  call log_version(PF, mdl, version, "")
 
   call get_param(PF, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "g/kg", &
-                 default=4.0, do_not_log=.true.)
+                 "The fixed bulk salinity of sea ice.", &
+                 units="g/kg", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(PF, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
@@ -962,7 +964,8 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 'sal_ice'//trim(nstr), sal_ice_tmp(:,:,:), &
-                                   G%domain, directory=dirs%restart_input_dir, success=read_values)
+                                   G%domain, directory=dirs%restart_input_dir, success=read_values, &
+                                   scale=US%ppt_to_S)
       if (read_values) then
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%sal_ice(i,j,k,n) = sal_ice_tmp(i,j,k)

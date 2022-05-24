@@ -80,6 +80,8 @@ type, public :: SIS_tracer_type
     pointer :: OBC_in_v => NULL()  !< Structured values for flow into the domain through v-face open
                                    !! boundaries.
   character(len=32) :: name        !< A tracer name for error messages.
+  real :: conc_scale = 1.0         !< A scaling factor used to convert the concentrations
+                                   !! of this tracer to its desired units.
   logical :: nonnegative = .false. !< If true, this tracer can not be negative
   logical :: is_passive  = .false. !< True if this ice tracer is passive
 end type SIS_tracer_type
@@ -104,7 +106,7 @@ contains
 subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_tracer, &
                              massless_val, ad_2d_x, ad_2d_y, ad_3d_x, ad_3d_y, &
                              ad_4d_x, ad_4d_y, OBC_inflow, OBC_in_u, OBC_in_v, &
-                             nonnegative, ocean_BC, snow_BC, is_passive)
+                             nonnegative, ocean_BC, snow_BC, is_passive, conc_scale)
   integer,                 intent(in) :: nLtr !<  The number of vertical levels for this tracer
   type(SIS_hor_grid_type), intent(in) :: G   !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG  !< The sea-ice specific grid type
@@ -151,6 +153,8 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   real, dimension(:,:,:), &
                  optional, pointer    :: snow_BC  !< Value of the tracer at the snow-ice boundary
   logical,       optional, intent(in) :: is_passive  !< True if this ice tracer is passive
+  real,          optional, intent(in) :: conc_scale  !< A scaling factor used to convert the concentration
+                                                     !! of this tracer to its desired units.
   ! This subroutine registers a tracer to be advected.
 
   ! Local variables
@@ -178,10 +182,14 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   Tr_here%name = trim(name)
   Tr_here%t => tr1(:,:,:,1:nLtr)
   Tr_here%nL = nLtr
-  if(present(ocean_BC)) then
+
+  Tr_here%conc_scale = 1.0
+  if (present(conc_scale)) Tr_here%conc_scale = conc_scale
+
+  if (present(ocean_BC)) then
     TrReg%Tr_ice(TrReg%ntr)%ocean_BC => ocean_BC
   endif
-  if(present(snow_BC)) then
+  if (present(snow_BC)) then
     TrReg%Tr_ice(TrReg%ntr)%snow_BC => snow_BC
   endif
 

@@ -604,7 +604,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%calving(i2,j2) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
     Ice%runoff_hflx(i2,j2)  = US%QRZ_T_to_W_m2*FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)
-    Ice%flux_salt(i2,j2) = US%RZ_T_to_kg_m2s*IOF%flux_salt(i,j)
+    Ice%flux_salt(i2,j2) = US%S_to_ppt*US%RZ_T_to_kg_m2s*IOF%flux_salt(i,j)
     Ice%SST_C(i2,j2) = OSS%SST_C(i,j)
 
 !   It is possible that the ice mass and surface pressure will be needed after
@@ -861,7 +861,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
 
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-    OSS%s_surf(i,j) = OIB%s(i2,j2)
+    OSS%s_surf(i,j) = US%ppt_to_S*OIB%s(i2,j2)
     OSS%T_fr_ocn(i,j) = T_Freeze(OSS%s_surf(i,j), ITV)
     OSS%bheat(i,j) = OSS%kmelt*(OSS%SST_C(i,j) - OSS%T_fr_ocn(i,j))
     OSS%frazil(i,j) = US%W_m2_to_QRZ_T*US%s_to_T*OIB%frazil(i2,j2)
@@ -1122,7 +1122,7 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
     Ice%v_surf(i2,j2,1) = US%L_T_to_m_s*OSS%v_ocn_A(i,j)
     Ice%u_surf(i2,j2,2) = US%L_T_to_m_s*OSS%u_ice_A(i,j)
     Ice%v_surf(i2,j2,2) = US%L_T_to_m_s*OSS%v_ice_A(i,j)
-    Ice%s_surf(i2,j2) = OSS%s_surf(i,j)
+    Ice%s_surf(i2,j2) = US%S_to_ppt*OSS%s_surf(i,j)
   enddo ; enddo
 
   if (fCS%debug) then
@@ -1681,7 +1681,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Parameters that properly belong exclusively to ice_thm.
   real :: massless_ice_enth, massless_snow_enth ! Enthalpy fill values [Q ~> J kg-1]
-  real :: massless_ice_salin  ! A salinity fill value [ppt]
+  real :: massless_ice_salin  ! A salinity fill value [S ~> ppt]
 
   real, allocatable, dimension(:,:) :: &
     h_ice_input, dummy   ! Temporary arrays.
@@ -1690,7 +1690,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   real :: g_Earth        !   The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [gSalt kg-1] = [ppt]
+  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
                          ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
@@ -1965,7 +1965,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  units="J kg-1", default=0.0, scale=US%J_kg_to_Q, do_not_log=.true.)
   call get_param(param_file, mdl, "MASSLESS_ICE_SALIN", massless_ice_salin, &
                  "The ice salinity fill value for massless categories.", &
-                 units="g kg-1", default=0.0, do_not_log=.true.)
+                 units="g kg-1", default=0.0, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(param_file, "MOM", "WRITE_GEOM", write_geom, &
                  "If =0, never write the geometry and vertical grid files. "//&
                  "If =1, write the geometry and vertical grid files only for "//&
@@ -2132,8 +2132,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     if (ice_rel_salin > 0.0) then
       call register_SIS_tracer(sIST%sal_ice, sG, sIG, NkIce, "salin_ice", param_file, &
-                               sIST%TrReg, snow_tracer=.false., &
-                               massless_val=massless_ice_salin, nonnegative=.true.)
+                               sIST%TrReg, snow_tracer=.false., massless_val=massless_ice_salin, &
+                               nonnegative=.true., conc_scale=US%S_to_ppt)
     endif
 
   !   Register any tracers that will be handled via tracer flow control for
