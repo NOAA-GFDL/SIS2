@@ -19,7 +19,7 @@ use MOM_unit_scaling,         only : unit_scale_type
 
 implicit none ; private
 
-#include <MOM_memory.h>
+#include <SIS2_memory.h>
 
 public open_boundary_config
 !public open_boundary_init
