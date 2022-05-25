@@ -9,6 +9,7 @@ use MOM_error_handler, only : stdlog, stdout
 use MOM_hor_index,     only : hor_index_type
 use MOM_io,            only : open_namelist_file, check_nml_error, close_file
 use MOM_time_manager,  only : time_type, get_date, set_date
+use MOM_unit_scaling,  only : unit_scale_type
 use SIS_framework,     only : domain2d
 
 implicit none ;  private
@@ -38,7 +39,7 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> get_sea_surface obtains some combination of SST, ice concentration and ice thickness, from data override files
-subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_domain_end)
+subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_domain_end, US)
   type (time_type),         intent(in)  :: Time !< The current model time
   type(hor_index_type),     intent(in)  :: HI  !< The horizontal index type describing the domain
   real, dimension(HI%isd:HI%ied,HI%jsd:HI%jed), &
@@ -49,7 +50,8 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
                   optional, intent(out) :: ice_thick !< The ice thickness [m]
   type(domain2d), optional, intent(in)  :: ice_domain !< The domain used to read this data
   type(domain2d), optional, intent(in)  :: ice_domain_end !< If present reset the data override ice
-                                                   !! domain back to this one at the end of this routine
+                                                    !! domain back to this one at the end of this routine
+  type(unit_scale_type), optional, intent(in) :: US !< A structure with unit conversion factors
 
   ! These local variables do not need halos, so they are declared without them.
   real, dimension(HI%isc:HI%iec,HI%jsc:HI%jec) :: sst_obs ! Observed sea surface temperature [degC] or [degK]
@@ -63,6 +65,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
   real :: SST_offset ! An offset between the observed SST and the output value, either to correct
                      ! for differences in temperature units or to apply a perturbation [degC]
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
+  real    :: degC_scale ! A scaling factor to the internal units of temperature
   integer :: i, j
   integer :: ierr, io, unit
   type(time_type) :: Spec_Time
@@ -155,6 +158,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
   if (present(SST)) then
     ! SST is in Celsius, but sst_obs may be in Kelvin.
     SST_offset = 0.0 ; if (sst_degk) SST_offset = -T_0degC
+    degC_scale = 1.0 ; if (present(US)) degC_scale = US%degC_to_C
 
     ! Add on non-zero sea surface temperature perturbation (namelist option)
     ! this perturbation may be useful in accessing model sensitivities
@@ -164,7 +168,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
       if (icec(i,j) > 0.0) sst_obs(i,j) = t_sw_freeze
       if ((icec(i,j) == 0.0) .and. (sst_obs(i,j) <= t_sw_freeze)) sst_obs(i,j) = t_sw_freeze + 1e-10
 
-      SST(i,j) = sst_obs(i,j) + SST_offset
+      SST(i,j) = degC_scale * (sst_obs(i,j) + SST_offset)
     enddo ; enddo
   endif
 

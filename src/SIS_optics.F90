@@ -33,7 +33,7 @@ type, public :: SIS_optics_CS ; private
   real :: alb_ice         !< albedo of ice (not melting) [nondim]
   real :: pen_ice         !< ice surface penetrating solar fraction [nondim]
   real :: opt_dep_ice     !< ice optical depth [Z ~> m]
-  real :: t_range_melt    !< melt albedos scaled in below melting T [degC]
+  real :: t_range_melt    !< melt albedos scaled in below melting T [C ~> degC]
   real :: salin_max       !< The maximum attainable salinity [S ~> gSalt kg-1].
 
   logical :: do_deltaEdd = .true.  !< If true, use a delta-Eddington radiative
@@ -141,8 +141,8 @@ subroutine SIS_optics_init(param_file, US, CS, slab_optics)
   T_range_dflt = 1.0 ; if (CS%slab_optics) T_range_dflt = 10.0
   call get_param(param_file, mdl, "ALBEDO_T_MELT_RANGE", CS%t_range_melt, &
                  "The temperature range below freezing over which the "//&
-                 "albedos are changed by partial melting.", units="degC", &
-                 default=1.0, do_not_log=CS%do_deltaEdd)
+                 "albedos are changed by partial melting.", &
+                 units="degC", default=1.0, scale=US%degC_to_C, do_not_log=CS%do_deltaEdd)
 
   ! These parameters pertain only to the ancient slab ice optics parameterization.
   call get_param(param_file, mdl, "SLAB_OPTICS_CRITICAL_THICK", CS%slab_crit_thick, &
@@ -168,8 +168,8 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
   real, intent(in   ) :: m_pond   !< pond mass [R Z ~> kg m-2]
   real, intent(in   ) :: m_snow   !< snow mass per unit area [R Z ~> kg m-2]
   real, intent(in   ) :: m_ice    !< ice thickness [R Z ~> kg m-2]
-  real, intent(in   ) :: ts       !< surface temperature [degC]
-  real, intent(in   ) :: tfw      !< seawater freezing temperature [degC]
+  real, intent(in   ) :: ts       !< surface temperature [C ~> degC]
+  real, intent(in   ) :: tfw      !< seawater freezing temperature [C ~> degC]
   integer, intent(in) :: NkIce    !< The number of sublayers in the ice
   real, dimension(:), intent(  out) :: albedos !< ice surface albedos (0-1) [nondim]
   real, intent(  out) :: abs_sfc  !< fraction of absorbed SW that is absorbed at surface [nondim]
@@ -201,12 +201,13 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
   real :: pen             ! The fraction of the shortwave flux that will pass below
                           ! the surface (frac 1-pen absorbed at the surface) [nondim]
   real :: sal_ice_top(1)  ! A specified surface salinity of ice [S ~> gSalt kg-1].
-  real :: temp_ice_freeze ! The freezing temperature of the top ice layer [degC].
+  real :: temp_ice_freeze ! The freezing temperature of the top ice layer [C ~> degC].
   real :: max_mp          ! The maximum melt pond mass at the waterline [R Z ~> kg m-2]
   integer :: m, b, nb
   character(len=200) :: mesg
 
-  real :: tcrit, thick_ice_alb  ! Slab optics variables
+  real :: tcrit           ! Slab optics critical temperature for a constant albedo [C ~> degC]
+  real :: thick_ice_alb   ! Slab optics albedo for thick ice [nondim]
 
   integer (kind=int_kind) :: &
     nx_block, ny_block, & ! block dimensions
@@ -218,11 +219,11 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
 
   ! inputs
   real (kind=dbl_kind), dimension (1,1) :: &
-    aice   , & ! concentration of ice
+    aice   , & ! concentration of ice [nondim]
     vice   , & ! volume of ice [m]
     vsno   , & ! volume of snow [m]
-    Tsfc   , & ! surface temperature
-    coszen , & ! cosine of solar zenith angle
+    Tsfc   , & ! surface temperature [degC]
+    coszen , & ! cosine of solar zenith angle [nondim]
     tarea  , & ! cell area - not used
     swvdr  , & ! sw down, visible, direct  [W m-2]
     swvdf  , & ! sw down, visible, diffuse [W m-2]
@@ -231,7 +232,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
 
   ! outputs
   real (kind=dbl_kind), dimension (1,1) :: &
-    fs     , & ! horizontal coverage of snow
+    fs     , & ! horizontal coverage of snow [nondim]
     fp     , & ! pond fractional coverage (0 to 1) [nondim]
     hprad      ! pond depth [m] for radiation code - may be diagnosed
 
@@ -310,7 +311,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     ! stuff that matters
     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
     if (present(coszen_in)) coszen(1,1) = max(0.01,coszen_in)
-    Tsfc(1,1) = ts
+    Tsfc(1,1) = US%C_to_degC*ts
     vsno(1,1) = US%Z_to_m*hs
     vice(1,1) = US%Z_to_m*hi
     swvdr(1,1) = 0.25
@@ -399,7 +400,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
      ! if (alb.lt.0.0 .or. alb.gt.1.0) then
      !    print *,'ice_optics: albedo out of range, alb=',alb
      !    print *,'cs=',cs,  'as=',as, 'ai=',ai
-     !    print *,'ts=',ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',tfw
+     !    print *,'ts=',US%C_to_degC*ts,  'fh=',fh, 'hs=',hs, 'hi=',hi, 'tfw=',US%C_to_degC*tfw
      !    print *,'ALB_SNO=',ALB_SNO,  'ALB_ICE=',ALB_ICE, 'T_RANGE_MELT,=',T_RANGE_MELT, 'TFI=',TFI
      !    stop
      ! end if
@@ -407,20 +408,21 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
 
 end subroutine ice_optics_SIS2
 
-!> bright_ice_temp returns the skin temperature (in degC) below which the snow
+!> bright_ice_temp returns the skin temperature (in [C ~> degC]) below which the snow
 !! and ice attain their greatest brightness and albedo no longer varies, for
 !! the highest attainable salinity.
-function bright_ice_temp(CS, ITV) result(bright_temp)
+function bright_ice_temp(CS, ITV, US) result(bright_temp)
   type(SIS_optics_CS),   intent(in) :: CS  !< The ice optics control structure
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real :: bright_temp
+  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
+  real :: bright_temp     ! The ice temperature below which ice is fully bright [C ~> degC]
 
-  real :: temp_freeze_min ! The freezing temperature of water at salin_max [degC].
+  real :: temp_freeze_min ! The freezing temperature of water at salin_max [C ~> degC].
 
   temp_freeze_min = T_freeze(CS%salin_max, ITV)
 
   if (CS%do_deltaEdd) then ! This is hard-coded for the delta-Eddington scheme.
-    bright_temp = temp_freeze_min - 1.0
+    bright_temp = temp_freeze_min - 1.0*US%degC_to_C
   else
     bright_temp = temp_freeze_min - CS%T_RANGE_MELT
   endif

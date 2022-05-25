@@ -211,6 +211,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   real, dimension(SZI_(G),SZJ_(G))   :: &
     hi_avg            ! The area-weighted average ice thickness in the units used for icebergs [m].
   real, dimension(G%isc:G%iec, G%jsc:G%jec)   :: &
+    Temp_sfc, &       ! A local copy of the surface temperature in the units used for icebergs [degC]
     Saln_sfc, &       ! A local copy of the surface salinity in the units used for icebergs [gSalt kg-1]
     calving, &        ! A local copy of the calving rate in the units used for icebergs [kg m-2 s-1]
     calving_hflx, &   ! A local copy of the calving heat flux in the units used for icebergs [W m-2]
@@ -245,6 +246,8 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   do j=jsc,jec ; do i=isc,iec
     calving(i,j) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
     calving_hflx(i,j) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)
+    Saln_sfc(i,j) = US%S_to_ppt*OSS%s_surf(i,j)
+    Temp_sfc(i,j) = US%C_to_degC*OSS%SST_C(i,j)
   enddo ; enddo
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
     sea_lev(i,j) = US%Z_to_m*OSS%sea_lev(i,j)
@@ -266,10 +269,6 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     stress_stagger = AGRID
   endif
 
-  do j=jsc,jec ; do i=isc,iec
-    Saln_sfc(i,j) = US%S_to_ppt*OSS%s_surf(i,j)
-  enddo ; enddo
-
   if (IST%Cgrid_dyn) then
     do j=jsc-1,jec+1 ; do I=isc-2,iec+1
       u_ice_C(I,j) = US%L_T_to_m_s*IST%u_ice_C(I,j) ; u_ocn_C(I,j) = US%L_T_to_m_s*OSS%u_ocn_C(I,j)
@@ -279,8 +278,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     enddo ; enddo
     call icebergs_run( icebergs_CS, CS%Time, calving, &
             u_ocn_C, v_ocn_C, u_ice_C, v_ice_C, windstr_x, windstr_y, &
-            sea_lev, OSS%SST_C(isc:iec,jsc:jec), &
-            calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            sea_lev, Temp_sfc, calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=CGRID_NE, &
             stress_stagger=stress_stagger, sss=Saln_sfc, &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
@@ -292,8 +290,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
     enddo ; enddo
     call icebergs_run( icebergs_CS, CS%Time, calving, &
             u_ocn_B, v_ocn_B, u_ice_B, v_ice_B, windstr_x, windstr_y, &
-            sea_lev, OSS%SST_C(isc:iec,jsc:jec),  &
-            calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
+            sea_lev, Temp_sfc, calving_hflx, FIA%ice_cover(isc-1:iec+1,jsc-1:jec+1), &
             hi_avg(isc-1:iec+1,jsc-1:jec+1), stagger=BGRID_NE, &
             stress_stagger=stress_stagger, sss=Saln_sfc, &
             mass_berg=IOF%mass_berg, ustar_berg=IOF%ustar_berg, &
@@ -805,7 +802,6 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
                                                    !! calls to auxiliary ice tracer packages
 
   ! Local variables
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
@@ -813,7 +809,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
   if (allocated(IST%t_surf)) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
+      IST%t_surf(i,j,k) = IST%T_0degC + OSS%T_fr_ocn(i,j)
     enddo ; enddo ; enddo
   endif
 
@@ -824,7 +820,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
   call disable_SIS_averaging(CS%diag)
 
-  if (CS%verbose) call ice_line(CS%Time, IST%part_size(isc:iec,jsc:jec,0), OSS%SST_C(:,:), G)
+  if (CS%verbose) call ice_line(CS%Time, IST%part_size(:,:,0), OSS%SST_C(:,:), G)
   if (CS%debug) call IST_chksum("End ice_state_cleanup", IST, G, US, IG)
   if (CS%bounds_check) call IST_bounds_check(IST, G, US, IG, "End of ice_state_cleanup", OSS=OSS)
 

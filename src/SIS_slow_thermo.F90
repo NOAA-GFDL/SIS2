@@ -163,7 +163,6 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn ! Shortwave fluxes[Q R Z T-1 ~> W m-2]
   real :: sw_cat ! [Q R Z T-1 ~> W m-2]
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   real, parameter :: missing = -1e34  ! A missing data fill value
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
 
@@ -226,9 +225,8 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
   if (FIA%id_tsfc>0) call post_data(FIA%id_tsfc, FIA%Tskin_avg, CS%diag)
   if (FIA%id_sitemptop>0) call post_data(FIA%id_sitemptop, FIA%Tskin_avg, CS%diag)
   if (FIA%id_sitemptop_CMOR>0) then
-    tmp2d(:,:) = missing
     do j=jsc,jec ; do i=isc,iec
-      if (FIA%Tskin_avg(i,j) /= missing) tmp2d(i,j) = FIA%Tskin_avg(i,j) + T_0degC
+      tmp2d(i,j) = FIA%Tskin_avg(i,j) + IST%T_0degC
     enddo ; enddo
     call post_data(FIA%id_sitemptop_CMOR, tmp2d, CS%diag)
   endif
@@ -365,7 +363,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   !
   if (CS%specified_ice) then   ! over-write changes with specifications.
     h_ice_input(:,:) = 0.0
-    call get_sea_surface(CS%Time, G%HI, SST=OSS%SST_C, ice_conc=IST%part_size(:,:,1), ice_thick=h_ice_input)
+    call get_sea_surface(CS%Time, G%HI, SST=OSS%SST_C, ice_conc=IST%part_size(:,:,1), ice_thick=h_ice_input, US=US)
     call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
 
     do j=jsc,jec ; do i=isc,iec
@@ -572,7 +570,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     salt_change, &        ! The change in integrated salinity [R Z S ~> gSalt m-2]
     h2o_change, &         ! The change in water in the ice [R Z ~> kg m-2]
     bsnk, &               ! The bottom melting mass sink [R Z T-1 ~> kg m-2 s-1]
-    tmp2d, &
+    tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 yr-1]
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
     cool_nudge, &         ! A heat flux out of the sea ice that
@@ -582,22 +580,20 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                           ! across all categories [R Z T-1 ~> kg m-2 s-1].
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: &
     heat_in, &            ! The input heat [Q R Z ~> J m-2]
-    enth_prev, &
-    enth
+    enth_prev, &          ! The previous column integrated enthalpy by category [Q R Z ~> J m-2]
+    enth                  ! The column integrated enthalpy by category [Q R Z ~> J m-2]
   real, dimension(SZI_(G),SZJ_(G)) :: &
     heat_in_col, &        ! The total heat in each column [Q R Z ~> J m-2]
-    enth_prev_col, &
-    enth_col, &
-    enth_mass_in_col
+    enth_prev_col, &      ! The previous column integrated enthalpy in a cell [Q R Z ~> J m-2]
+    enth_col, &           ! The column integrated enthalpy in a cell [Q R Z ~> J m-2]
+    enth_mass_in_col      ! The enthalpy input to a cell within a timestep [Q R Z ~> J m-2]
 
   real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [S ~> gSalt kg-1].
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
                                           ! layer [S ~> gSalt kg-1], with the salinity of
                                           ! newly formed ice in layer NkIce+1.
   real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow [R Z ~> kg m-2].
-  real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow [S ~> gSalt kg-1].
-  real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
                           ! and the surface ocean [Q ~> J kg-1].
@@ -618,8 +614,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                           ! for all tracers
 
   type(EOS_type), pointer :: EOS => NULL()
-  real :: Cp_water    ! The heat capacity of sea water [Q degC-1 ~> J kg-1 degC-1]
-  real :: drho_dT(1)  ! The partial derivative of density with temperature [R degC-1 ~> kg m-3 degC-1]
+  real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
+  real :: drho_dT(1)  ! The partial derivative of density with temperature [R C-1 ~> kg m-3 degC-1]
   real :: drho_dS(1)  ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1]
   real :: pres_0(1)   ! An array of pressures [Pa]
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
@@ -648,9 +644,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: enth_ice_to_ocn ! The heat flux associated with melting at the ice-ocean interface [Q R Z ~> J m-2]
   real :: enth_ocn_to_ice ! The heat flux associated with freezing at the ice-ocean interface [Q R Z ~> J m-2]
   real :: enth_snowfall ! The heat flux associated with snowfall [Q R Z ~> J m-2]
-  real :: tot_heat, heating, tot_frazil, heat_mass_in
+  real :: heat_mass_in ! The input heat associated with mass fluxes [Q R Z ~> J m-2]
   real :: heat_input   ! The input heat [Q R Z ~> J m-2]
-  real :: mass_in, mass_here, mass_prev, mass_imb
+  real :: mass_in, mass_here, mass_prev, mass_imb ! Mass balance terms [R Z ~> kg m-2]
   real :: frac_keep, frac_melt  ! The fraction of ice and snow to keep or remove [nondim].
   real :: ice_melt_lay ! The amount of excess ice removed from each layer [R Z ~> kg m-2].
   real :: snow_melt    ! The amount of excess snow that is melted [R Z ~> kg m-2].
@@ -669,7 +665,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice [Q ~> J kg-1].
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2
 
@@ -682,7 +677,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                    rho_ice=rho_ice, spec_thermo_salin=spec_thermo_sal, &
                    Latent_fusion=LatHtFus, Latent_vapor=LatHtVap)
   S_col0(0) = 0.0 ; do m=1,NkIce ; S_col0(m) = S_col(m) ; enddo
-  call calculate_T_Freeze(S_col0(0:NkIce), Tfr_col0(0:NkIce), IST%ITV)
 
   heat_fill_val = Enth_from_TS(0.0, 0.0, IST%ITV)
 
@@ -714,10 +708,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
              ((Obs_cn_ice(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
-            call calculate_density_derivs(OSS%SST_C(i:i,j), US%S_to_ppt*OSS%s_surf(i:i,j), pres_0, &
+            call calculate_density_derivs(OSS%SST_C(i:i,j), OSS%s_surf(i:i,j), pres_0, &
                            drho_dT, drho_dS, 1, 1, EOS)
-            drho_dT = US%kg_m3_to_R*drho_dT
-            drho_dS = US%kg_m3_to_R*US%S_to_ppt*drho_dS
             IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
                                   ((Cp_water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0*US%ppt_to_S) )
           endif
@@ -1058,9 +1050,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       IST%mH_ice(i,j,k)  = (IST%mH_ice(i,j,k)  * IST%part_size(i,j,k)) * I_part
       if (allocated(IST%t_surf)) then
         IST%t_surf(i,j,k) = (IST%t_surf(i,j,k) * IST%part_size(i,j,k) + &
-                       (T_0degC + OSS%T_fr_ocn(i,j))*IST%part_size(i,j,0)) * I_part
+                       (IST%T_0degC + OSS%T_fr_ocn(i,j))*IST%part_size(i,j,0)) * I_part
         if (IST%part_size(i,j,k) + IST%part_size(i,j,0) == 0.0) &
-          IST%t_surf(i,j,k) = OSS%T_fr_ocn(i,j) + T_0degC
+          IST%t_surf(i,j,k) = OSS%T_fr_ocn(i,j) + IST%T_0degC
       endif
       IST%part_size(i,j,k) = IST%part_size(i,j,k) + IST%part_size(i,j,0)
       IST%part_size(i,j,0) = IG%ocean_part_min

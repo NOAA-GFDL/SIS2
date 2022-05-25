@@ -125,23 +125,23 @@ subroutine sum_top_quantities (FIA, ABT, flux_u, flux_v, flux_sh, evap, &
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: dshdt    !< The derivative of the upward sensible heat flux from the
                            !! the top of the ice into the atmosphere with ice skin
-                           !! temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+                           !! temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: devapdt  !< The derivative of the sublimation rate with the surface
-                           !! temperature [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1].
+                           !! temperature [R Z T-1 C-1 ~> kg m-2 s-1 degC-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce), &
     intent(in) :: dlwdt    !< The derivative of the longwave heat flux from the atmosphere
-                           !! into the ice or ocean with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+                           !! into the ice or ocean with ice skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce), &
-    intent(in) :: t_skin   !< The sea ice surface skin temperature [degC].
+    intent(in) :: t_skin   !< The sea ice surface skin temperature [C ~> degC].
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
-    intent(in) :: SST      !< The sea surface temperature [degC].
+    intent(in) :: SST      !< The sea surface temperature [C ~> degC].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)), &
     intent(in) :: flux_sw  !< The downward shortwave heat fluxes [Q R Z T-1 ~> W m-2]. The 4th
                            !! dimension is a combination of angular orientation & frequency.
   type(unit_scale_type),         intent(in)    :: US        !< A structure with unit conversion factors
 
-  real :: t_sfc
+  real :: t_sfc ! Surface temperature [C ~> degC]
   integer :: i, j, k, m, n, b, nb, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, ncat
   integer :: isd, ied, jsd, jed
 
@@ -597,25 +597,24 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     lw_T0, &    ! The downward longwave heat flux from the atmosphere into the
                 ! ice or ocean when the skin temperature is 0 degC [Q R Z T-1 ~> W m-2].
     dshdt, &    ! The derivative of the upward sensible heat flux with the surface
-                ! temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+                ! temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
     devapdt, &  ! The derivative of the sublimation rate with the surface
-                ! temperature [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1].
+                ! temperature [R Z T-1 C-1 ~> kg m-2 s-1 degC-1].
     dlwdt       ! The derivative of the downward radiative heat flux with surface
-                ! temperature (i.e. d(flux_lw)/d(surf_temp)) [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+                ! temperature (i.e. d(flux_lw)/d(surf_temp)) [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real, dimension(G%isd:G%ied,G%jsd:G%jed,0:IG%CatIce,size(FIA%flux_sw_top,4)) :: &
     flux_sw     ! The downward shortwave heat fluxes [Q R Z T-1 ~> W m-2].  The fourth
                 ! dimension is a combination of angular orientation and frequency.
-  real, dimension(0:IG%NkIce) :: T_col ! The temperature of a column of ice and snow [degC].
   real, dimension(IG%NkIce)   :: S_col ! The thermodynamic salinity of a column of ice [S ~> gSalt kg-1].
   real, dimension(0:IG%NkIce) :: enth_col   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
   real, dimension(0:IG%NkIce) :: SW_abs_col ! The shortwave absorption within a column of snow and
                   ! ice [Q R Z T-1 ~> W m-2].
   real :: dt_fast ! The fast thermodynamic time step [T ~> s].
-  real :: Tskin   ! The new skin temperature [degC].
-  real :: dTskin  ! The change in the skin temperature [degC].
+  real :: Tskin   ! The new skin temperature [C ~> degC].
+  real :: dTskin  ! The change in the skin temperature [C ~> degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [Q ~> J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
-  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over all shortwave (dir/dif and vis/nir) components [Q R Z T-1 ~> W m-2].
   real :: snow_wt ! A fractional weighting of snow in the category surface area [nondim].
   real :: LatHtVap       ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
@@ -669,9 +668,9 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
       flux_sw(i,j,k,VIS_DIF) = US%W_m2_to_QRZ_T*Atmos_boundary%sw_flux_vis_dif(i2,j2,k2)
       lprec(i,j,k)   = US%kg_m2s_to_RZ_T*Atmos_boundary%lprec(i2,j2,k2)
       fprec(i,j,k)   = US%kg_m2s_to_RZ_T*Atmos_boundary%fprec(i2,j2,k2)
-      dshdt(i,j,k) = US%W_m2_to_QRZ_T*Atmos_boundary%dhdt(i2,j2,k2)
-      devapdt(i,j,k) = US%kg_m2s_to_RZ_T*Atmos_boundary%dedt(i2,j2,k2)
-      dlwdt(i,j,k) = -1.*US%W_m2_to_QRZ_T*Atmos_boundary%drdt(i2,j2,k2)
+      dshdt(i,j,k) = US%W_m2_to_QRZ_T*US%C_to_degC*Atmos_boundary%dhdt(i2,j2,k2)
+      devapdt(i,j,k) = US%kg_m2s_to_RZ_T*US%C_to_degC*Atmos_boundary%dedt(i2,j2,k2)
+      dlwdt(i,j,k) = -1.*US%W_m2_to_QRZ_T*US%C_to_degC*Atmos_boundary%drdt(i2,j2,k2)
     enddo ; enddo
     do i=isc,iec
       sh_T0(i,j,0) = flux_sh(i,j,0) - dshdt(i,j,0) * sOSS%SST_C(i,j)
@@ -697,9 +696,9 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     enddo
     call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI, scale=US%RZ_T_to_kg_m2s)
     call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(devapdt(:,:,1:), "Mid do_fast devapdt", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
+    call hchksum(devapdt(:,:,1:), "Mid do_fast devapdt", G%HI, scale=US%degC_to_C*US%RZ_T_to_kg_m2s)
+    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_vapor=LatHtVap)
@@ -862,16 +861,15 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real, dimension(IG%NkIce)   :: &
     S_col         ! The thermodynamic salinity of a column of ice [S ~> gSalt kg-1].
   real, dimension(0:IG%NkIce) :: &
-    T_col, &      ! The temperature of a column of ice and snow [degC].
     SW_abs_col, & ! The shortwave absorption within a column of snow and ice [Q R Z T-1 ~> W m-2].
     enth_col, &   ! The enthalpy of a column of snow and ice [Q ~> J kg-1].
     enth_col_in   ! The initial enthalpy of a column of snow and ice [Q ~> J kg-1].
 
   real :: dt_here ! The time step here [T ~> s].
-  real :: Tskin   ! The new skin temperature [degC].
+  real :: Tskin   ! The new skin temperature [C ~> degC].
   real :: latent  ! The latent heat of sublimation of ice or snow [Q ~> J kg-1].
   real :: hf_0    ! The positive upward surface heat flux when T_sfc = 0 degC [Q R Z T-1 ~> W m-2].
-  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+  real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components [Q R Z T-1 ~> W m-2]
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos             ! The ice albedos by directional and wavelength band.
@@ -887,10 +885,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real    :: flux_sw_prev  ! The previous value of flux_sw_top [Q R Z T-1 ~> W m-2].
   real    :: rescale    ! A rescaling factor between 0 and 1 [nondim].
   real    :: bmelt_tmp, tmelt_tmp ! Temporary arrays [Q R Z ~> J m-2].
-  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
-  real    :: Tskin_prev ! The previous value of Tskin [degC]
+  real    :: dSWt_dt    ! The derivative of SW_tot with skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
+  real    :: Tskin_prev ! The previous value of Tskin [C ~> degC]
   real    :: T_bright   ! A skin temperature below which the snow and ice attain
-                        ! their greatest brightness and albedo no longer varies [degC].
+                        ! their greatest brightness and albedo no longer varies [C ~> degC].
 !  real    :: Tskin_itt(0:max(1,CS%max_tskin_itt))
 !  real    :: SW_tot_itt(max(1,CS%max_tskin_itt))
   logical :: do_optics(G%isd:G%ied,G%jsd:G%jed)
@@ -913,7 +911,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   nb = size(FIA%flux_sw_top,4)
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce
 
-  T_bright = bright_ice_temp(optics_CSp, IST%ITV)
+  T_bright = bright_ice_temp(optics_CSp, IST%ITV, US)
 
   if (CS%debug_slow) then
     call IST_chksum("Start redo_update_ice_model_fast", IST, G, US, IG)
@@ -969,7 +967,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   if (CS%debug_slow) then
     call hchksum(Rad%coszen_lastrad, "Redo optics coszen_lastrad", G%HI)
-    call hchksum(Rad%Tskin_rad, "Redo optics Tskin_rad", G%HI)
+    call hchksum(Rad%Tskin_rad, "Redo optics Tskin_rad", G%HI, scale=US%C_to_degC)
     call hchksum(FIA%flux_sw_dn, "Redo optics FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
   endif
 
@@ -1006,7 +1004,7 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
         Tskin = Rad%Tskin_Rad(i,j,k)
 
 !        ! These are here for debugging.
-!        Tskin_itt(1:) = 10.0 ; SW_tot_itt(:) = 0.0
+!        Tskin_itt(1:) = 10.0*US%degC_to_C ; SW_tot_itt(:) = 0.0
 !        Tskin_itt(0) = Tskin
 
         do itt=1,CS%max_Tskin_itt
@@ -1203,11 +1201,11 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, US, IG)
                  trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
   enddo
   call hchksum(FIA%flux_sh0(:,:,1:), trim(mesg)//" FIA%flux_sh0", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
   call hchksum(FIA%flux_lw0(:,:,1:), trim(mesg)//" FIA%flux_lw0", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
   call hchksum(FIA%evap0(:,:,1:), trim(mesg)//" FIA%evap0", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI, scale=US%degC_to_C*US%RZ_T_to_kg_m2s)
   do m=1,size(Rad%sw_abs_ice,4)
     write(nstr, '(I4)') m ; nstr = adjustl(nstr)
     tmp_diag(:,:,:) = 0.0

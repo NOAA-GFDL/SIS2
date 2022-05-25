@@ -76,8 +76,6 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
   ! Local variables
   integer :: i, j, k, isc, iec, jsc, jec, ncat
 
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
-
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
 
   CS%n_calls = CS%n_calls + 1
@@ -89,7 +87,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
   if (allocated(IST%t_surf)) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k)<=0.0) &
-      IST%t_surf(i,j,k) = T_0degC + OSS%T_fr_ocn(i,j)
+      IST%t_surf(i,j,k) = IST%T_0degC + OSS%T_fr_ocn(i,j)
     enddo ; enddo ; enddo
   endif
 

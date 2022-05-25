@@ -250,11 +250,11 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
   real :: ice_salin_IC   ! The initial ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
-  real :: ice_temp_IC    ! The initial ice temperature [degC]
-  real :: ice_rel_temp_IC ! The initial ice temperature relative to the freezing point [degC]
+  real :: ice_temp_IC    ! The initial ice temperature [C ~> degC]
+  real :: ice_rel_temp_IC ! The initial ice temperature relative to the freezing point [C ~> degC]
   real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [S ~> gSalt kg-1]
   real, dimension(SZI_(G),SZJ_(G)) :: salin_input  ! Temporary ice salinity [S ~> gSalt kg-1]
-  real, dimension(SZI_(G),SZJ_(G)) :: temp_input   ! Temporary ice temperature [degC]
+  real, dimension(SZI_(G),SZJ_(G)) :: temp_input   ! Temporary ice temperature [C ~> degC]
 # include "version_variable.h"
   character(len=40)  :: mdl = "SIS_state_initialization" ! This module's name.
   character(len=200) :: salin_config, enth_ice_config, enth_snow_config
@@ -345,7 +345,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("uniform_temp")
       call get_param(PF, mdl, "ICE_TEMPERATURE_IC", ice_temp_IC, &
                  "The uniform sea ice and snow temperature used for the initial condition", &
-                 units="degC", default=-4.0, do_not_log=just_read)
+                 units="degC", default=-4.0, scale=US%degC_to_C, do_not_log=just_read)
       if (spec_thermo_sal .and. (.not.just_read)) then
         do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%enth_ice(i,j,k,n) = Enth_from_TS(ice_temp_IC, S_col(n), IST%ITV)
@@ -358,7 +358,8 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("relative_temp")
       call get_param(PF, mdl, "ICE_RELATIVE_TEMP_IC", ice_rel_temp_IC, &
                  "The sea ice and snow temperature relative to the local bulk freezing point "//&
-                 "used for the initial condition", units="degC", default=-4.0, do_not_log=just_read)
+                 "used for the initial condition", &
+                 units="degC", default=-4.0, scale=US%degC_to_C, do_not_log=just_read)
       if (.not.just_read) then ; do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_ice(i,j,k,n) = Enth_from_TS(ice_rel_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; enddo ; endif
@@ -376,7 +377,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("data_override")
       if (.not.just_read) then
         temp_input(:,:) = 0.0
-        call data_override('ICE', 'si_temp_obs', temp_input(isc:iec,jsc:jec), init_Time)
+        call data_override(G%Domain, 'si_temp_obs', temp_input, init_Time, scale=US%degC_to_C, is_ice=.true.)
         if (spec_thermo_sal .and. (.not.just_read)) then
           do n=1,NkIce ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
             IST%enth_ice(i,j,k,n) = Enth_from_TS(temp_input(i,j), S_col(n), IST%ITV)
@@ -398,21 +399,22 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
     case ("uniform_temp")
       call get_param(PF, mdl, "ICE_TEMPERATURE_IC", ice_temp_IC, &
                  "The uniform sea ice and snow temperature used for the initial condition", &
-                 units="degC", default=-4.0, do_not_log=just_read)
+                 units="degC", default=-4.0, scale=US%degC_to_C, do_not_log=just_read)
       if (.not.just_read) then ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_snow(i,j,k,1) = Enth_from_TS(ice_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; endif
     case ("relative_temp")
       call get_param(PF, mdl, "ICE_RELATIVE_TEMP_IC", ice_rel_temp_IC, &
                  "The sea ice and snow temperature relative to the local bulk freezing point "//&
-                 "used for the initial condition", units="degC", default=-4.0, do_not_log=just_read)
+                 "used for the initial condition", &
+                 units="degC", default=-4.0, scale=US%degC_to_C, do_not_log=just_read)
       if (.not.just_read) then ; do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
         IST%enth_snow(i,j,k,1) = Enth_from_TS(ice_rel_temp_IC, 0.0, IST%ITV)
       enddo ; enddo ; enddo ; endif
     case ("data_override")
       if (.not.just_read) then
         temp_input(:,:) = 0.0
-        call data_override('ICE', 'si_temp_obs', temp_input(isc:iec,jsc:jec), init_Time)
+        call data_override(G%Domain, 'si_temp_obs', temp_input, init_Time, scale=US%degC_to_C, is_ice=.true.)
         do k=1,CatIce ; do j=jsc,jec ; do i=isc,iec
           IST%enth_snow(i,j,k,1) = Enth_from_TS(temp_input(i,j), 0.0, IST%ITV)
         enddo ; enddo ; enddo
@@ -714,9 +716,9 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    temp_input_2d         ! Temporary 2-d (horizontal position) ice temperature array [degC]
+    temp_input_2d         ! Temporary 2-d (horizontal position) ice temperature array [C ~> degC]
   real, dimension(SZI_(G),SZJ_(G),IG%NkIce) :: &
-    temp_input_3d         ! Temporary 3-d (horizontal position and depth) ice temperature array [degC]
+    temp_input_3d         ! Temporary 3-d (horizontal position and depth) ice temperature array [C ~> degC]
   real :: S_col(IG%NkIce) ! Specified ice column salinity used for ice thermodynamics [S ~> gSalt kg-1]
   logical :: just_read    ! If true, just read parameters but set nothing.
   logical :: file_is_2d   ! If true, the ice_enthalpy file has 2-d data.  Otherwise it includes a depth profile.
@@ -779,7 +781,7 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
         enth_ice(i,j,k,n) = enth_ice(i,j,1,1)
       enddo ; enddo ; enddo ; enddo
     else
-      call MOM_read_data(filename, varname, temp_input_2d, G%Domain)
+      call MOM_read_data(filename, varname, temp_input_2d, G%Domain, scale=US%degC_to_C)
       if (spec_thermo_sal) then
         do n=1,NkIce ; do k=1,CatIce ; do j=js,je ; do i=is,ie
           enth_ice(i,j,k,n) = Enth_from_TS(temp_input_2d(i,j), S_col(n), ITV)
@@ -797,7 +799,7 @@ subroutine initialize_ice_enthalpy_from_file(enth_ice, sal_ice, G, IG, US, ITV, 
         enth_ice(i,j,k,n) = enth_ice(i,j,1,n)
       enddo ; enddo ; enddo ; enddo
     else
-      call MOM_read_data(filename, varname, temp_input_3d, G%Domain)
+      call MOM_read_data(filename, varname, temp_input_3d, G%Domain, scale=US%degC_to_C)
       if (spec_thermo_sal) then
         do n=1,NkIce ; do k=1,CatIce ; do j=js,je ; do i=is,ie
           enth_ice(i,j,k,n) = Enth_from_TS(temp_input_3d(i,j,n), S_col(n), ITV)
@@ -833,7 +835,7 @@ subroutine initialize_snow_enthalpy_from_file(enth_snow, G, IG, US, ITV, PF, jus
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: &
-    temp_input_2d         ! Temporary 2-d (horizontal position) snow temperature array [degC]
+    temp_input_2d         ! Temporary 2-d (horizontal position) snow temperature array [C ~> degC]
   logical :: just_read    ! If true, just read parameters but set nothing.
   logical :: enthalpy_file  ! If true, the file has enthalpy data in [J kg-1]; otherwise it has
                             ! temperatures in [degC].
@@ -882,7 +884,7 @@ subroutine initialize_snow_enthalpy_from_file(enth_snow, G, IG, US, ITV, PF, jus
       enth_snow(i,j,k,1) = enth_snow(i,j,1,1)
     enddo ; enddo ; enddo
   else
-    call MOM_read_data(filename, varname, temp_input_2d, G%Domain)
+    call MOM_read_data(filename, varname, temp_input_2d, G%Domain, scale=US%degC_to_C)
     do k=1,CatIce ; do j=js,je ; do i=is,ie
       enth_snow(i,j,k,1) = Enth_from_TS(temp_input_2d(i,j), 0.0, ITV)
     enddo ; enddo ; enddo
@@ -915,8 +917,8 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 # include "version_variable.h"
   character(len=40)  :: mdl = "SIS_state_initialization" ! This module's name.
   character(len=8)   :: nstr
-  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp
-  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp
+  real, allocatable, target, dimension(:,:,:,:) :: t_ice_tmp ! A temporary array of ice temperatures [C ~> degC]
+  real, allocatable, target, dimension(:,:,:) :: t_snow_tmp  ! A temporary array of snow temperatures [C ~> degC]
   real, allocatable, target, dimension(:,:,:) :: sal_ice_tmp ! A temporary array of ice salinities [S ~> gSalt kg-1]
 
   real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
@@ -988,7 +990,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     do n=1,NkIce
       write(nstr, '(I4)') n ; nstr = adjustl(nstr)
       call only_read_from_restarts(Ice%Ice_restart, 't_ice'//trim(nstr), t_ice_tmp(:,:,:,n), &
-                                   G%domain, directory=dirs%restart_input_dir, success=read_values)
+                                   G%domain, directory=dirs%restart_input_dir, success=read_values, scale=US%degC_to_C)
       read_t_ice(n) = read_values
     enddo
   endif
@@ -1026,7 +1028,7 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
     ! perhaps from a SIS1 restart.
     allocate(t_snow_tmp(SZI_(G), SZJ_(G), CatIce), source=0.0)
     call only_read_from_restarts(Ice%Ice_restart, 't_snow', t_snow_tmp, G%domain, &
-                                 directory=dirs%restart_input_dir, success=read_values)
+                                 directory=dirs%restart_input_dir, success=read_values, scale=US%C_to_degC)
     if (.not.read_values) then ! Try reading the ice temperature if snow is not available.
       if (read_t_ice(1)) then
         t_snow_tmp(:,:,:) = t_ice_tmp(:,:,:,1)
