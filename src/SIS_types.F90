@@ -98,6 +98,7 @@ type ice_state_type
   real, allocatable, dimension(:,:,:) :: &
     rdg_height    ! height of ridged ice per category [Z ~> m]
 
+  real :: T_0degC      !< 0 degrees C in Kelvin, with rescaling [C ~> Kelvin]
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
   logical :: valid_IST !< If true, this is currently the valid state of the ice.  Otherwise the ice
                        !! is in the midst of a dynamics cycle where the evolving state has changes
@@ -114,8 +115,8 @@ type ocean_sfc_state_type
   ! 7 of the following 9 variables describe the ocean state as seen by the sea ice.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  !< The ocean's surface salinity [S ~> gSalt kg-1].
-    SST_C  , &  !< The ocean's bulk surface temperature [degC].
-    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
+    SST_C  , &  !< The ocean's bulk surface temperature [C ~> degC].
+    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [C ~> degC].
     u_ocn_B, &  !< The ocean's zonal velocity on B-grid points [L T-1 ~> m s-1].
     v_ocn_B, &  !< The ocean's meridional velocity on B-grid points [L T-1 ~> m s-1].
     u_ocn_C, &  !< The ocean's zonal velocity on C-grid points [L T-1 ~> m s-1].
@@ -136,7 +137,7 @@ type ocean_sfc_state_type
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
 
   real :: kmelt !< A constant that is used in the calculation of the ocean/ice basal heat flux,
-                !! [Q R Z T-1 degC-1 ~> W m-2 degC-1].  This could be replaced with an array
+                !! [Q R Z T-1 C-1 ~> W m-2 degC-1].  This could be replaced with an array
                 !! reflecting the turbulence in the under-ice ocean boundary layer and the effective
                 !! depth of the reported value of t_ocn.
 
@@ -154,8 +155,8 @@ type simple_OSS_type
   ! atmosphere and use for the rapid thermodynamic sea ice changes.
   real, allocatable, dimension(:,:) :: &
     s_surf , &  !< The ocean's surface salinity [S ~> gSalt kg-1].
-    SST_C  , &  !< The ocean's bulk surface temperature [degC].
-    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [degC].
+    SST_C  , &  !< The ocean's bulk surface temperature [C ~> degC].
+    T_fr_ocn, & !< The freezing point temperature at the ocean's surface salinity [C ~> degC].
     u_ocn_A, &  !< The ocean's zonal surface velocity on A-grid points [L T-1 ~> m s-1].
     v_ocn_A, &  !< The ocean's meridional surface velocity on A-grid points [L T-1 ~> m s-1].
     u_ice_A, &  !< The sea ice's zonal velocity on A-grid points [L T-1 ~> m s-1].
@@ -193,7 +194,7 @@ type fast_ice_avg_type
     fprec_top   , & !< The downward flux of frozen precipitation at the top of the ice [R Z T-1 ~> kg m-2 s-1].
     tmelt       , & !< Ice-top melt energy into the ice/snow [Q R Z ~> J m-2].
     bmelt       , & !< Ice-bottom melting energy into the ice [Q R Z ~> J m-2].
-    Tskin_cat       !< The ice skin temperature by category [degC].
+    Tskin_cat       !< The ice skin temperature by category [C ~> degC].
   real, allocatable, dimension(:,:,:) ::  sw_abs_ocn !< The fraction of the absorbed
                     !! shortwave radiation that is absorbed in the ocean, <=1, [nondim].
                     !! Equivalent sw_abs_ocn fields are in both the fast_ice_avg_type and the
@@ -224,7 +225,7 @@ type fast_ice_avg_type
                     !! exclusive of any iceberg contributions, based on the temperature difference
                     !! relative to a reference temperature [Q R Z T-1 ~> W m-2]
   real, allocatable, dimension(:,:) :: Tskin_avg !< The area-weighted average skin temperature
-                    !! across all ice thickness categories [degC], or 0 if there is no ice.
+                    !! across all ice thickness categories [C ~> degC], or 0 if there is no ice.
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
                     !! WindStr_[xy]_A, between 0 & 1 [nondim].
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
@@ -245,9 +246,9 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:,:) ::  flux_lw0 !< The net downward flux of longwave radiation
                 !! at the top of the  ice extrapolated to a skin temperature of 0 degC [Q R Z T-1 ~> W m-2].
   real, allocatable, dimension(:,:,:) :: &
-    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
-    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1].
-    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [Q R Z T-1 degC-1 ~> W m-2 degC-1].
+    dshdt, &    !< The partial derivative of flux_sh0 with ice skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
+    devapdt, &  !< The partial derivative of evap0 with ice skin temperature [R Z T-1 C-1 ~> kg m-2 s-1 degC-1].
+    dlwdt       !< The partial derivative of flux_lw0 with ice skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
 
 !SLOW ONLY
   real, allocatable, dimension(:,:) :: frazil_left !< The frazil heat flux that has not yet been
@@ -306,9 +307,9 @@ type ice_rad_type
     t_skin, &   !< The surface skin temperature as calculated by the most
                 !! recent fast atmospheric timestep, or a value filled in
                 !! from other ice categories or the local freezing point of
-                !! seawater when there is no ice at all [degC].
+                !! seawater when there is no ice at all [C ~> degC].
     Tskin_Rad   !< The surface skin temperature that was most recently used in
-                !! ice optics calculations [degC].
+                !! ice optics calculations [C ~> degC].
   ! Shortwave absorption parameters that are set in ice_optics.
   real, allocatable, dimension(:,:,:) :: &
     sw_abs_sfc , &  !< The fraction of the absorbed shortwave radiation that is
@@ -427,15 +428,15 @@ contains
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_IST_arrays allocates the arrays in an ice_state_type.
-subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging)
+subroutine alloc_IST_arrays(HI, IG, US, IST, omit_velocities, omit_Tsurf, do_ridging)
   type(hor_index_type), intent(in)    :: HI  !< The horizontal index type describing the domain
   type(ice_grid_type),  intent(in)    :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type), intent(in)   :: US  !< A structure with unit conversion factors
   type(ice_state_type), intent(inout) :: IST !< A type describing the state of the sea ice
   logical,    optional, intent(in)    :: omit_velocities !< If true, do not allocate velocity arrays
   logical,    optional, intent(in)    :: omit_Tsurf !< If true, do not allocate the surface temperature array
   logical,    optional, intent(in)    :: do_ridging !< If true, allocate arrays related to ridging
 
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
   integer :: isd, ied, jsd, jed, CatIce, NkIce
   logical :: do_vel, do_Tsurf
 
@@ -474,9 +475,10 @@ subroutine alloc_IST_arrays(HI, IG, IST, omit_velocities, omit_Tsurf, do_ridging
     endif
   endif
 
+  IST%T_0degC = 273.15*US%degC_to_C
   if (do_Tsurf) then
     ! IST%tsurf is only used with some older options.
-    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce), source=T_0degC)
+    allocate(IST%t_surf(isd:ied, jsd:jed, CatIce), source=IST%T_0degC)
   endif
 
 end subroutine alloc_IST_arrays
@@ -496,7 +498,7 @@ subroutine ice_state_register_restarts(IST, G, IG, US, Ice_restart)
     call register_restart_field(Ice_restart, 'part_size', IST%part_size, dim_3='cat0')
     if (allocated(IST%t_surf)) then
       call register_restart_field(Ice_restart, 't_surf_ice', IST%t_surf, &
-                                  mandatory=.false., units="deg K")
+                                  mandatory=.false., units="deg K", conversion=US%C_to_degC)
     endif
     call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, &
                                 mandatory=.false., units="kg m-2", conversion=US%RZ_to_kg_m2)
@@ -845,13 +847,13 @@ subroutine rescale_fast_to_slow_restart_fields(FIA, Rad, TSF, G, US, IG)
     FIA%flux_sh0(i,j,k) = QRZ_T_rescale * FIA%flux_sh0(i,j,k) ! [Q R Z T-1 ~> W m-2]
     FIA%flux_lw0(i,j,k) = QRZ_T_rescale * FIA%flux_lw0(i,j,k) ! [Q R Z T-1 ~> W m-2]
     FIA%evap0(i,j,k) = RZ_T_rescale * FIA%evap0(i,j,k) ! [R Z T-1 ~> kg m-2 s-1]
-    FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
-    FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 degC-1 ~> W m-2 degC-1]
-    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [R Z T-1 degC-1 ~> kg m-2 s-1 degC-1]
-!    ! Do not rescale FIA%Tskin_cat(i,j,k) =  FIA%Tskin_cat(i,j,k)  ! [degC]
+    FIA%dshdt(i,j,k) = QRZ_T_rescale * FIA%dshdt(i,j,k) ! [Q R Z T-1 C-1 ~> W m-2 degC-1]
+    FIA%dlwdt(i,j,k) = QRZ_T_rescale * FIA%dlwdt(i,j,k) ! [Q R Z T-1 C-1 ~> W m-2 degC-1]
+    FIA%devapdt(i,j,k) = RZ_T_rescale * FIA%devapdt(i,j,k) ! [R Z T-1 C-1 ~> kg m-2 s-1 degC-1]
+    ! Do not rescale FIA%Tskin_cat(i,j,k) =  FIA%Tskin_cat(i,j,k)  ! [C ~> degC]
   enddo ; enddo ; enddo ; endif
 
- ! Do not rescale Rad%tskin_rad(i,j) = Rad%tskin_rad(i,j) ! [degC]
+ ! Do not rescale Rad%tskin_rad(i,j) = Rad%tskin_rad(i,j) ! [C ~> degC]
  ! Do not rescale Rad%coszen_lastrad(i,j) = Rad%coszen_lastrad(i,j) ! [nondim]
 
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
@@ -975,9 +977,10 @@ end subroutine alloc_total_sfc_flux
 !> ice_rad_register_restarts allocates the arrays in the ice_rad_type
 !!     and registers any variables in the ice rad type that need to be included
 !!     in the restart files.
-subroutine ice_rad_register_restarts(HI, IG, param_file, Rad, Ice_restart)
+subroutine ice_rad_register_restarts(HI, IG, US, param_file, Rad, Ice_restart)
   type(hor_index_type),    intent(in)    :: HI  !< The horizontal index type describing the domain
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
+  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type),   intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(ice_rad_type),      pointer       :: Rad !< A structure with fields related to the absorption,
                                                 !! reflection and transmission of shortwave radiation.
@@ -1004,7 +1007,7 @@ subroutine ice_rad_register_restarts(HI, IG, param_file, Rad, Ice_restart)
   call safe_alloc(Rad%coszen_lastrad, isd, ied, jsd, jed)
 
   call register_restart_field(Ice_restart, 'coszen', Rad%coszen_nextrad, mandatory=.false.)
-  call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, mandatory=.false.)
+  call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, mandatory=.false., conversion=US%C_to_degC)
 
 end subroutine ice_rad_register_restarts
 
@@ -2117,7 +2120,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
   call register_restart_field(Ice_restart, 'calving_hflx', FIA%calving_hflx, &
                               mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'Tskin_avg', FIA%Tskin_avg, &
-                              mandatory=.false., units="degC")
+                              mandatory=.false., units="degC", conversion=US%C_to_degC)
   call register_restart_field(Ice_restart, 'ice_free', FIA%ice_free, &
                               mandatory=.false., units="nondim")
   call register_restart_field(Ice_restart, 'ice_cover', FIA%ice_cover, &
@@ -2133,17 +2136,17 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
     call register_restart_field(Ice_restart, 'evap_T0', FIA%evap0, dim_3="cat0", &
                                 mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
     call register_restart_field(Ice_restart, 'dsh_dT', FIA%dshdt, dim_3="cat0", &
-                                mandatory=.false., units="W m-2 degC-1", conversion=US%QRZ_T_to_W_m2)
+                                mandatory=.false., units="W m-2 degC-1", conversion=US%degC_to_C*US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'dlw_dT', FIA%dlwdt, dim_3="cat0", &
-                                mandatory=.false., units="W m-2 degC-1", conversion=US%QRZ_T_to_W_m2)
+                                mandatory=.false., units="W m-2 degC-1", conversion=US%degC_to_C*US%QRZ_T_to_W_m2)
     call register_restart_field(Ice_restart, 'devap_dT', FIA%devapdt, dim_3="cat0", &
-                                mandatory=.false., units="kg m-2 s-1 degC-1", conversion=US%RZ_T_to_kg_m2s)
+                                mandatory=.false., units="kg m-2 s-1 degC-1", conversion=US%degC_to_C*US%RZ_T_to_kg_m2s)
     call register_restart_field(Ice_restart, 'Tskin_can', FIA%Tskin_cat, dim_3="cat0", &
-                                mandatory=.false., units="degC")
+                                mandatory=.false., units="degC", conversion=US%C_to_degC)
   endif
 
   call register_restart_field(Ice_restart, 'tskin_rad', Rad%tskin_rad, &
-                              mandatory=.false., units="degC")
+                              mandatory=.false., units="degC", conversion=US%C_to_degC)
   call register_restart_field(Ice_restart, 'coszen_rad', Rad%coszen_lastrad, &
                               mandatory=.false., units="nondim")
 
@@ -2458,8 +2461,8 @@ subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
   hs=0 ; if (present(haloshift)) hs=haloshift
 
   call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs, scale=US%S_to_ppt)
-  call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs)
-  call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs)
+  call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs, scale=US%C_to_degC)
+  call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs, scale=US%C_to_degC)
   call hchksum(OSS%sea_lev, trim(mesg)//" OSS%sea_lev", G%HI, haloshift=hs, scale=US%Z_to_m)
   call hchksum(OSS%bheat, trim(mesg)//" OSS%bheat", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
   call hchksum(OSS%frazil, trim(mesg)//" OSS%frazil", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2*US%T_to_s)
@@ -2567,8 +2570,10 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   character(len=24) :: err
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
   real, dimension(IG%NkIce) :: S_col  ! A column of salinities [S ~> ppt]
-  real    :: tsurf_min, tsurf_max, tice_min, tice_max, tOcn_min, tOcn_max
-  real    :: enth_min, enth_max
+  real    :: tsurf_min, tsurf_max ! Minimum and maximum permitted surface temperatures [C ~> degC]
+  real    :: tice_min, tice_max   ! Minimum and maximum permitted ice temperatures [C ~> degC]
+  real    :: tOcn_min, tOcn_max   ! Minimum and maximum permitted ocean temperatures [C ~> degC]
+  real    :: enth_min, enth_max   ! Minimum and maximum permitted ice enthalpy [Q ~> J kg-1]
   real    :: m_max ! Maximum mass per unit area [R Z ~> kg m-2]
   logical :: spec_thermo_sal
   integer :: i, j, k, m, isc, iec, jsc, jec, ncat, NkIce, i_off, j_off
@@ -2586,7 +2591,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
     sum_part_sz(i,j) = sum_part_sz(i,j) + IST%part_size(i,j,k)
   enddo ; enddo ; enddo
 
-  tOcn_min = -100. ; tOcn_max = 60.
+  tOcn_min = -100.0*US%degC_to_C ; tOcn_max = 60.0*US%degC_to_C
   if (present(OSS)) then
     do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0*US%ppt_to_S) .or. &
@@ -2604,7 +2609,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   endif ; enddo ; enddo
 
   tsurf_min = tOcn_min ; tsurf_max = tOcn_max
-  tice_min = -100. ; tice_max = 1.0
+  tice_min = -100.0*US%degC_to_C ; tice_max = 1.0*US%degC_to_C
   enth_min = enth_from_TS(tice_min, 0.0, IST%ITV)
   enth_max = enth_from_TS(tice_max, 0.0, IST%ITV)
   if (present(Rad)) then
@@ -2644,17 +2649,17 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
            G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
     if (k_bad > 0) then
       if (present(Rad)) then
-        write(mesg2,'("T_skin = ",1pe12.4,", ps = ",1pe12.4)') Rad%t_skin(i,j,k), IST%part_size(i,j,k)
+        write(mesg2,'("T_skin = ",1pe12.4,", ps = ",1pe12.4)') US%C_to_degC*Rad%t_skin(i,j,k), IST%part_size(i,j,k)
       else
         write(mesg2,'("part_size = ",1pe12.4)') IST%part_size(i,j,k)
       endif
     elseif (present(OSS)) then
       if (sum_part_sz(i,j) < 0.9999) then
         write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = ",1pe12.4)') &
-              OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), sum_part_sz(i,j)
+              US%C_to_degC*OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), sum_part_sz(i,j)
       else
         write(mesg2,'("T_ocn = ",1pe12.4,", S_sfc = ",1pe12.4,", sum_ps = 1 - ",1pe12.4)') &
-              OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), 1.0-sum_part_sz(i,j)
+              US%C_to_degC*OSS%SST_C(i,j), US%S_to_ppt*OSS%s_surf(i,j), 1.0-sum_part_sz(i,j)
       endif
     else
       if (sum_part_sz(i,j) < 0.9999) then
@@ -2672,10 +2677,10 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
       endif
       write(mesg1,'("mi/ms = ", 2(1pe12.4)," ts = ",1pe12.4," ti = ",1pe12.4)') &
              IST%mH_ice(i,j,k)*US%RZ_to_kg_m2, IST%mH_snow(i,j,k)*US%RZ_to_kg_m2, &
-             temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
-             temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
+             US%C_to_degC*temp_from_En_S(IST%enth_snow(i,j,k,1), 0.0, IST%ITV), &
+             US%C_to_degC*temp_from_En_S(IST%enth_ice(i,j,k,1), S_col(1), IST%ITV)
       do m=2,NkIce
-        write(mesg2,'(", ", 1pe12.4)') temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
+        write(mesg2,'(", ", 1pe12.4)') US%C_to_degC*temp_from_En_S(IST%enth_ice(i,j,k,m), S_col(m), IST%ITV)
         mesg1 = trim(mesg1)//trim(mesg2)
       enddo
       call SIS_error(WARNING, mesg1, all_print=.true.)

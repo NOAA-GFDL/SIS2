@@ -277,15 +277,15 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'sensible heat flux at 0 degC', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
     FIA%id_devdt  = register_SIS_diag_field('ice_model', 'dEVAP_dT', diag%axesTc0, Time, &
                'partial derivative of evaporation with ice skin temperature', &
-               'kg/(m^2*s*K)', missing_value=missing)
+               'kg/(m^2*s*K)', conversion=US%RZ_T_to_kg_m2s*US%degC_to_C, missing_value=missing)
     FIA%id_dlwdt = register_SIS_diag_field('ice_model', 'dLW_dT',diag%axesTc0, Time, &
                'partial derivative of net downward longwave heat flux with ice skin temperature', &
-               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2*US%degC_to_C, missing_value=missing)
     FIA%id_dshdt = register_SIS_diag_field('ice_model', 'dSH_dT', diag%axesTc0, Time, &
                'partial derivative of sensible heat flux with ice skin temperature', &
-               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2*US%degC_to_C, missing_value=missing)
     FIA%id_tsfc_cat =register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
-               'surface temperature by category', 'C', missing_value=missing)
+               'surface temperature by category', 'C', conversion=US%C_to_degC, missing_value=missing)
   endif
   FIA%id_evap_cat  = register_SIS_diag_field('ice_model', 'EVAP_CAT', diag%axesTc0, Time, &
              'evaporation by category', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
@@ -296,11 +296,11 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
 
   FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
+               'surface temperature', 'C', conversion=US%C_to_degC, missing_value=missing)
   FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
-               'surface temperature', 'C', missing_value=missing)
+               'surface temperature', 'C', conversion=US%C_to_degC, missing_value=missing)
   FIA%id_sitemptop_CMOR = register_SIS_diag_field('ice_model', 'sitemptop_CMOR', diag%axesT1, Time, &
-               'Surface Temperature of Sea ice', 'Kelvin', missing_value=missing, &
+               'Surface Temperature of Sea ice', 'Kelvin', conversion=US%C_to_degC, missing_value=missing, &
                standard_name="SeaIceSurfaceTemperature")
 
   ! diagnostics for quantities produced outside the ice model
@@ -308,7 +308,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
              'sea level pressure', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, missing_value=missing)
   ! diagnostics for quantities produced outside the ice model
   OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
-             'sea surface temperature', 'deg-C', missing_value=missing)
+             'sea surface temperature', 'deg-C', conversion=US%C_to_degC, missing_value=missing)
   OSS%id_sss   = register_SIS_diag_field('ice_model', 'SSS', diag%axesT1, Time, &
              'sea surface salinity', 'psu', conversion=US%S_to_ppt, missing_value=missing)
   OSS%id_ssh   = register_SIS_diag_field('ice_model', 'SSH', diag%axesT1, Time, &
@@ -429,7 +429,7 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name),'alb_nir_dif',diag%axesT1, Time, &
                'ice surface albedo nir_dif','0-1', missing_value=missing )
   Rad%id_tskin = register_SIS_diag_field(trim(comp_name),'Tskin', diag%axesTc, Time, &
-               'Skin temperature','Kelvin', missing_value=missing )
+               'Skin temperature', 'degC', conversion=G%US%C_to_degC, missing_value=missing )
   Rad%id_cn = register_SIS_diag_field(trim(comp_name),'CN_fast', diag%axesTc, Time, &
                'Category concentration','0-1', missing_value=missing )
   Rad%id_mi = register_SIS_diag_field(trim(comp_name),'MI_fast', diag%axesTc, Time, &

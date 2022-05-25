@@ -82,10 +82,10 @@ end subroutine get_avg
 subroutine ice_line(Time, cn_ocn, sst, G)
   type(time_type),         intent(in) :: Time !< The ending time of these diagnostics
   type(SIS_hor_grid_type), intent(in) :: G    !< The horizontal grid type
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
                            intent(in) :: cn_ocn !< The concentration of ocean in each cell [nondim], 0-1.
-  real, dimension(G%isc:G%iec,G%jsc:G%jec), &
-                           intent(in) :: sst  !< The sea surface temperature [degC].
+  real, dimension(G%isd:G%ied,G%jsd:G%jed), &
+                           intent(in) :: sst  !< The sea surface temperature [C ~> degC].
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
   real :: gx(3)
@@ -109,7 +109,7 @@ subroutine ice_line(Time, cn_ocn, sst, G)
     enddo ; enddo
     gx((n+3)/2) = g_sum(x(isc:iec,jsc:jec))/1e12
   enddo
-  gx(3) = g_sum(sst(isc:iec,jsc:jec)*G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) / &
+  gx(3) = g_sum(G%US%C_to_degC*sst(isc:iec,jsc:jec)*G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) / &
          (g_sum(G%mask2dT(isc:iec,jsc:jec)*G%areaT(isc:iec,jsc:jec)) + G%US%m_to_L**2*1e-10)
   !
   ! print info every 5 days
