@@ -1344,7 +1344,7 @@ subroutine translate_OSS_to_sOSS(OSS, IST, sOSS, G, US)
     sOSS%SST_C(i,j) = OSS%SST_C(i,j)
     sOSS%T_fr_ocn(i,j) = OSS%T_fr_ocn(i,j)
 
-    if (G%mask2dT(i,j) > 0.5) then
+    if (G%mask2dT(i,j)>0.0) then
       sOSS%bheat(i,j) = OSS%bheat(i,j)
       ! Interpolate the ocean and ice velocities onto tracer cells.
       if (OSS%Cgrid_dyn) then
@@ -2596,7 +2596,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
 
   tOcn_min = -100. ; tOcn_max = 60.
   if (present(OSS)) then
-    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if ((OSS%s_surf(i,j) < 0.0) .or. (OSS%s_surf(i,j) > 100.0) .or. &
           (OSS%SST_C(i,j) < tOcn_min) .or. (OSS%SST_C(i,j) > tOcn_max)) then
         n_bad = n_bad + 1
@@ -2604,7 +2604,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
       endif
     endif ; enddo ; enddo
   endif
-  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     if (abs(sum_part_sz(i,j) - 1.0) > 2.0*(ncat+1)*epsilon(sum_part_sz(i,j))) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; err = "sum_part_sz" ; endif
@@ -2616,7 +2616,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   enth_min = enth_from_TS(tice_min, 0., IST%ITV)
   enth_max = enth_from_TS(tice_max, 0., IST%ITV)
   if (present(Rad)) then
-    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if ((Rad%t_skin(i,j,k) < tsurf_min) .or. (Rad%t_skin(i,j,k) > tsurf_max)) then
         n_bad = n_bad + 1
         if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "tsurf" ; endif
@@ -2624,7 +2624,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
     endif ; enddo ; enddo ; enddo
   endif
 
-  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     if ((IST%mH_ice(i,j,k) > m_max) .or. (IST%mH_snow(i,j,k) > m_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "large mass" ; endif
@@ -2635,7 +2635,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
     endif
   endif ; enddo ; enddo ; enddo
 
-  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do m=1,NkIce ; do k=1,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     if ((IST%enth_ice(i,j,k,m) < enth_min) .or. (IST%enth_ice(i,j,k,m) > enth_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; err = "enth_ice" ; endif

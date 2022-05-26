@@ -365,7 +365,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
   !TOM> check where ice is present
   do j=jsc,jec ; do i=isc,iec
-    ice_present(i,j) = ( (G%mask2dT(i,j)>0.5) .and. (misp(i,j) > CS%MIV_MIN) )
+    ice_present(i,j) = ( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) )
   enddo ; enddo
 
   ! sea level slope force
@@ -377,7 +377,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   enddo ; enddo
 
   ! put ice/snow mass and concentration on v-grid, first finding mass on t-grid.
-  do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j) > 0.5 ) then
+  do J=jsc-1,jec ; do I=isc-1,iec ; if (G%mask2dBu(i,j)>0.0) then
     miv(I,J) = 0.25*( (misp(i+1,j+1) + misp(i,j)) + (misp(i+1,j) + misp(i,j+1)) )
     civ(I,J) = 0.25*( (ci(i+1,j+1) + ci(i,j)) + (ci(i+1,j) + ci(i,j+1)) )
   else
@@ -407,7 +407,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   endif
 
   do J=jsc-1,jec ; do I=isc-1,iec
-    if ((G%mask2dBu(I,J)>0.5) .and. (miv(I,J) > CS%MIV_MIN) ) then ! values for velocity calculation (on v-grid)
+    if ((G%mask2dBu(I,J)>0.0) .and. (miv(I,J) > CS%MIV_MIN) ) then ! values for velocity calculation (on v-grid)
       dtmiv(I,J) = dt_Rheo/miv(I,J)
     else
       ui(I,J) = 0.0 ; vi(I,J) = 0.0
@@ -483,7 +483,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
     ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
-      if( (G%mask2dT(i,j)>0.5) .and. (misp(i,j) > CS%MIV_MIN) ) then
+      if( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
         CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
@@ -520,7 +520,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     call pass_var(CS%sig12, G%Domain, complete=.true.)
 
     do J=jsc-1,jec ; do I=isc-1,iec
-      if( (G%mask2dBu(i,j)>0.5).and.(miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+      if( (G%mask2dBu(i,j)>0.0) .and. (miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
         rr = CS%cdw*US%L_to_Z*CS%Rho_ocean * abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
              exp(sign(CS%blturn*pi/180, G%CoriolisBu(i,j)) * (0.0,1.0))
         !
@@ -599,7 +599,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   ! make averages
   I_sub_steps = 1.0/EVP_steps
   do J=jsc-1,jec ; do I=isc-1,iec
-    if ( (G%mask2dBu(i,j)>0.5) .and. miv(i,j)>CS%MIV_MIN ) then
+    if ( (G%mask2dBu(i,j)>0.0) .and. miv(i,j)>CS%MIV_MIN ) then
       fxoc(i,j) = fxoc(i,j)*I_sub_steps ; fyoc(i,j) = fyoc(i,j)*I_sub_steps
       fxic(i,j) = fxic(i,j)*I_sub_steps ; fyic(i,j) = fyic(i,j)*I_sub_steps
       fxco(i,j) = fxco(i,j)*I_sub_steps ; fyco(i,j) = fyco(i,j)*I_sub_steps

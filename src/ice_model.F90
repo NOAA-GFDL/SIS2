@@ -1459,7 +1459,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
   if (Rad%id_lwdn > 0) then
     tmp_diag(:,:) = 0.0
     Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant [W m-2 degK-4].
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                            (ABT%lw_flux(i3,j3,k2) + Stefan*(Rad%t_skin(i,j,k)+T_0degC)**4)
@@ -1469,7 +1469,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
 
   sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0 ; sw_dn_bnd(:,:,:) = 0.0
   !$OMP parallel do default(shared) private(i2,j2,k2,i3,j3)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
     if (associated(ABT%sw_down_vis_dir)) then
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
@@ -1526,7 +1526,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
   if (Rad%id_swdn > 0) call post_data(Rad%id_swdn, sw_dn, CS%diag)
 
   if (Rad%id_alb > 0) then
-    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if (sw_dn(i,j) > 0.0) &
         avg_alb(i,j) = (sw_dn(i,j) - net_sw(i,j)) / sw_dn(i,j)
       ! Otherwise keep the simple average that was set above.
@@ -1534,7 +1534,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
     call post_data(Rad%id_alb, avg_alb, CS%diag)
   endif
 
-  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     do b=1,size(FIA%flux_sw_dn,3)
       FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b) + US%W_m2_to_QRZ_T*sw_dn_bnd(i,j,b)
     enddo
@@ -2602,7 +2602,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     isc = fHI%isc ; iec = fHI%iec ; jsc = fHI%jsc ; jec = fHI%jec
     i_off = LBOUND(Ice%ocean_pt,1) - fHI%isc ; j_off = LBOUND(Ice%ocean_pt,2) - fHI%jsc
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
+      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.0 )
     enddo ; enddo
     if (.not.slow_ice_PE) then
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
