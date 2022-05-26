@@ -1350,7 +1350,7 @@ subroutine set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
 
   call compute_ocean_albedo(Ice%ocean_pt, cosz_alb(:,:), Ice%albedo_vis_dir(:,:,1),&
                             Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec), Ice%flux_u(:,:), Ice%flux_v(:,:) )
 
 end subroutine set_ocean_albedo_from_astronomy
 
@@ -1372,7 +1372,7 @@ subroutine set_ocean_albedo_from_coszen(Ice, G, coszen)
 
   call compute_ocean_albedo(Ice%ocean_pt, coszen(isc:iec,jsc:jec), Ice%albedo_vis_dir(:,:,1),&
                             Ice%albedo_vis_dif(:,:,1), Ice%albedo_nir_dir(:,:,1),&
-                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec) )
+                            Ice%albedo_nir_dif(:,:,1), rad*G%geoLatT(isc:iec,jsc:jec), Ice%flux_u(:,:), Ice%flux_v(:,:))
 
 end subroutine set_ocean_albedo_from_coszen
 
@@ -2394,6 +2394,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
 
     if (specified_ice) then
+      recategorize_ice = .false.      
       call specified_ice_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%specified_ice_CSp, dirs%output_directory, Time_Init)
       call SIS_slow_thermo_set_ptrs(Ice%sCS%slow_thermo_CSp, &
@@ -2402,16 +2403,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! When SPECIFIED_ICE=True, the variable Ice%sCS%OSS%SST_C is used for the skin temperature
       ! and needs to be updated for each run segment, regardless of whether a restart file is used.
       call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_domain=Ice%slow_domain_NH)
-
-      !### Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
-      ! allocate(h_ice_input(sG%isd:sG%ied, sG%jsd:sG%jed), source=0.0)
-      ! call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
-      !                      ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
-      ! do j=jsc,jec ; do i=isc,iec
-      !   sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
-      !   sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
-      ! enddo ; enddo
-      ! deallocate(h_ice_input)
+      if (.not.is_restart) then
+        ! Perhaps ice_conc and h_ice_input should also be read with the get_sea_surface limits.
+        allocate(h_ice_input(sG%isd:sG%ied,sG%jsd:sG%jed)) ; h_ice_input(:,:) = 0.0
+        call get_sea_surface(Ice%sCS%Time, sG%HI, SST=Ice%sCS%OSS%SST_C, ice_conc=sIST%part_size(:,:,1), &
+                             ice_thick=h_ice_input, ice_domain=Ice%slow_domain_NH)
+        do j=jsc,jec ; do i=isc,iec
+          sIST%part_size(i,j,0) = 1.0 - sIST%part_size(i,j,1)
+          sIST%mH_ice(i,j,1) = h_ice_input(i,j)*US%m_to_Z * Rho_ice
+        enddo ; enddo
+        deallocate(h_ice_input)
+      endif
     else
       call SIS_dyn_trans_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
                               Ice%sCS%dyn_trans_CSp, dirs%output_directory, Time_Init, &
