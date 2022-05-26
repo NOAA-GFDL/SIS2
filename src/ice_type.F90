@@ -19,6 +19,7 @@ use SIS_restart,       only : register_restart_field, save_restart, SIS_restart_
 use SIS_framework,     only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : coupler_type_spawn, coupler_type_write_chksums
 use SIS_hor_grid,      only : SIS_hor_grid_type
+use SIS_open_boundary, only : ice_OBC_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : ice_thermo_type, energy_0degC, get_SIS2_thermo_coefs
 use iso_fortran_env,   only : int64
@@ -152,6 +153,8 @@ type ice_data_type !  ice_public_type
           !< A pointer to the slow ice restart control structure
   type(SIS_restart_CS), pointer :: Ice_fast_restart => NULL()
           !< A pointer to the fast ice restart control structure
+  type(ice_OBC_type), pointer :: OBC => NULL()
+          !< A pointer to the ice OBC control structure
   character(len=240) :: restart_output_dir = './RESTART/'
           !< The directory into which to write restart files.
 end type ice_data_type !  ice_public_type
@@ -455,20 +458,20 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   n_bad = 0 ; i_bad = 0 ; j_bad = 0 ; k_bad = 0
 
   t_min = T_0degC-100. ; t_max = T_0degC+60.
-  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
     if ((Ice%t_surf(i2,j2,k2) < t_min) .or. (Ice%t_surf(i2,j2,k2) > t_max)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; k_bad = k ; endif
     endif
     endif ; enddo ; enddo ; enddo
-  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then ; i2 = i+i_off ; j2 = j+j_off
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then ; i2 = i+i_off ; j2 = j+j_off
     if ((Ice%s_surf(i2,j2) < 0.0) .or. (Ice%s_surf(i2,j2) > 100.0)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif
     endif
     endif ; enddo ; enddo
-  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then ; i2 = i+i_off ; j2 = j+j_off
+  if (fluxes_avail) then ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then ; i2 = i+i_off ; j2 = j+j_off
     if ((abs(Ice%flux_t(i2,j2)) > 1e4) .or. (abs(Ice%flux_lw(i2,j2)) > 1e4)) then
       n_bad = n_bad + 1
       if (n_bad == 1) then ; i_bad = i ; j_bad = j ; endif

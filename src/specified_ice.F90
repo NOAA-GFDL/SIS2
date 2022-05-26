@@ -152,7 +152,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do I=isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dBu(I,J)>0.5) then
+      if (G%mask2dBu(I,J)>0.0) then
         ps_ocn = 0.25 * ((FIA%ice_free(i+1,j+1) + FIA%ice_free(i,j)) + &
                          (FIA%ice_free(i+1,j) + FIA%ice_free(i,j+1)) )
         ps_ice = 0.25 * ((FIA%ice_cover(i+1,j+1) + FIA%ice_cover(i,j)) + &
@@ -186,7 +186,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do j=jsc,jec ; do I=Isc-1,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCu(I,j)>0.5) then
+      if (G%mask2dCu(I,j)>0.0) then
         ps_ocn = 0.5*(FIA%ice_free(i+1,j) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i+1,j) + FIA%ice_cover(i,j))
       endif
@@ -197,7 +197,7 @@ subroutine set_ocean_top_stress_FIA(FIA, IOF, G, US)
     !$OMP parallel do default(shared) private(ps_ocn, ps_ice)
     do J=jsc-1,jec ; do i=isc,iec
       ps_ocn = 1.0 ; ps_ice = 0.0
-      if (G%mask2dCv(i,J)>0.5) then
+      if (G%mask2dCv(i,J)>0.0) then
         ps_ocn = 0.5*(FIA%ice_free(i,j+1) + FIA%ice_free(i,j))
         ps_ice = 0.5*(FIA%ice_cover(i,j+1) + FIA%ice_cover(i,j))
       endif

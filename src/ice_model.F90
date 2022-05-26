@@ -82,6 +82,7 @@ use SIS_framework,     only : coupler_type_rescale_data, coupler_type_copy_data
 use SIS_fixed_initialization, only : SIS_initialize_fixed
 use SIS_get_input,     only : Get_SIS_input, directories
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end, set_first_direction
+use SIS_open_boundary, only : ice_OBC_type
 use SIS_optics,        only : ice_optics_SIS2, SIS_optics_init, SIS_optics_end, SIS_optics_CS
 use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 use SIS_slow_thermo,   only : slow_thermodynamics, SIS_slow_thermo_init, SIS_slow_thermo_end
@@ -317,13 +318,13 @@ subroutine update_ice_dynamics_trans(Ice, time_step, start_cycle, end_cycle, cyc
   elseif (do_multi_trans) then
     call SIS_multi_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
                              Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, &
-                             start_cycle, end_cycle, cycle_length)
+                             Ice%OBC, start_cycle, end_cycle, cycle_length)
   elseif (Ice%sCS%slab_ice) then ! Use a very old slab ice model.
     call slab_ice_dyn_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, Ice%OBC)
   else ! This is the typical branch used by SIS2.
     call SIS_dynamics_trans(sIST, Ice%sCS%OSS, FIA, Ice%sCS%IOF, dt_slow, Ice%sCS%dyn_trans_CSp, &
-                            Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp)
+                            Ice%icebergs, sG, US, sIG, Ice%sCS%SIS_tracer_flow_CSp, Ice%OBC)
   endif
 
  ! Set up the stresses and surface pressure in the externally visible structure Ice.
@@ -1458,7 +1459,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
   if (Rad%id_lwdn > 0) then
     tmp_diag(:,:) = 0.0
     Stefan = 5.6734e-8  ! Set the Stefan-Bolzmann constant [W m-2 degK-4].
-    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do k=0,ncat ; do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
       tmp_diag(i,j) = tmp_diag(i,j) + IST%part_size(i,j,k) * &
                            (ABT%lw_flux(i3,j3,k2) + Stefan*(Rad%t_skin(i,j,k)+T_0degC)**4)
@@ -1468,7 +1469,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
 
   sw_dn(:,:) = 0.0 ; net_sw(:,:) = 0.0 ; avg_alb(:,:) = 0.0 ; sw_dn_bnd(:,:,:) = 0.0
   !$OMP parallel do default(shared) private(i2,j2,k2,i3,j3)
-  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do j=jsc,jec ; do k=0,ncat ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     i2 = i+io_I ; j2 = j+jo_I ; i3 = i+io_A ; j3 = j+jo_A ; k2 = k+1
     if (associated(ABT%sw_down_vis_dir)) then
       sw_dn(i,j) = sw_dn(i,j) + IST%part_size(i,j,k) * ( &
@@ -1525,7 +1526,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
   if (Rad%id_swdn > 0) call post_data(Rad%id_swdn, sw_dn, CS%diag)
 
   if (Rad%id_alb > 0) then
-    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
       if (sw_dn(i,j) > 0.0) &
         avg_alb(i,j) = (sw_dn(i,j) - net_sw(i,j)) / sw_dn(i,j)
       ! Otherwise keep the simple average that was set above.
@@ -1533,7 +1534,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
     call post_data(Rad%id_alb, avg_alb, CS%diag)
   endif
 
-  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.5) then
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j)>0.0) then
     do b=1,size(FIA%flux_sw_dn,3)
       FIA%flux_sw_dn(i,j,b) = FIA%flux_sw_dn(i,j,b) + US%W_m2_to_QRZ_T*sw_dn_bnd(i,j,b)
     enddo
@@ -1766,6 +1767,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16) :: stagger, dflt_stagger
+  type(ice_OBC_type), pointer :: OBC_in => NULL()
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -2079,12 +2081,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     write_geom_files = ((write_geom==2) .or. ((write_geom==1) .and. new_sim))
 
     ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-    call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory)
+    call SIS_initialize_fixed(dG, US, param_file, write_geom_files, dirs%output_directory, OBC_in)
 
     call set_hor_grid(sG, param_file, global_indexing=global_indexing)
     call copy_dyngrid_to_SIS_horgrid(dG, sG)
     call destroy_dyn_horgrid(dG)
     Ice%sCS%G%US => US
+    Ice%OBC => OBC_in
 
   ! Allocate and register fields for restarts.
 
@@ -2206,12 +2209,13 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call clone_MOM_domain(fGD, dG%Domain)
 
       ! Set the bathymetry, Coriolis parameter, open channel widths and masks.
-      call SIS_initialize_fixed(dG, US, param_file, .false., dirs%output_directory)
+      call SIS_initialize_fixed(dG, US, param_file, .false., dirs%output_directory, OBC_in)
 
       call set_hor_grid(Ice%fCS%G, param_file, global_indexing=global_indexing)
       call copy_dyngrid_to_SIS_horgrid(dG, Ice%fCS%G)
       call destroy_dyn_horgrid(dG)
       Ice%fCS%G%US => US
+      Ice%OBC => OBC_in
     endif
 
     Ice%fCS%bounds_check = bounds_check
@@ -2600,7 +2604,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     isc = fHI%isc ; iec = fHI%iec ; jsc = fHI%jsc ; jec = fHI%jec
     i_off = LBOUND(Ice%ocean_pt,1) - fHI%isc ; j_off = LBOUND(Ice%ocean_pt,2) - fHI%jsc
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.5 )
+      Ice%ocean_pt(i2,j2) = ( fG%mask2dT(i,j) > 0.0 )
     enddo ; enddo
     if (.not.slow_ice_PE) then
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)

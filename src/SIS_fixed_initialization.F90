@@ -4,14 +4,17 @@ module SIS_fixed_initialization
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
-use SIS_debugging, only : hchksum, Bchksum, uvchksum, chksum
-use MOM_domains, only : pass_var
-use MOM_dyn_horgrid, only : dyn_horgrid_type
-use MOM_error_handler, only : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
-use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
-use MOM_file_parser, only : get_param, read_param, log_param, log_version, param_file_type
+use SIS_debugging, only       : hchksum, Bchksum, uvchksum, chksum
+use SIS_open_boundary, only   : ice_OBC_type, open_boundary_config
+use SIS_open_boundary, only   : open_boundary_impose_land_mask
+
+use MOM_domains, only         : pass_var
+use MOM_dyn_horgrid, only     : dyn_horgrid_type
+use MOM_error_handler, only   : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
+use MOM_error_handler, only   : callTree_enter, callTree_leave, callTree_waypoint
+use MOM_file_parser, only     : get_param, read_param, log_param, log_version, param_file_type
 use MOM_grid_initialize, only : initialize_masks, set_grid_metrics
-use MOM_io, only : slasher
+use MOM_io, only              : slasher
 ! use MOM_shared_initialization, only : MOM_shared_init_init
 use MOM_shared_initialization, only : MOM_initialize_rotation, MOM_calculate_grad_Coriolis
 use MOM_shared_initialization, only : initialize_topography_from_file, apply_topography_edits_from_file
@@ -20,7 +23,7 @@ use MOM_shared_initialization, only : set_rotation_planetary, set_rotation_beta_
 use MOM_shared_initialization, only : reset_face_lengths_named, reset_face_lengths_file, reset_face_lengths_list
 use MOM_shared_initialization, only : read_face_length_list, set_velocity_depth_max, set_velocity_depth_min
 use MOM_shared_initialization, only : compute_global_grid_integrals, write_ocean_geometry_file
-use MOM_unit_scaling, only : unit_scale_type
+use MOM_unit_scaling, only          : unit_scale_type
 
 implicit none ; private
 
@@ -31,13 +34,14 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_initialize_fixed sets up time-invariant quantities related to SIS's
 !!   horizontal grid, bathymetry, restricted channel widths and the Coriolis parameter.
-subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
+subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   type(dyn_horgrid_type),  intent(inout) :: G   !< The ocean's grid structure.
   type(unit_scale_type),   intent(in)    :: US  !< A dimensional unit scaling type
   type(param_file_type),   intent(in)    :: PF  !< A structure indicating the open file
                                                 !! to parse for model parameter values.
   logical,                 intent(in)    :: write_geom !< If true, write grid geometry files.
   character(len=*),        intent(in)    :: output_dir !< The directory into which to write files.
+  type(ice_OBC_type),      pointer       :: OBC  !< Open boundary structure.
 
   real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
 
@@ -59,17 +63,23 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir)
          "The directory in which input files are found.", default=".")
   inputdir = slasher(inputdir)
 
-! Set up the parameters of the physical domain (i.e. the grid), G
+  ! Set up the parameters of the physical domain (i.e. the grid), G
   call set_grid_metrics(G, PF, US)
 
-! Set up the bottom depth, G%bathyT, either analytically or from a file
+  ! Set up the bottom depth, G%bathyT, either analytically or from a file
   call SIS_initialize_topography(G%bathyT, G%max_depth, G, PF, US)
 
   ! To initialize masks, the bathymetry in halo regions must be filled in
   call pass_var(G%bathyT, G%Domain)
 
-! Initialize the various masks and any masked metrics.
+  ! Initialize the various masks and any masked metrics.
   call initialize_masks(G, PF, US)
+
+  ! Determine the position of any open boundaries
+  call open_boundary_config(G, US, PF, OBC)
+
+  ! Make OBC mask consistent with land mask
+  call open_boundary_impose_land_mask(OBC, G, G%areaCu, G%areaCv, US)
 
   if (debug) then
     call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, &
