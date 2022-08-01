@@ -321,9 +321,12 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 !      Tr_ptr=>NULL()
       if (TrReg%ntr>0) then ! load tracer array
         ntrcr=ntrcr+1
-        trcrn(ntrcr,1) = Tr_ice_enth_ptr(i,j,1,1) ! surface temperature? this is taken from the thinnest ice category
-        trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
-        trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
+        do k=1,ncat
+          trcrn(ntrcr,k) = Tr_ice_enth_ptr(i,j,1,1) ! surface temperature taken from the ice-free category
+                                                    ! copying across all categories.
+        enddo
+        trcr_depend(ntrcr) = 0; ! ice/snow surface temperature
+        trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
         do k=1,nL_ice
           ntrcr=ntrcr+1
           trcrn(ntrcr,1:ncat) = Tr_ice_enth_ptr(i,j,1:nCat,k)
