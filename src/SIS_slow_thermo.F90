@@ -71,7 +71,7 @@ public :: slow_thermo_CS, SIS_slow_thermo_set_ptrs
 type slow_thermo_CS ; private
   logical :: specified_ice  !< If true, the sea ice is specified and there is
                             !! no need for ice dynamics.
-  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity [gSalt kg-1]
+  real :: ice_bulk_salin    !< The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
                             !! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin     !< The initial bulk salinity of sea-ice relative to the
                             !! salinity of the water from which it formed [nondim].
@@ -569,7 +569,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_cn_ice ! Observed total ice concentration [nondim]
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec  ! Total ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    salt_change, &        ! The change in integrated salinity [R Z gSalt kg-1 ~> gSalt m-2]
+    salt_change, &        ! The change in integrated salinity [R Z S ~> gSalt m-2]
     h2o_change, &         ! The change in water in the ice [R Z ~> kg m-2]
     bsnk, &               ! The bottom melting mass sink [R Z T-1 ~> kg m-2 s-1]
     tmp2d, &
@@ -590,13 +590,13 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     enth_col, &
     enth_mass_in_col
 
-  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [gSalt kg-1].
+  real, dimension(IG%NkIce) :: S_col      ! The salinity of a column of ice [S ~> gSalt kg-1].
   real, dimension(IG%NkIce+1) :: Salin    ! The conserved bulk salinity of each
-                                          ! layer [gSalt kg-1], with the salinity of
+                                          ! layer [S ~> gSalt kg-1], with the salinity of
                                           ! newly formed ice in layer NkIce+1.
   real, dimension(0:IG%NkIce) :: m_lay    ! The masses of a column of ice and snow [R Z ~> kg m-2].
   real, dimension(0:IG%NkIce) :: Tcol0    ! The temperature of a column of ice and snow [degC].
-  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow [gSalt kg-1].
+  real, dimension(0:IG%NkIce) :: S_col0   ! The salinity of a column of ice and snow [S ~> gSalt kg-1].
   real, dimension(0:IG%NkIce) :: Tfr_col0 ! The freezing temperature of a column of ice and snow [degC].
   real, dimension(0:IG%NkIce+1) :: &
     enthalpy              ! The initial enthalpy of a column of ice and snow
@@ -619,8 +619,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   type(EOS_type), pointer :: EOS => NULL()
   real :: Cp_water    ! The heat capacity of sea water [Q degC-1 ~> J kg-1 degC-1]
-  real :: drho_dT(1), drho_dS(1)
-  real :: pres_0(1)
+  real :: drho_dT(1)  ! The partial derivative of density with temperature [R degC-1 ~> kg m-3 degC-1]
+  real :: drho_dS(1)  ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1]
+  real :: pres_0(1)   ! An array of pressures [Pa]
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
@@ -628,17 +629,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                       ! factors, used to change the units of several diagnostics to rate yr-1.
   real :: heat_to_ocn    ! The heat passed from the ice to the ocean [Q R Z ~> J m-2]
   real :: water_to_ocn   ! The water passed to the ocean [R Z ~> kg m-2]
-  real :: salt_to_ocn    ! The salt passed to the ocean [R Z gSalt kg-1 ~> gSalt m-2]
+  real :: salt_to_ocn    ! The salt passed to the ocean [R Z S ~> gSalt m-2]
   real :: heat_from_ice  ! The heat extracted from the ice [Q R Z ~> J m-2]
   real :: water_from_ice ! The water extracted from the ice [R Z ~> kg m-2]
-  real :: salt_from_ice  ! The salt extracted from the ice [R Z gSalt kg-1 ~> gSalt m-2]
+  real :: salt_from_ice  ! The salt extracted from the ice [R Z S ~> gSalt m-2]
   real :: ice_loss       ! The loss of ice mass from transmutation [R Z ~> kg m-2]
   real :: snow_loss      ! The loss of snow mass from transmutation [R Z ~> kg m-2]
   real :: h2o_ice_to_ocn ! The downward water flux from the ice to the ocean [R Z ~> kg m-2]
   real :: h2o_ocn_to_ice ! The upward water flux from the ocean to the ice [R Z ~> kg m-2]
   real :: evap_from_ocn  ! The evaporation from the ocean [R Z ~> kg m-2]
   real :: bablt       ! The bottom ablation ice loss [R Z ~> kg m-2]
-  real :: salt_to_ice ! The flux of salt from the ocean to the ice [R Z gSalt kg-1 ~> gSalt m-2].
+  real :: salt_to_ice ! The flux of salt from the ocean to the ice [R Z S ~> gSalt m-2].
                       ! This may be of either sign; in some places it is an
                       ! average over the whole cell, while in others just a partition.
   real :: mtot_ice    ! The total mass of ice and snow in a cell [R Z ~> kg m-2].
@@ -713,10 +714,12 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
              ((Obs_cn_ice(i,j)-CS%nudge_conc_tol) - icec(i,j))**2.0 ! W/m2
         if (CS%nudge_stab_fac /= 0.0) then
           if (OSS%SST_C(i,j) > OSS%T_fr_ocn(i,j)) then
-            call calculate_density_derivs(OSS%SST_C(i:i,j),OSS%s_surf(i:i,j),pres_0,&
-                           drho_dT,drho_dS,1,1,EOS)
+            call calculate_density_derivs(OSS%SST_C(i:i,j), US%S_to_ppt*OSS%s_surf(i:i,j), pres_0, &
+                           drho_dT, drho_dS, 1, 1, EOS)
+            drho_dT = US%kg_m3_to_R*drho_dT
+            drho_dS = US%kg_m3_to_R*US%S_to_ppt*drho_dS
             IOF%melt_nudge(i,j) = CS%nudge_stab_fac * (-cool_nudge(i,j)*drho_dT(1)) / &
-                                  ((Cp_water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0) )
+                                  ((Cp_water*drho_dS(1)) * max(OSS%s_surf(i,j), 1.0*US%ppt_to_S) )
           endif
         endif
       elseif (icec(i,j) > Obs_cn_ice(i,j) + CS%nudge_conc_tol) then
@@ -914,7 +917,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
       if (CS%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-        salin(NkIce+1) = CS%ice_rel_salin * OSS%s_surf(i,j)
+        Salin(NkIce+1) = CS%ice_rel_salin * OSS%s_surf(i,j)
       else
         do m=1,NkIce+1 ; Salin(m) = CS%ice_bulk_salin ; enddo
       endif
@@ -1120,7 +1123,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
       if (CS%ice_rel_salin > 0.0) then
         do m=1,NkIce ; Salin(m) = IST%sal_ice(i,j,k,m) ; enddo
-        salin(NkIce+1) = CS%ice_rel_salin * OSS%s_surf(i,j)
+        Salin(NkIce+1) = CS%ice_rel_salin * OSS%s_surf(i,j)
       else
         do m=1,NkIce+1 ; Salin(m) = CS%ice_bulk_salin ; enddo
       endif
@@ -1437,11 +1440,12 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "concentration exceeds 1.  The original SIS2 implementation "//&
                  "is based on work by Torge Martin.", default=.false.)
   call get_param(param_file, mdl, "ICE_BULK_SALINITY", CS%ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "g/kg", default=4.0)
+                 "The fixed bulk salinity of sea ice.", &
+                 units="g/kg", default=4.0, scale=US%ppt_to_S)
   call get_param(param_file, mdl, "ICE_RELATIVE_SALINITY", CS%ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
-                 units = "nondim", default=0.0)
+                 units="nondim", default=0.0)
   if ((CS%ice_bulk_salin > 0.0) .and. (CS%ice_rel_salin > 0.0)) &
     call SIS_error(FATAL, "It is inconsistent to have both ICE_BULK_SALINITY "//&
                    "and ICE_RELATIVE_SALINITY set to positive values.")

@@ -51,7 +51,7 @@ type, public :: SIS_sum_out_CS ; private
     heat_in_col, &              !< The heat that has been input to the ice and snow in a column since
                                 !! the last time that write_ice_statistics was called [Q R Z ~> J m-2]
     salt_in_col, &              !< The salt that has been input to the ice and snow in a column since
-                                !! the last time that write_ice_statistics was called [R Z kgSalt kg-1 ~> kgSalt m-2]
+                                !! the last time that write_ice_statistics was called [1e3 S R Z ~> kgSalt m-2]
     ! These three arrays are only allocated and used for monitoring column-wise conservation.
     water_cell_prev, &          !< The cell integrated water that was in the ice and snow the last
                                 !! time that write_ice_statistics was called [kg].
@@ -251,6 +251,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: I_nlay       ! The inverse of the number of layers [nondim]
   real :: mass_scale   ! A mass unit conversion factor for area-integrated mass [kg R-1 Z-1 L-2 ~> 1]
   real :: heat_scale   ! A mass unit conversion factor for area-integrated heat [J Q-1 R-1 Z-1 L-2 ~> 1]
+  real :: salt_scale   ! A mass unit conversion factor for area-integrated salt [gSalt S-1 R-1 Z-1 L-2 ~> 1]
   real :: area_scale   ! A mass unit conversion factor for cell area [m2 L-2 ~> 1]
   real :: area_pt      ! The area of a thickness category in a cell [L2 ~> m2].
   real :: area_h       ! The masked area of a column [L2 ~> m2].
@@ -441,6 +442,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   ! Set combinations of scalign factors that rescale back to MKS units for output
   area_scale = US%L_to_m**2
   mass_scale = US%L_to_m**2 * US%RZ_to_kg_m2
+  salt_scale = US%L_to_m**2 * US%RZ_to_kg_m2 * US%S_to_ppt
   heat_scale = US%L_to_m**2 * US%RZ_to_kg_m2 * US%Q_to_J_kg
 
   ! The following quantities are to be written by hemisphere:
@@ -468,7 +470,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       do L=1,nlay
         col_heat(i,j,hem) = col_heat(i,j,hem) + area_pt * heat_scale * &
                             ((IST%mH_ice(i,j,k) * I_nlay) * IST%enth_ice(i,j,k,L))
-        col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * mass_scale * &
+        col_salt(i,j,hem) = col_salt(i,j,hem) + area_pt * salt_scale * &
                   ((0.001*IST%mH_ice(i,j,k) * I_nlay) * IST%sal_ice(i,j,k,L))
       enddo
     endif ; enddo
@@ -500,7 +502,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
       area_h = G%areaT(i,j) * G%mask2dT(i,j)
       water_into_cell(i,j) = area_h * mass_scale * CS%water_in_col(i,j)
       heat_into_cell(i,j) = area_h * heat_scale * CS%heat_in_col(i,j)
-      salt_into_cell(i,j) = area_h * mass_scale * CS%salt_in_col(i,j)
+      salt_into_cell(i,j) = area_h * salt_scale * CS%salt_in_col(i,j)
     enddo ; enddo
     EFP_list(12+nTr_stocks) = reproducing_sum_EFP(water_into_cell, isr, ier, jsr, jer, only_on_PE=.true.)
     EFP_list(13+nTr_stocks) = reproducing_sum_EFP(salt_into_cell, isr, ier, jsr, jer, only_on_PE=.true.)
