@@ -71,6 +71,10 @@ type, public :: SIS_C_dyn_CS ; private
   real :: del_sh_min_scale    !< A scaling factor for the minimum permitted value of minimum
                               !! shears used in the denominator of the stress equations [nondim].
                               !  I suspect that this needs to be greater than 1. -RWH
+  real    :: vel_underflow    !< Velocity components smaller than vel_underflow
+                              !! are set to 0 [L T-1 ~> m s-1].
+  real    :: str_underflow    !< Stress tensor components smaller than str_underflow
+                              !! are set to 0 [R Z L2 T-2 ~> Pa m].
   real    :: CFL_trunc        !< Velocity components will be truncated when they are large enough
                               !! that the corresponding CFL number exceeds this value [nondim].
   logical :: CFL_check_its    !< If true, check the CFL number for every iteration
@@ -261,6 +265,16 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                  units="kg m-3", default=905.0, scale=US%kg_m3_to_R)
   CS%p0_rho = CS%p0 / CS%Rho_ice
 
+  call get_param(param_file, mdl, "VEL_UNDERFLOW", CS%vel_underflow, &
+                 "A negligibly small velocity magnitude below which velocity "//&
+                 "components are set to 0.  A reasonable value might be 1e-30 m/s, "//&
+                 "which is less than an Angstrom divided by the age of the universe.", &
+                 units="m s-1", default=0.0, scale=US%m_s_to_L_T)
+  call get_param(param_file, mdl, "STRESS_UNDERFLOW", CS%str_underflow, &
+                 "A negligibly small magnitude below which ice stress tensor "//&
+                 "components are set to 0.  A reasonable value might be "//&
+                 "1e-15 kg m-1 s-1 times vel_underflow.", &
+                 units="Pa m", default=0.0, scale=US%m_s_to_L_T**2*US%kg_m3_to_R*US%m_to_Z)
   call get_param(param_file, mdl, "CFL_TRUNCATE", CS%CFL_trunc, &
                  "The value of the CFL number that will cause ice velocity "//&
                  "components to be truncated; instability can occur past 0.5.", &
@@ -1066,6 +1080,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                     ( zeta(i,j) * (sh_Dd(i,j) - del_sh(i,j)) ) )
         CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
+        if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
+        if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
       enddo ; enddo
     else
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,dt_2Tdamp,zeta, &
@@ -1076,6 +1092,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                     ( zeta(i,j) * sh_Dd(i,j) - 0.5*pres_mice(i,j)*mice(i,j) ) )
         CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
+        if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
+        if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
       enddo ; enddo
     endif
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,I_EC2,dt_2Tdamp, &
@@ -1086,6 +1104,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                   ( ((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
                      (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
                    mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
+      if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
     enddo ; enddo
 
 
@@ -1162,6 +1181,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                (mi_u(I,j) + m_neglect + dt * (drag_u + drag_LFu))
 
       ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
+      if (abs(ui(I,j)) < CS%vel_underflow) ui(I,j) = 0.0
+
       ! Note that fxoc is the stress felt by the ocean.
       fxoc(I,j) = fxoc(I,j) + drag_u*uio_C
 
@@ -1253,6 +1274,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                (mi_v(i,J) + m_neglect + dt * (drag_v + drag_LFv))
 
       vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
+      if (abs(vi(i,J)) < CS%vel_underflow) vi(i,J) = 0.0
+
       ! Note that fyoc is the stress felt by the ocean.
       fyoc(i,J) = fyoc(i,J) + drag_v*vio_C
 
@@ -1374,7 +1397,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
           if (ui(I,j) < ui_min_trunc(I,j)) then
             ui(I,j) = 0.95 * ui_min_trunc(I,j)
           else
-            ui(I,j) = 0.95*ui_max_trunc(I,j)
+            ui(I,j) = 0.95 * ui_max_trunc(I,j)
           endif
         endif
       enddo ; enddo
@@ -1384,7 +1407,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
           ui(I,j) = 0.95 * ui_min_trunc(I,j)
           if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
         elseif (ui(I,j) > ui_max_trunc(I,j)) then
-          ui(I,j) = 0.95*ui_max_trunc(I,j)
+          ui(I,j) = 0.95 * ui_max_trunc(I,j)
           if (mi_u(I,j) > m_neglect) CS%ntrunc = CS%ntrunc + 1
         endif
       enddo ; enddo
@@ -2083,10 +2106,13 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
                      (US%kg_m3_to_R_restart * US%m_to_Z_restart * US%m_to_L_restart**2)
     do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
       CS%str_s(I,J) = stress_rescale * CS%str_s(I,J)
+      if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
     enddo ; enddo
     do j=G%jsc,G%jec ; do i=G%isc,G%iec
       CS%str_d(i,j) = stress_rescale * CS%str_d(i,j)
       CS%str_t(i,j) = stress_rescale * CS%str_t(i,j)
+      if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
+      if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
     enddo ; enddo
   endif
 
