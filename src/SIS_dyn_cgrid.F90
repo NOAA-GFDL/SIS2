@@ -1060,7 +1060,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                    (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
-      if (max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j)) /=0.) then
+      if (max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j)) /= 0.) then
         zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / &
            max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j))
       else
@@ -1080,8 +1080,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                     ( zeta(i,j) * (sh_Dd(i,j) - del_sh(i,j)) ) )
         CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
-        if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
-        if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
       enddo ; enddo
     else
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,dt_2Tdamp,zeta, &
@@ -1092,8 +1090,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                     ( zeta(i,j) * sh_Dd(i,j) - 0.5*pres_mice(i,j)*mice(i,j) ) )
         CS%str_t(i,j) = I_1pdt_T * ( CS%str_t(i,j) + (I_EC2 * dt_2Tdamp) * &
                     ( zeta(i,j) * sh_Dt(i,j) ) )
-        if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
-        if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
       enddo ; enddo
     endif
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,CS,I_1pdt_T,I_EC2,dt_2Tdamp, &
@@ -1104,9 +1100,19 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                   ( ((G%areaT(i,j)*zeta(i,j) + G%areaT(i+1,j+1)*zeta(i+1,j+1)) + &
                      (G%areaT(i+1,j)*zeta(i+1,j) + G%areaT(i,j+1)*zeta(i,j+1))) * &
                    mi_ratio_A_q(I,J) * sh_Ds(I,J) ) )
-      if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
     enddo ; enddo
 
+    if (CS%str_underflow > 0.0) then
+      !$OMP parallel do default(shared)
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
+        if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
+      enddo ; enddo
+      !$OMP parallel do default(shared)
+      do J=jsc-1,jec ; do I=isc-1,iec
+        if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
+      enddo ; enddo
+    endif
 
     cdRho = CS%cdw * US%L_to_Z*CS%Rho_ocean
     ! Save the current values of u for later use in updating v.
@@ -1116,8 +1122,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,u_tmp,ui,vi,azon,bzon,czon,dzon, &
 !$OMP                                  G,CS,dy2T,dx2B,vo,uo,Cor_u,f2dt_u,I1_f2dt2_u,    &
 !$OMP                                  mi_u,dt,PFu,fxat,I_cdRhoDt,cdRho,m_neglect,fxoc, &
-!$OMP                                  fxlf,fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,          &
-!$OMP                                  ui_min_trunc,ui_max_trunc,drag_max) &
+!$OMP                                  fxlf,fxic,fxic_d,fxic_t,fxic_s,do_trunc_its,drag_max) &
 !$OMP                          private(Cor,fxic_now,v2_at_u,v2_at_u_min,uio_init,drag_u,drag_LFu,b_vel0, &
 !$OMP                                  m_uio_explicit,uio_pred,uio_C)
     do j=jsc,jec ; do I=isc-1,iec
@@ -1181,7 +1186,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                (mi_u(I,j) + m_neglect + dt * (drag_u + drag_LFu))
 
       ui(I,j) = (uio_C + uo(I,j)) * G%mask2dCu(I,j)
-      if (abs(ui(I,j)) < CS%vel_underflow) ui(I,j) = 0.0
 
       ! Note that fxoc is the stress felt by the ocean.
       fxoc(I,j) = fxoc(I,j) + drag_u*uio_C
@@ -1201,14 +1205,8 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                   G%IdxCu(I,j)*(dx2B(I,J)  *CS%str_s(I,J) - &
                                 dx2B(I,J-1)*CS%str_s(I,J-1)) * G%IareaCu(I,j)
 
-      if (do_trunc_its) then
-        if (ui(I,j) < ui_min_trunc(I,j)) then
-          ui(I,j) = ui_min_trunc(I,j)
-        elseif (ui(I,j) > ui_max_trunc(I,j)) then
-          ui(I,j) = ui_max_trunc(I,j)
-        endif
-      endif
     enddo ; enddo
+
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,amer,bmer,cmer,dmer,u_tmp,G,CS, &
 !$OMP                                  dx2T,dy2B,uo,vo,vi,Cor_v,f2dt_v,I1_f2dt2_v,mi_v, &
 !$OMP                                  dt,PFv,fyat,I_cdRhoDt,cdRho,m_neglect,fyoc,fyic, &
@@ -1274,7 +1272,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                (mi_v(i,J) + m_neglect + dt * (drag_v + drag_LFv))
 
       vi(i,J) = (vio_C + vo(i,J)) * G%mask2dCv(i,J)
-      if (abs(vi(i,J)) < CS%vel_underflow) vi(i,J) = 0.0
 
       ! Note that fyoc is the stress felt by the ocean.
       fyoc(i,J) = fyoc(i,J) + drag_v*vio_C
@@ -1294,14 +1291,35 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                  (G%IdyCv(i,J)*(dy2B(I,J)  *CS%str_s(I,J) - &
                                 dy2B(I-1,J)*CS%str_s(I-1,J)) ) * G%IareaCv(i,J)
 
-      if (do_trunc_its) then
-        if (vi(i,J) < vi_min_trunc(i,J)) then
-          vi(i,J) = vi_min_trunc(i,J)
-        elseif (vi(i,J) > vi_max_trunc(i,J)) then
-          vi(i,J) = vi_max_trunc(i,J)
-        endif
-      endif
     enddo ; enddo
+
+    ! Apply appropriate limits on the magnitude of the velocies, both to handle
+    ! underflow and to keep failing runs going so that they can be diagnosed.
+    if (do_trunc_its .or. (CS%vel_underflow > 0.0)) then
+      !$OMP parallel do default(shared)
+      do j=jsc,jec ; do I=isc-1,iec
+        if (abs(ui(I,j)) < CS%vel_underflow) ui(I,j) = 0.0
+        if (do_trunc_its) then
+          if (ui(I,j) < ui_min_trunc(I,j)) then
+            ui(I,j) = ui_min_trunc(I,j)
+          elseif (ui(I,j) > ui_max_trunc(I,j)) then
+            ui(I,j) = ui_max_trunc(I,j)
+          endif
+        endif
+      enddo ; enddo
+
+      !$OMP parallel do default(shared)
+      do J=jsc-1,jec ; do i=isc,iec
+        if (abs(vi(i,J)) < CS%vel_underflow) vi(i,J) = 0.0
+        if (do_trunc_its) then
+          if (vi(i,J) < vi_min_trunc(i,J)) then
+            vi(i,J) = vi_min_trunc(i,J)
+          elseif (vi(i,J) > vi_max_trunc(i,J)) then
+            vi(i,J) = vi_max_trunc(i,J)
+          endif
+        endif
+      enddo ; enddo
+    endif
 
     if (do_hifreq_output) then
       time_step_end = time_it_start + real_to_time(n*US%T_to_s*dt)

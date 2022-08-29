@@ -498,21 +498,26 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
     ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
-      if( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) ) then
+      if ( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
         CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
         CS%sig22(i,j) = (t1(i,j)*f11 + f22) * It2(i,j)
         CS%sig12(i,j) = t0(i,j) * (CS%sig12(i,j) + edt(i,j)*strn12(i,j))
-        if (abs(CS%sig11(i,j)) < CS%str_underflow) CS%sig11(i,j) = 0.0
-        if (abs(CS%sig22(i,j)) < CS%str_underflow) CS%sig22(i,j) = 0.0
-        if (abs(CS%sig12(i,j)) < CS%str_underflow) CS%sig12(i,j) = 0.0
       else
         CS%sig11(i,j) = 0.0
         CS%sig22(i,j) = 0.0
         CS%sig12(i,j) = 0.0 ! eliminate internal ice forces
       endif
     enddo ; enddo
+    ! Eliminate excessively small stresses.
+    if (CS%str_underflow > 0.0) then
+      do j=jsc,jec ; do i=isc,iec
+        if (abs(CS%sig11(i,j)) < CS%str_underflow) CS%sig11(i,j) = 0.0
+        if (abs(CS%sig22(i,j)) < CS%str_underflow) CS%sig22(i,j) = 0.0
+        if (abs(CS%sig12(i,j)) < CS%str_underflow) CS%sig12(i,j) = 0.0
+      enddo ; enddo
+    endif
 
     !Niki:
     !Instead of the above block for calculating stresses TOM uses subroutine calls below
