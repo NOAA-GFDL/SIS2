@@ -239,7 +239,11 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   call icepack_query_tracer_sizes(ncat_out=ncat_out,ntrcr_out=ntrcr_out, nilyr_out=nilyr_out, nslyr_out=nslyr_out)
 
-  if (nIlyr .ne. nilyr_out .or. nSlyr .ne. nslyr_out ) call SIS_error(FATAL,'nilyr or nslyr mismatch with Icepack')
+  if (nIlyr .ne. nilyr_out .or. nSlyr .ne. nslyr_out ) &
+   call SIS_error(FATAL,"Oops!! It looks like you are trying to use sea-ice ridging "//&
+   "but did not include the Icepack (https://github.com/CICE-Consortium/Icepack)"//&
+   "source code repository in your compilation procedure, and are instead using the default "//&
+   "stub routine contained in config_src/external. Adjust your compilation accordingly." )
 
   ! copy strain calculation code from SIS_C_dynamics; might be a more elegant way ...
   !
