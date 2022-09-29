@@ -50,7 +50,7 @@ type, public :: ice_ridging_CS ; private
   real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
   real :: area_underflow = 0.0 ! a non-dimesional fractional area underflow limit for the sea-ice
                       ! ridging scheme. This is defaulted to zero, but a reasonable value might be
-                      ! 10^-24 which for a km square grid cell would equate to an Angstrom scale ice patch.
+                      ! 10^-26 which for a km square grid cell would equate to an Angstrom scale ice patch.
 end type ice_ridging_CS
 
 contains
@@ -79,7 +79,7 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
                    units="m^0.5", default=3.0)
     call get_param(PF, mdl, "RIDGE_AREA_UNDERFLOW", CS%area_underflow, &
                    "A fractional area limit below which ice fraction is set to zero "//&
-                   "A reasonable default value for a km scale grid cell is 10^-32.",&
+                   "A reasonable default value for a km scale grid cell is 10^-24.",&
                    units="none", default=0.0)
   endif
 
