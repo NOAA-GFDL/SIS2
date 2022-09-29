@@ -11,7 +11,9 @@ module ice_ridging_mod
 ! 1) implement new snow_to_ocean diagnostic to record this flux.               !
 ! 2) implement ridging_rate diagnostics: ridging_shear, ridging_conv           !
 ! 3) implement "do_j" style optimization as in "compress_ice" or               !
-!    "adjust_ice_categories" (SIS_transport.F90) if deemed necessary           !
+!    "adjust_ice_categories" (SIS_transport.F90) if deemed necessary
+!
+!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
@@ -43,9 +45,13 @@ public :: ice_ridging, ice_ridging_init
 
 type, public :: ice_ridging_CS ; private
   logical :: &
-       new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
-       new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
+  new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
+  new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
   real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
+  real :: area_underflow = 0.0 ! a non-dimesional fractional area underflow limit for the sea-ice
+                      ! ridging scheme. This is defaulted to zero, but a reasonable value
+                      !  might be 10^-32 which for a km square grid cell would equate to an Angstrom scale
+                      ! ice patch.
 end type ice_ridging_CS
 
 contains
@@ -72,6 +78,10 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
     call get_param(PF, mdl, "RIDGE_MU", CS%mu_rdg, &
                    "E-folding scale of ridge ice from Lipscomb et al. 2007", &
                    units="m^0.5", default=3.0)
+    call get_param(PF, mdl, "RIDGE_AREA_UNDERFLOW", CS%area_underflow, &
+                   "A fractional area limit below which ice fraction is set to zero "//&
+                   "A reasonable default value for a km scale grid cell is 10^-32.",&
+                   units="none", default=0.0)
   endif
 
   ncat=IG%CatIce ! The number of sea-ice thickness categories
@@ -479,7 +489,10 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
       ! ! output: snow/ice masses/thicknesses
       do k=1,nCat
-
+        if (aicen(k) < CS%area_underflow) then
+           aicek(k)=0.0
+           vicen(k)=0.0
+        endif
         if (aicen(k) > 0.0) then
           IST%part_size(i,j,k)  = aicen(k)
           mca_ice(i,j,k)  = vicen(k)*Rho_ice * US%m_to_Z
