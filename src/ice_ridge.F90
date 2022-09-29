@@ -49,9 +49,8 @@ type, public :: ice_ridging_CS ; private
   new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
   real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
   real :: area_underflow = 0.0 ! a non-dimesional fractional area underflow limit for the sea-ice
-                      ! ridging scheme. This is defaulted to zero, but a reasonable value
-                      !  might be 10^-32 which for a km square grid cell would equate to an Angstrom scale
-                      ! ice patch.
+                      ! ridging scheme. This is defaulted to zero, but a reasonable value might be
+                      ! 10^-24 which for a km square grid cell would equate to an Angstrom scale ice patch.
 end type ice_ridging_CS
 
 contains
