@@ -48,9 +48,10 @@ type, public :: ice_ridging_CS ; private
   new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
   new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
   real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
-  real :: area_underflow = 0.0 ! a non-dimesional fractional area underflow limit for the sea-ice
-                      ! ridging scheme. This is defaulted to zero, but a reasonable value might be
-                      ! 10^-26 which for a km square grid cell would equate to an Angstrom scale ice patch.
+  real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
+                               !! ridging scheme. This is defaulted to zero, but a reasonable
+                               !! value might be 10^-26 which for a km square grid cell
+                               !! would equate to an Angstrom scale ice patch.
 end type ice_ridging_CS
 
 contains
@@ -249,10 +250,10 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   call icepack_query_tracer_sizes(ncat_out=ncat_out,ntrcr_out=ntrcr_out, nilyr_out=nilyr_out, nslyr_out=nslyr_out)
 
   if (nIlyr .ne. nilyr_out .or. nSlyr .ne. nslyr_out ) &
-   call SIS_error(FATAL,"Oops!! It looks like you are trying to use sea-ice ridging "//&
-   "but did not include the Icepack (https://github.com/CICE-Consortium/Icepack)"//&
-   "source code repository in your compilation procedure, and are instead using the default "//&
-   "stub routine contained in config_src/external. Adjust your compilation accordingly." )
+    call SIS_error(FATAL,"Oops!! It looks like you are trying to use sea-ice ridging "//&
+                         "but did not include the Icepack (https://github.com/CICE-Consortium/Icepack)"//&
+                         "source code repository in your compilation procedure, and are instead using the default "//&
+                         "stub routine contained in config_src/external. Adjust your compilation accordingly." )
 
   ! copy strain calculation code from SIS_C_dynamics; might be a more elegant way ...
   !
