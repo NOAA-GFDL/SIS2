@@ -46,6 +46,10 @@ type, public :: SIS_B_dyn_CS ; private
   real :: MIV_MIN             !< min ice mass to do dynamics [R Z ~> kg m-2]
   real :: Rho_ocean           !< The nominal density of sea water [R ~> kg m-3].
   real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3].
+  real :: vel_underflow       !< Velocity components smaller than vel_underflow
+                              !! are set to 0 [L T-1 ~> m s-1].
+  real :: str_underflow       !< Stress tensor components smaller than str_underflow
+                              !! are set to 0 [R Z L2 T-2 ~> Pa m].
   logical :: debug            !< If true, write verbose checksums for debugging purposes.
   logical :: debug_redundant  !< If true, debug redundant points
   integer :: evp_sub_steps    !< The number of iterations in the EVP dynamics
@@ -125,9 +129,20 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
                  "The nominal density of sea ice as used by SIS.", &
                  units="kg m-3", default=905.0, scale=US%kg_m3_to_R)
   CS%p0_rho = CS%p0 / CS%Rho_ice
-  !### There should be a new get_param call for this variable
-  CS%MIV_MIN = 1.0*US%kg_m3_to_R*US%m_to_Z
-
+  call get_param(param_file, mdl, "B_DYNAMICS_MIN_MASS", CS%MIV_MIN, &
+                 "The minimum ice mass per unit area where the dynamics calculations "//&
+                 "are carried out with the B-grid sea-ice spatial discretization.", &
+                 units="kg m-2", default=1.0, scale=US%kg_m3_to_R*US%m_to_Z)
+  call get_param(param_file, mdl, "VEL_UNDERFLOW", CS%vel_underflow, &
+                 "A negligibly small velocity magnitude below which velocity "//&
+                 "components are set to 0.  A reasonable value might be 1e-30 m/s, "//&
+                 "which is less than an Angstrom divided by the age of the universe.", &
+                 units="m s-1", default=0.0, scale=US%m_s_to_L_T)
+  call get_param(param_file, mdl, "STRESS_UNDERFLOW", CS%str_underflow, &
+                 "A negligibly small magnitude below which ice stress tensor "//&
+                 "components are set to 0.  A reasonable value might be "//&
+                 "1e-15 kg m-1 s-1 times vel_underflow.", &
+                 units="Pa m", default=0.0, scale=US%m_s_to_L_T**2*US%kg_m3_to_R*US%m_to_Z)
 
   call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false., &
@@ -483,7 +498,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
     ! timestep stress tensor (H&D eqn 21)
     do j=jsc,jec ; do i=isc,iec
-      if( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) ) then
+      if ( (G%mask2dT(i,j)>0.0) .and. (misp(i,j) > CS%MIV_MIN) ) then
         f11   = mp4z(i,j) + CS%sig11(i,j)/edt(i,j) + strn11(i,j)
         f22   = mp4z(i,j) + CS%sig22(i,j)/edt(i,j) + strn22(i,j)
         CS%sig11(i,j) = (t1(i,j)*f22 + f11) * It2(i,j)
@@ -495,6 +510,14 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         CS%sig12(i,j) = 0.0 ! eliminate internal ice forces
       endif
     enddo ; enddo
+    ! Eliminate excessively small stresses.
+    if (CS%str_underflow > 0.0) then
+      do j=jsc,jec ; do i=isc,iec
+        if (abs(CS%sig11(i,j)) < CS%str_underflow) CS%sig11(i,j) = 0.0
+        if (abs(CS%sig22(i,j)) < CS%str_underflow) CS%sig22(i,j) = 0.0
+        if (abs(CS%sig12(i,j)) < CS%str_underflow) CS%sig12(i,j) = 0.0
+      enddo ; enddo
+    endif
 
     !Niki:
     !Instead of the above block for calculating stresses TOM uses subroutine calls below
@@ -553,6 +576,10 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         newuv = cmplx(ui(I,J),vi(I,J)) / &
              (1 + dt_Rheo*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
         ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
+
+        if (abs(ui(I,J)) < CS%vel_underflow) ui(I,J) = 0.0
+        if (abs(vi(I,J)) < CS%vel_underflow) vi(I,J) = 0.0
+
         !
         ! sum for averages
         !
