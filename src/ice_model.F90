@@ -1173,46 +1173,6 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
 end subroutine set_ice_surface_state
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!### set_ice_optics might not be used.
-!> Determine the sea ice shortwave optical properties
-subroutine set_ice_optics(IST, OSS, Tskin_ice, coszen, Rad, G, US, IG, optics_CSp)
-  type(ice_state_type),    intent(in)    :: IST !< A type describing the state of the sea ice
-  type(simple_OSS_type),   intent(in)    :: OSS !< A structure containing the arrays that describe
-                                                !! the ocean's surface state for the ice model.
-  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
-  type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
-  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
-  real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(in)    :: Tskin_ice !< The sea ice skin temperature [C ~> degC].
-  real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen  !< Cosine of the solar zenith angle for this step
-  type(ice_rad_type),      intent(inout) :: Rad !< A structure with fields related to the absorption,
-                                                !! reflection and transmission of shortwave radiation.
-  type(SIS_optics_CS),     intent(in)    :: optics_CSp !< The control structure for optics calculations
-
-  real, dimension(IG%NkIce) :: sw_abs_lay ! The fraction of the absorbed shortwave that is
-                                          ! absorbed in each of the ice layers, <=1, [nondim].
-  real :: albedos(4)  ! The albedos for the various wavelength and direction bands
-                      ! for the current partition, non-dimensional and 0 to 1.
-  integer :: i, j, k, m, isc, iec, jsc, jec, ncat
-
-  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
-
-  !$OMP parallel do default(shared) private(albedos, sw_abs_lay)
-  do j=jsc,jec ; do k=1,ncat ; do i=isc,iec ; if (IST%part_size(i,j,k) > 0.0) then
-    call ice_optics_SIS2(IST%mH_pond(i,j,k), IST%mH_snow(i,j,k), IST%mH_ice(i,j,k), &
-             Tskin_ice(i,j,k), OSS%T_fr_ocn(i,j), IG%NkIce, &
-             albedos, Rad%sw_abs_sfc(i,j,k),  Rad%sw_abs_snow(i,j,k), &
-             sw_abs_lay, Rad%sw_abs_ocn(i,j,k), Rad%sw_abs_int(i,j,k), &
-             US, optics_CSp, IST%ITV, coszen_in=coszen(i,j))
-
-    do m=1,IG%NkIce ; Rad%sw_abs_ice(i,j,k,m) = sw_abs_lay(m) ; enddo
-
-  endif ; enddo ; enddo ; enddo
-
-end subroutine set_ice_optics
-
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> update_ice_model_fast records fluxes (in Ice) and calculates ice temperature
 !!    on the (fast) atmospheric timestep
 subroutine update_ice_model_fast( Atmos_boundary, Ice )

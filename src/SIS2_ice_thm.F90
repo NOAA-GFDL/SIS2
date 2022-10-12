@@ -12,13 +12,13 @@ use MOM_unit_scaling,    only : unit_scale_type
 
 implicit none ; private
 
-public :: SIS2_ice_thm_init, SIS2_ice_thm_end, ice_temp_SIS2, estimate_tsurf
+public :: SIS2_ice_thm_init, SIS2_ice_thm_end, ice_temp_SIS2
 public :: ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 
 public :: get_SIS2_thermo_coefs, ice_thermo_init, ice_thermo_end
-public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS, enthalpy_from_TS
+public :: Temp_from_Enth_S, Temp_from_En_S, enth_from_TS
 public :: enthalpy_liquid_freeze, T_Freeze, calculate_T_Freeze, enthalpy_liquid
-public :: e_to_melt_TS, energy_melt_enthS, energy_0degC, latent_sublimation
+public :: energy_0degC, latent_sublimation
 
 !> This type contains the parameters regulating sea-ice thermodynamics
 type, public :: ice_thermo_type ; private
@@ -536,172 +536,6 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
            "at end of ice_temp_SIS2", ITV, bmelt=bmelt, tmelt=tmelt, t_sfc=tsurf, US=US)
 
 end subroutine ice_temp_SIS2
-
-
-!### I think that estimate_tsurf is never used.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> estimate_tsurf estimates the surface skin temperature using the first (nonconservative)
-!!    part of the calculations in ice_temp_SIS2.
-subroutine estimate_tsurf(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, &
-                          sol, tfw, tsurf, dtt, NkIce, CS, US, ITV)
-
-  real, intent(in   ) :: m_pond  !< pond mass per unit area [R Z ~> kg m-2]
-  real, intent(in   ) :: m_snow  !< snow mass per unit area [R Z ~> kg m-2]
-  real, intent(in   ) :: m_ice   !< ice mass per unit area [R Z ~> kg m-2]
-  real, dimension(0:NkIce) , &
-        intent(in   ) :: enthalpy !< The enthalpy of each layer in a column of
-                                  !! snow and ice, in enthalpy units [Q ~> J kg-1].
-  real, dimension(NkIce), &
-        intent(in)    :: Sice  !< ice salinity by layer [S ~> gSalt kg-1]
-  real, intent(in   ) :: SF_0  !< net upward surface heat flux when Tsurf=0 [Q R Z T-1 ~> W m-2]
-  real, intent(in   ) :: dSF_dT !< d(sfc heat flux)/d(ts) [Q R Z T-1 C-1 ~> W m-2 degC-1]
-  real, dimension(0:NkIce), &
-        intent(in)    :: sol   !< Solar heating of the snow and ice layers [Q R Z T-1 ~> W m-2]
-  real, intent(in   ) :: tfw   !< seawater freezing temperature [C ~> degC]
-  real, intent(  out) :: tsurf !< surface temperature [C ~> degC]
-  real, intent(in   ) :: dtt   !< timestep [T ~> s]
-  integer, intent(in   ) :: NkIce !< The number of ice layers.
-  type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2 ice thermodynamics control structure
-  type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
-  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-
-!
-! variables for temperature calculation [see Winton (1999) section II.A.]
-! note:  here equations are multiplied by hi to improve thin ice accuracy
-!
-  real, dimension(0:NkIce) :: temp_est   ! An estimated snow and ice temperature [C ~> degC].
-  real, dimension(0:NkIce) :: temp_IC    ! The temperatures of the snow and ice based on the initial
-                                         ! enthalpy [C ~> degC].
-  real, dimension(NkIce) :: tfi  ! The ice freezing temperatures [C ~> degC].
-  real :: mL_ice    ! The mass-per-unit-area of each ice layer [R Z ~> kg m-2]
-  real :: mL_snow   ! The mass-per-unit-area of each snow layer [R Z ~> kg m-2]
-  real :: kk        ! The conductive thermal coupling coefficient between adjacent
-                    ! ice sublayers [Q R Z T-1 C-1 ~> W m-2 degC-1].
-  real :: k10       ! The conductive thermal coupling coefficient between the
-                    ! snow and the topmost ice sublayer [Q R Z T-1 C-1 ~> W m-2 degC-1].
-  real :: k0a       ! The implicit conductive thermal coupling coefficient between
-                    ! the snow and the skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
-  real :: k0skin    ! The conductive thermal coupling coefficient between the
-                    ! snow and the skin temperature [Q R Z T-1 C-1 ~> W m-2 degC-1].
-  real :: b_denom_1 ! A temporary variable [Q R Z C-1 ~> J m-2 degC-1]
-  real :: I_bb      ! The inverse of the tridiagonal pivot [C Q-1 R-1 Z-1 ~> degC m2 J-1]
-  real :: comp_rat  ! The complement of cc_bb, going from 0 to 1.
-  real :: tsf       ! The surface freezing temperature [C ~> degC].
-  real :: k0a_x_ta  ! The surface heat flux times normalized by 1 + the ratio
-                    ! of the temperature feedback on surface fluces to the
-                    ! skin-snow conductive sensitivity [Q R Z T-1 ~> W m-2].
-  real, dimension(0:NkIce+1) :: cc ! Interfacial coupling coefficients [Q R Z C-1 ~> J m-2 degC-1].
-  real, dimension(0:NkIce) :: bb   ! Effective layer heat capacities [Q R Z C-1 ~> J m-2 degC-1].
-  real :: hsnow_eff  ! The effective thickness of the snow layer [Z ~> m].
-  real :: hL_ice_eff ! The effective thickness of each ice sub-layer [Z ~> m].
-  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
-  real :: rho_snow ! The nominal density of snow [R ~> kg m-3].
-  real :: Cp_ice   ! The heat capacity of ice [Q C-1 ~> J kg-1 degC-1].
-  real :: Cp_brine ! The heat capacity of liquid water in the brine pockets,
-                   ! [Q C-1 ~> J kg-1 degC-1].
-  real :: Lat_fus  ! The latent heat of fusion [Q ~> J kg-1].
-  integer :: k
-
-  temp_IC(0) = temp_from_En_S(enthalpy(0), 0.0, ITV)
-  call temp_from_Enth_S(enthalpy(1:), sice(1:), temp_IC(1:), ITV)
-
-  call get_SIS2_thermo_coefs(ITV, rho_ice=rho_ice, rho_snow=rho_snow, &
-                             Cp_Ice=Cp_ice, Latent_Fusion=Lat_fus, Cp_Brine=Cp_Brine)
-
-  mL_ice = m_ice / NkIce   ! ice mass per unit area of each layer
-  mL_snow = m_snow         ! snow mass per unit area (in kg m-2).
-  call calculate_T_Freeze(sice, tfi, ITV)    ! freezing temperature of ice layers
-
-  ! Set the effective thickness of each ice and snow layer, limited to avoid
-  ! instabilities for thin layers.
-  hL_ice_eff = max(mL_ice / rho_ice, CS%H_lo_lim)
-  hsnow_eff = mL_snow / rho_snow + max(1.0e-35*US%m_to_Z, 1.0e-20*CS%H_lo_lim)
-
-  ! Set the surface freezing temperature
-  tsf = tfi(1) ; if (mL_snow>0.0) tsf = 0.0
-
-  if ((dSF_dT*hsnow_eff + 2.0*CS%Ks) <= 0.0) then
-    ! This is an unstable forcing situation, with the skin temperature effectively
-    ! decoupled from the temperature of the snow layer, so the skin temperature
-    ! will either go cold or warm.
-    if (SF_0 <= 0.0) then ! The surface is being heated from above.
-      tsurf = tsf
-    else
-      tsurf = tsf - 40.0*US%degC_to_C ! ### CS%dT_cold
-    endif
-    return
-  endif
-
-  kk = CS%Ki / hL_ice_eff       ! full ice layer conductivity
-  k10 = 2.0*(CS%Ks*CS%Ki) / (hL_ice_eff*CS%Ks + hsnow_eff*CS%Ki) ! coupling ice layer 1 to snow
-  k0a = (CS%Ks*dSF_dT) / (0.5*dSF_dT*hsnow_eff + CS%Ks)   ! coupling snow to "air"
-  k0skin = 2.0*CS%Ks / hsnow_eff
-  k0a_x_ta = (CS%Ks*SF_0) / (0.5*dSF_dT*hsnow_eff + CS%Ks) ! coupling times "air" temperature
-
-  !   Estimate the surface temperature with a linearized fully implicit
-  ! treatment of layer coupling.
-
-  ! Determine the effective layer heat capacities.
-  !   bb = dheat/dTemp, as derived from a linearization of the enthalpy equation
-  !     but using the value for ice near the melt point if temp_IC is above T_fr.
-  bb(0) = mL_snow* Cp_ice
-  do k=1,NkIce   ! Store the heat capacity term in bb.
-    if (tfi(k) >= 0.0) then ! This is pure ice.
-      bb(k) = mL_ice * Cp_ice
-    elseif (temp_IC(k) < tfi(k)) then
-      bb(k) = mL_ice * (Cp_ice - (tfi(k) / temp_IC(k)**2) * &
-                        (Lat_Fus - (Cp_brine-Cp_ice) * temp_IC(k)) )
-      ! Or more generally:
-      !  S_Sf = sice(k) / calculate_S_freeze(temp_IC(k))
-      ! bb(k) = mL_ice * (Cp_ice + dSf_dT*Lat_fus + S_Sf * &
-      !                   ((Cp_brine-Cp_ice))
-    else ! Use the value when temp_IC = tfi.
-      bb(k) = mL_ice * (Cp_brine - Lat_fus / tfi(k))
-    endif
-  enddo
-
-  ! The following expressions could be modified to permit there to be
-  ! variable diffusivities in the ice/brine mixtures.
-  cc(0) = k0a*dtt  ! Atmosphere-snow coupling
-  cc(1) = k10*dtt  ! Snow-ice coupling
-  do k=2,NkIce ; cc(k) = kk*dtt ; enddo
-  cc(NkIce+1) = 2*kk*dtt ! bottom of ice coupling with ocean at freezing point.
-
-  !   This is a version of a tridiagonal solver where the relationship between
-  ! the diagonal elements and the coupling between layers has been used to
-  ! ensure that there are no differences ever taken, so there will be minimal
-  ! truncation errors.  This closely follows schemes that have previously been
-  ! found to work very well in GOLD and MOM6.
-
-  ! Go up the ice column; there will be no need for the downward pass of the
-  ! tridiagonal solver, since this routine only outputs the skin temperature.
-  b_denom_1 = (bb(NkIce) + cc(NkIce+1))
-  I_bb = 1.0 / (b_denom_1 + cc(NkIce))
-  temp_est(NkIce) = ( (sol(NkIce)*dtt + bb(NkIce)*temp_IC(NkIce)) + &
-                      cc(NkIce+1)*tfw ) * I_bb
-  comp_rat = b_denom_1 * I_bb
-
-  do k=NkIce-1,1,-1
-    b_denom_1 = bb(k) + comp_rat*cc(k+1)
-    I_bb =  1.0 / (b_denom_1 + cc(k))
-    temp_est(k) = ((sol(k)*dtt + bb(k)*temp_IC(k)) + cc(k+1)*temp_est(k+1)) * I_bb
-
-    comp_rat = b_denom_1 * I_bb ! 1.0 >= comp_rat >= 0.0
-  end do
-
-  I_bb =  1.0 / ((bb(0) + comp_rat*cc(1)) + cc(0))
-  !   This is a complete calculation of temp_est(0), assuming that the upward surface
-  ! flux is given by SF_0 + dSF_dT*tsurf, with tsurf estimated in the following line
-  ! as part of this calculation.
-  temp_est(0) = (((sol(0)*dtt + bb(0)*temp_IC(0)) - k0a_x_ta*dtt) + &
-                   cc(1)*temp_est(1)) * I_bb
-
-  ! Diagnose the surface skin temperature by matching the diffusive fluxes in
-  ! the snow with the atmospheric fluxes.  I.e. solve the following for tsurf_est:
-  !  (SF_0 + dSF_dT*tsurf_est) = k0skin * (temp_est(0) - tsurf_est)
-  tsurf = min(tsf, (k0skin*temp_est(0) - SF_0) / (dSF_dT + k0skin))
-
-end subroutine estimate_tsurf
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> laytemp_SIS2 does an implicit calculation of new layer temperature
@@ -1789,22 +1623,6 @@ subroutine calculate_T_Freeze(S, T_Freeze, ITV)
 
 end subroutine calculate_T_Freeze
 
-!### The following routine appears never to be used.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> enthalpy_from_TS sets a column of enthalpies from temperature and salinity.
-subroutine enthalpy_from_TS(T, S, enthalpy, ITV)
-  real, dimension(:), intent(in) :: T  !< The ice temperature [C ~> degC]
-  real, dimension(:), intent(in) :: S  !< The ice bulk salinity [S ~> gSalt kg-1]
-  real, dimension(:), intent(out) :: enthalpy !< The ice enthalpy, in enthalpy units [Q ~> J kg-1]
-  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-
-  integer :: k, nk_ice
-  nk_ice = size(T)
-
-  do k=1,nk_ice ; enthalpy(k) = enth_from_TS(T(k), S(k), ITV) ; enddo
-
-end subroutine enthalpy_from_TS
-
 !> enth_from_TS returns an ice enthalpy given temperature and salinity.
 function enth_from_TS(Temp, Saln, ITV) result(enthalpy)
   real, intent(in)  :: Temp  !< The ice temperature [C ~> degC]
@@ -1860,19 +1678,6 @@ function enthalpy_liquid(T, S, ITV)
   enthalpy_liquid = ITV%enth_liq_0 + ITV%Cp_Water*T
 
 end function enthalpy_liquid
-
-!### The following routine appears never to be used.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> enth_melt returns the enthalpy change associated with melting water of
-!! a given temperature (T) and salinity (S), in enthalpy units [Q ~> J kg-1].
-function enth_melt(T, S, ITV) result (emelt)
-  real, intent(in)  :: T  !< The ice temperature [C ~> degC]
-  real, intent(in)  :: S  !< The ice bulk salinity [S ~> gSalt kg-1]
-  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real             :: emelt !< The enthalpy change needed to melt the frozen water [Q ~> J kg-1]
-
-  emelt = enthalpy_liquid_freeze(S, ITV) - enth_from_TS(T, S, ITV)
-end function enth_melt
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> latent_sublimation returns the latent heat of sublimation as vapor at 0 degC
@@ -2109,51 +1914,6 @@ function Temp_from_En_S(En, Saln, ITV) result(Temp)
   endif
 
 end function Temp_from_En_S
-
-!### The following routine appears never to be used.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> e_to_melt_TS - return the energy needed to melt a given snow/ice
-!!      configuration [J kg-1].
-function e_to_melt_TS(Temp, Saln, ITV)
-  real, intent(in) :: Temp  !< The ice temperature [C ~> degC]
-  real, intent(in) :: Saln  !< The ice bulk salinity [S ~> gSalt kg-1]
-  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real :: e_to_melt_TS   !< The energy required to melt this mixture of ice and brine
-                         !! and warm it to its bulk freezing temperature [J kg-1].
-
-  real :: e_to_melt  ! The energy required to melt this mixture of ice and brine
-                     ! and warm it to its bulk freezing temperature [Q ~> J kg-1].
-  real :: T_fr       ! The freezing temperature [C ~> degC].
-  T_fr = ITV%dTf_dS*Saln
-
-  if (Temp >= T_Fr) then ! This layer is already melted and has excess heat.
-    e_to_melt = ITV%Cp_Water * (-Temp + T_Fr)
-  elseif (ITV%Cp_Ice == ITV%Cp_brine) then
-    e_to_melt = (ITV%Lat_Fus - ITV%Cp_ice*Temp) * (1.0 - T_Fr/Temp)
-            ! =  ITV%Lat_Fus * (1.0 - T_Fr/Temp) + ITV%Cp_ice * (T_Fr - Temp)
-  else
-    e_to_melt = ITV%Lat_Fus * (1.0 - T_fr/Temp) + (ITV%Cp_Ice * (T_Fr - Temp) + &
-                   (ITV%Cp_Brine - ITV%Cp_Ice) * (T_fr*log(T_fr/Temp)))
-  endif
-  e_to_melt_TS = ITV%Q_to_J_kg*e_to_melt
-
-end function e_to_melt_TS
-
-!### The following routine appears never to be used.
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> energy_melt_enthS returns the energy needed to melt a given snow/ice
-!!      configuration [J kg-1].
-function energy_melt_enthS(En, S, ITV) result(e_to_melt)
-  real, intent(in) :: En !< The ice enthalpy, in enthalpy units [Q ~> J kg-1]
-  real, intent(in) :: S  !< The ice bulk salinity [S ~> gSalt kg-1]
-  type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-
-  real :: e_to_melt  !< The energy required to melt this mixture of ice and brine
-                     !! and warm it to its bulk freezing temperature [J kg-1].
-
-  e_to_melt = ITV%Q_to_J_kg * (enthalpy_liquid_freeze(S, ITV) - En)
-
-end function energy_melt_enthS
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> energy_0degC returns the energy needed to melt a given snow/ice
