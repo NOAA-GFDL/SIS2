@@ -131,14 +131,16 @@ type, public :: SIS_C_dyn_CS ; private
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
-  integer :: ncat_b           ! number of bathymetry categories
-  integer :: ncat_i           ! number of ice thickness categories (log-normal)
+  integer :: ncat_b           !< number of bathymetry categories
+  integer :: ncat_i           !< number of ice thickness categories (log-normal)
+  logical :: adjust_depth = .false. !< Whether or not to make an adjustment to the depth seen by landfast ice code
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: sigma_b=>NULL()   !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: sigma_b=>NULL()    !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: depth_adj=>NULL()  !< !< Bottom depth adjustment [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
@@ -184,7 +186,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_C_dyn" ! This module's name.
-  character(len=200) :: filename, h2_file, inputdir
+  character(len=200) :: filename, h2_file, hadj_file, inputdir
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -332,6 +334,11 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
     call get_param(param_file, mdl, "LEMIEUX_U0", CS%lemieux_u0, &
                  "Velocity for Lemieux landfast ice.", &
                  units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
+    call get_param(param_file, mdl, "H_ADJ_FILE", hadj_file, &
+                 "The path to the file containing an adjustment to "//&
+                 "the bottom depth for the landfast ice.")
+    call get_param(param_file, mdl, "ADJUST_DEPTH", CS%adjust_depth, &
+                 "If true, read in a depth adjustment for landfast ice.", default=.false.)
 
     allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed), source=0.0)
     allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB), source=0.0)
@@ -377,6 +384,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
     call get_param(param_file, mdl, "BASAL_STRESS_NCAT_I", CS%ncat_i, &
                  "Number of ice thickness categories in landfast ice computation.", &
                  default=100)
+  endif
+  if (CS%adjust_depth) then
+    call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
+    filename = trim(inputdir) // "/" // trim(hadj_file)
+    allocate(CS%depth_adj(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+    call MOM_read_data(filename, 'depth_adj', CS%depth_adj, G%domain, scale=US%m_to_Z)
   endif
 
 !  if (len_trim(dirs%output_directory) > 0) then
@@ -1802,6 +1815,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
   do j=jsc,jec
     do I=isc-1,iec
       hw_u = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i+1,j) + sea_lev(i+1,j))
+      if (CS%adjust_depth) &
+            hw_u = hw_u + 0.5*(CS%depth_adj(i,j) + CS%depth_adj(i+1,j))
       ci_u = max(ci(i,j), ci(i+1,j))
       if (ci_u > 0.01 .and. G%mask2dCu(I,j) > 0.0 .and. hw_u < CS%lemieux_threshold_hw) then
         h_u = max(mi(i,j), mi(i+1,j))/CS%Rho_ice
@@ -1823,6 +1838,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
   do J=jsc-1,jec
     do i=isc,iec
       hw_v = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i,j+1) + sea_lev(i,j+1))
+      if (CS%adjust_depth) &
+            hw_v = hw_v + 0.5*(CS%depth_adj(i,j) + CS%depth_adj(i,j+1))
       ci_v = max(ci(i,j), ci(i,j+1))
       if (ci_v > 0.01 .and. G%mask2dCv(i,J) > 0.0 .and. hw_v < CS%lemieux_threshold_hw) then
         h_v = max(mi(i,j), mi(i,j+1))/CS%Rho_ice
@@ -1941,6 +1958,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
           sea_lev(i,j) < CS%basal_stress_max_depth) then
 
         mu_b = G%bathyT(i,j) + sea_lev(i,j)         ! (hwater) mean of PDF (normal dist) bathymetry
+        if (CS%adjust_depth) &
+              mu_b = mu_b + CS%depth_adj(i,j)
         wid_i = CS%basal_stress_max_depth/CS%ncat_i    ! width of ice categories
         wid_b = 6.0*CS%sigma_b(i,j)/CS%ncat_b          ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
 
