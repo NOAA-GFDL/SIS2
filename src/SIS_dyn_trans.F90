@@ -423,7 +423,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           !$OMP parallel do default(shared)
           do j=jsd,jed ; do k=1,ncat ; do i=isd,ied
             misp_sum(i,j) = misp_sum(i,j) + IST%part_size(i,j,k) * &
-                            (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k))
+                            ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_pond_ice(i,j,k))
             mi_sum(i,j) = mi_sum(i,j) + IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
             ice_cover(i,j) = ice_cover(i,j) + IST%part_size(i,j,k)
           enddo ; enddo ; enddo
@@ -865,7 +865,7 @@ subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, US, IG, CS)
   !$OMP parallel do default(shared)
   do j=jsd,jed ; do k=1,IG%CatIce ; do i=isd,ied
     DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + IST%part_size(i,j,k) * &
-                    ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)))
+                    ((IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + IST%mH_pond_ice(i,j,k))
     DS2d%mi_sum(i,j) = DS2d%mi_sum(i,j) + (IST%mH_ice(i,j,k))  * IST%part_size(i,j,k)
     DS2d%ice_cover(i,j) = DS2d%ice_cover(i,j) + IST%part_size(i,j,k)
   enddo ; enddo ; enddo

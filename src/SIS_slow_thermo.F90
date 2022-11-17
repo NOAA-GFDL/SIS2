@@ -456,7 +456,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                               message="      Post_thermo A", check_column=.true.)
-  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%part_size, &
+  call adjust_ice_categories(IST%mH_ice, IST%mH_snow, IST%mH_pond, IST%mH_pond_ice, IST%part_size, &
                              IST%TrReg, G, IG, CS%SIS_transport_CSp) !Niki: add ridging?
 
   if (CS%column_check) &
@@ -918,8 +918,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       do m=1,NkIce ; m_lay(m) = IST%mH_ice(i,j,k) * I_Nk ; enddo
 
       ! mw/new - melt pond size is now adjusted here (rain ignored in resize, for now)
-      call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), m_lay, &
-                   enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*dt_slow, &
+      call ice_resize_SIS2(1-IST%part_size(i,j,0), IST%mH_pond(i,j,k), IST%mH_pond_ice(i,j,k), &
+                   m_lay, enthalpy, S_col, Salin, FIA%fprec_top(i,j,k)*dt_slow, &
                    FIA%lprec_top(i,j,k)*dt_slow, FIA%evap_top(i,j,k)*dt_slow, &
                    FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, npassive, TrLay, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
@@ -979,7 +979,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                 + h2o_ocn_to_ice - h2o_ice_to_ocn &
                 - (dt_slow*FIA%evap_top(i,j,k) - evap_from_ocn)
 
-        mass_here = IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k) + IST%mH_ice(i,j,k)
+        mass_here = (IST%mH_snow(i,j,k) + IST%mH_pond(i,j,k)) + &
+                     (IST%mH_pond_ice(i,j,k) + IST%mH_ice(i,j,k))
         enth_here = IST%mH_snow(i,j,k) * IST%enth_snow(i,j,k,1)
         do m=1,NkIce
           enth_here = enth_here + (IST%mH_ice(i,j,k)*I_Nk) * IST%enth_ice(i,j,k,m)
