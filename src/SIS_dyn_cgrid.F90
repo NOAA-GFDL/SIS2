@@ -1975,6 +1975,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         enddo
         x_kmax = min(cut, x_kmax)
 
+        sigma_i = max(sigma_i, CS%puny)
         g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
                  (x_k(:) * sigma_i * sqrt(2.0 * pi))
 
