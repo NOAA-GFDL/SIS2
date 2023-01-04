@@ -219,12 +219,12 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
     ! Accumulated diagnostics
     CAS%dt_sum = CAS%dt_sum + dt_adv
     if (allocated(CAS%uh_sum)) then ; do k=1,nCat ; do j=jsc,jec ; do I=isc-1,iec
-      CAS%uh_sum(I,j) = CAS%uh_sum(I,j) + dt_adv * ((uh_pond(I,j,k) + uh_snow(I,j,k)) + uh_ice(I,j,k) + \
-                          uh_pond_ice(I,j,k))
+      CAS%uh_sum(I,j) = CAS%uh_sum(I,j) + dt_adv * ((uh_pond(I,j,k) + uh_pond_ice(I,j,k)) + (uh_ice(I,j,k) + &
+                          uh_snow(I,j,k)))
     enddo ; enddo ; enddo ; endif
     if (allocated(CAS%vh_sum)) then ; do k=1,nCat ; do J=jsc-1,jec ; do i=isc,iec
-      CAS%vh_sum(i,J) = CAS%vh_sum(i,J) + dt_adv * ((vh_pond(i,J,k) + vh_snow(i,J,k)) + vh_ice(i,J,k) + \
-                          vh_pond_ice(i,J,k))
+      CAS%vh_sum(i,J) = CAS%vh_sum(i,J) + dt_adv * ((vh_pond(i,J,k) + vh_pond_ice(i,J,k)) + (vh_ice(i,J,k) + &
+                          vh_snow(i,J,k)))
     enddo ; enddo ; enddo ; endif
 
     if (CS%bounds_check) then
