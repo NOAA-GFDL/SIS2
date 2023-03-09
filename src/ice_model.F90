@@ -1587,10 +1587,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! in Ice to determine whether this is a fast or slow
                                               !! ice processor or both.  SIS2 will now throw a fatal
                                               !! error if this is present and true.
-  logical,   optional, intent(in)    :: Concurrent_atm
-  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+  logical,   optional, intent(in)    :: Concurrent_atm!< If present and true, use sea ice model
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
+                                              !! slow sea-ice time stepping in the ocean model.
+  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+                                              !! settings appropriate for embedding the
                                               !! slow sea-ice time stepping in the ocean model.
   type(coupler_1d_bc_type), &
              optional, intent(in)     :: gas_fluxes !< If present, this type describes the
