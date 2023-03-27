@@ -128,7 +128,7 @@ public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: update_ice_atm_deposition_flux
-public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
+public :: unpack_ocean_ice_boundary, unpack_ocn_ice_bdry, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
