@@ -1576,7 +1576,7 @@ end subroutine add_diurnal_sw
 !> ice_model_init - initializes ice model data, parameters and diagnostics. It
 !! might operate on the fast ice processors, the slow ice processors or both.
 subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, &
-                          Verona_coupler, Concurrent_ice, gas_fluxes, gas_fields_ocn )
+                          Verona_coupler, Concurrent_atm, Concurrent_ice, gas_fluxes, gas_fields_ocn )
 
   type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
   type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
@@ -1587,9 +1587,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! in Ice to determine whether this is a fast or slow
                                               !! ice processor or both.  SIS2 will now throw a fatal
                                               !! error if this is present and true.
-  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+  logical,   optional, intent(in)    :: Concurrent_atm!< If present and true, use sea ice model
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
+                                              !! slow sea-ice time stepping in the ocean model.
+  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+                                              !! settings appropriate for embedding the
                                               !! slow sea-ice time stepping in the ocean model.
   type(coupler_1d_bc_type), &
              optional, intent(in)     :: gas_fluxes !< If present, this type describes the
@@ -1737,12 +1740,15 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   Verona = .false. ; if (present(Verona_coupler)) Verona = Verona_coupler
   if (Verona) call SIS_error(FATAL, "SIS2 no longer works with pre-Warsaw couplers.")
   fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
-  Concurrent = .false. ; if (present(Concurrent_ice)) Concurrent = Concurrent_ice
+  Concurrent = .false. ; if (present(Concurrent_atm)) Concurrent = Concurrent_atm
 
   ! Open the parameter file.
-  if (slow_ice_PE) then
+  if (fast_ice_PE.eqv.slow_ice_PE) then
+    call Get_SIS_Input(param_file, dirs, check_params=.true., component='SIS')  
+    call Get_SIS_Input(param_file, dirs, check_params=.false., component='SIS_fast')
+  elseif (slow_ice_PE) then
     call Get_SIS_Input(param_file, dirs, check_params=.true., component='SIS')
-  else
+  elseif (fast_ice_PE) then
     call Get_SIS_Input(param_file, dirs, check_params=.false., component='SIS_fast')
   endif
 
@@ -1938,7 +1944,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, "MOM", "REDO_FAST_ICE_UPDATE", redo_fast_update, &
                  "If true, recalculate the thermal updates from the fast "//&
                  "dynamics on the slowly evolving ice state, rather than "//&
-                 "copying over the slow ice state to the fast ice state.", default=Concurrent)
+                 "copying over the slow ice state to the fast ice state.", default=Concurrent_ice)
 
   call get_param(param_file, mdl, "NUDGE_SEA_ICE", nudge_sea_ice, &
                  "If true, constrain the sea ice concentrations using observations.", &
@@ -2190,6 +2196,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
+    ! if this is just a fast ice PE then read restart filename
+    if (.not.associated(Ice%Ice_restart)) &
+        call SIS_restart_init(Ice%Ice_restart, restart_file, sGD, param_file)
+
     if (split_restart_files) then
       if (.not.associated(Ice%Ice_fast_restart)) &
         call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD, param_file)
@@ -2221,7 +2231,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
     Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
 
-    if (Concurrent) then
+    if (Concurrent_ice) then
       call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
                        fGD%mpp_domain, US, Ice%Ice_fast_restart, fast_rest_file)
     endif
@@ -2497,7 +2507,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Read the fast restart file, if it exists and this is indicated by the value of dirs%input_filename.
       new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, fG, Ice%Ice_fast_restart)
       if (.not.new_sim) then
-        call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, fG)
+        call restore_SIS_state(Ice%Ice_fast_restart, dirs%restart_input_dir, dirs%input_filename, fG)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
         init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
@@ -2508,7 +2518,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
 
-    if (Concurrent) then
+    if (Concurrent_ice) then
       call rescale_fast_to_slow_restart_fields(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
                                                Ice%fCS%G, US, Ice%fCS%IG)
     endif
@@ -2564,7 +2574,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
     endif
   endif ! fast_ice_PE
-
+   
   call fix_restart_unit_scaling(US, unscaled=.true.)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
@@ -2588,6 +2598,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   else
     Ice%xtype = REDIST
   endif
+  
+  if (fast_ice_PE .eqv. slow_ice_PE) then
+    call exchange_fast_to_slow_ice(Ice)
+  endif 
 
   if (Ice%shared_slow_fast_PEs) then
     iceClock = cpu_clock_id( 'Ice', grain=CLOCK_COMPONENT )
