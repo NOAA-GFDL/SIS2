@@ -1722,7 +1722,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
                               ! categories after initialization.
   logical :: Verona
-  logical :: Concurrent
+  logical :: Concurrent, Concurrent_ice
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
