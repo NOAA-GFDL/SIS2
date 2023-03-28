@@ -155,12 +155,12 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, OIB,&
                                                  !! fields going from the ice to the ocean
                                                  !! The arrays of this type are intent out; they are
                                                  !! used externally for stocks and other diagnostics.
+  type(ocean_ice_boundary_type), optional, &
+                          intent(inout) :: OIB !< A structure containing information about
+                                                 !! the ocean that is being shared wth the sea-ice.
   type(time_type),         intent(in)    :: time_start_update  !< The time at the beginning of the update step
   type(time_type),         intent(in)    :: coupling_time_step !< The amount of time over which to advance
                                                                !! the ocean and ice
-
-  type(ocean_ice_boundary_type), intent(inout) :: OIB !< A structure containing information about
-                                                 !! the ocean that is being shared wth the sea-ice.
   ! Local variables
   type(time_type) :: time_start_step ! The start time within an iterative update cycle.
   real :: dt_coupling        ! The time step of the thermodynamic update calls [s].
