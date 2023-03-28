@@ -1576,7 +1576,7 @@ end subroutine add_diurnal_sw
 !> ice_model_init - initializes ice model data, parameters and diagnostics. It
 !! might operate on the fast ice processors, the slow ice processors or both.
 subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, &
-                          Verona_coupler, Concurrent_atm, Concurrent_ice, gas_fluxes, gas_fields_ocn )
+                          Verona_coupler, Concurrent_atm, Concurrent_ice_in, gas_fluxes, gas_fields_ocn )
 
   type(ice_data_type), intent(inout) :: Ice            !< The ice data type that is being initialized.
   type(time_type)    , intent(in)    :: Time_Init      !< The starting time of the model integration
@@ -1591,7 +1591,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                               !! settings appropriate for running the atmosphere and
                                               !! slow ice simultaneously, including embedding the
                                               !! slow sea-ice time stepping in the ocean model.
-  logical,   optional, intent(in)    :: Concurrent_ice !< If present and true, use sea ice model
+  logical,   optional, intent(in)    :: Concurrent_ice_in !< If present and true, use sea ice model
                                               !! settings appropriate for embedding the
                                               !! slow sea-ice time stepping in the ocean model.
   type(coupler_1d_bc_type), &
@@ -1741,6 +1741,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   if (Verona) call SIS_error(FATAL, "SIS2 no longer works with pre-Warsaw couplers.")
   fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
   Concurrent = .false. ; if (present(Concurrent_atm)) Concurrent = Concurrent_atm
+  Concurrent_ice = .false. ;  if (present(Concurrent_ice_in)) Concurrent_ice = Concurrent_ice_in
 
   ! Open the parameter file.
   if (fast_ice_PE.eqv.slow_ice_PE) then

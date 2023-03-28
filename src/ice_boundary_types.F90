@@ -32,10 +32,6 @@ type ocean_ice_boundary_type
                          !! determined by stagger [m s-1].
     v      => NULL(), &  !< The y-direction ocean velocity at a position
                          !! determined by stagger [m s-1].
-    u_sym  => NULL(), &  !< The x-direction ocean velocity at a position
-                         !! determined by stagger -symmetric [m s-1].
-    v_sym  => NULL(), &  !< The y-direction ocean velocity at a position
-                         !! determined by stagger -symmetric [m s-1].
     t      => NULL(), &  !< The ocean's surface temperature [Kelvin].
     s      => NULL(), &  !< The ocean's surface salinity [gSalt kg-1].
     frazil => NULL(), &  !< The frazil heat rejected by the ocean [J m-2].
@@ -43,7 +39,6 @@ type ocean_ice_boundary_type
                          !! pressure that the ocean allows to be expressed [m].
   real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
-  logical   :: use_oib_sym = .false.   !< A flag ti indicate whether to use [uv]_sym
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and is used by coupler
   type(coupler_2d_bc_type) :: fields !< An array of fields used for additional tracers
