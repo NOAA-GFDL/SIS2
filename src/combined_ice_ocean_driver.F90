@@ -184,6 +184,12 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, OIB,&
                     "ocean_state_type structure. ocean_model_init must be "//  &
                     "called first to allocate this structure.")
   endif
+  if (.not.associated(OIB)) then
+    call MOM_error(FATAL, "update_ocean_model called with an unassociated "// &
+                    "ocean_ice_boundary. This type is required to properly "//  &
+                    "couple the sea-ice and ocean. It should be added where "// &
+                    "this routine is called in coupler_main.")
+  endif
 
   if (.not.(Ocean_sfc%is_ocean_pe .and. Ice%slow_ice_pe)) call MOM_error(FATAL, &
         "update_slow_ice_and_ocean can only be called from PEs that handle both "//&
