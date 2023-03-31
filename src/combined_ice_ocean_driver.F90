@@ -184,7 +184,7 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, OIB,&
                     "ocean_state_type structure. ocean_model_init must be "//  &
                     "called first to allocate this structure.")
   endif
-  if (.not.associated(OIB)) then
+  if (.not.present(OIB)) then
     call MOM_error(FATAL, "update_ocean_model called with an unassociated "// &
                     "ocean_ice_boundary. This type is required to properly "//  &
                     "couple the sea-ice and ocean. It should be added where "// &
@@ -383,12 +383,12 @@ subroutine direct_flux_ocn_to_OIB(Time, Ocean, OIB, Ice, do_thermo)
    if( ASSOCIATED(OIB%t)     )OIB%t = Ocean%t_surf
    if( ASSOCIATED(OIB%s)     )OIB%s = Ocean%s_surf
    if( ASSOCIATED(OIB%frazil) ) then
-   if(do_area_weighted_flux) then
-     OIB%frazil = Ocean%frazil * Ocean%area
-     call divide_by_area(OIB%frazil, Ice%area)
-   else
+!   if(do_area_weighted_flux) then
+!     OIB%frazil = Ocean%frazil * Ocean%area
+!     call divide_by_area(OIB%frazil, Ice%area)
+!   else
      OIB%frazil = Ocean%frazil
-   endif
+!   endif
    endif                                              
   endif           
   
