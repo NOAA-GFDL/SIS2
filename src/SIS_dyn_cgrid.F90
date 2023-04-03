@@ -21,7 +21,7 @@ use MOM_file_parser,   only : get_param, log_param, read_param, log_version, par
 use MOM_domains,       only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_domains,       only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,     only : hor_index_type
-use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use MOM_io,            only : open_ASCII_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use MOM_io,            only : MOM_read_data
 use MOM_time_manager,  only : time_type, real_to_time, operator(+), operator(-)
 use MOM_time_manager,  only : set_date, get_time, get_date
@@ -2171,8 +2171,8 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   ! Open up the file for output if this is the first call.
     if (CS%u_file < 0) then
       if (len_trim(CS%u_trunc_file) < 1) return
-      call open_file(CS%u_file, trim(CS%u_trunc_file), action=APPEND_FILE, &
-                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      call open_ASCII_file(CS%u_file, trim(CS%u_trunc_file), &
+          action=APPEND_FILE)
       if (CS%u_file < 0) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%u_trunc_file)//'.')
         return
@@ -2247,8 +2247,8 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   ! Open up the file for output if this is the first call.
     if (CS%v_file < 0) then
       if (len_trim(CS%v_trunc_file) < 1) return
-      call open_file(CS%v_file, trim(CS%v_trunc_file), action=APPEND_FILE, &
-                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      call open_ASCII_file(CS%v_file, trim(CS%v_trunc_file), &
+          action=APPEND_FILE)
       if (CS%v_file < 0) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%v_trunc_file)//'.')
         return
