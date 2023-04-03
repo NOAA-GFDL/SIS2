@@ -336,7 +336,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                  units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
     call get_param(param_file, mdl, "H_ADJ_FILE", hadj_file, &
                  "The path to the file containing an adjustment to "//&
-                 "the bottom depth for the landfast ice.")
+                 "the bottom depth for the landfast ice.", default="")
     call get_param(param_file, mdl, "ADJUST_DEPTH", CS%adjust_depth, &
                  "If true, read in a depth adjustment for landfast ice.", default=.false.)
 
@@ -1870,8 +1870,9 @@ end subroutine basal_stress_coeff_C
 !! a normal distribution with sigma_b = 2.5d0. An improvement would
 !! be to provide the distribution based on high resolution data.
 !!
-!! Dupont, F. Dumont, D., Lemieux, J.F., Dumas-Lefebvre, E., Caya, A.
-!! in prep.
+!! Dupont, F., D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, A. Caya (2022).
+!! A probabilistic seabed-ice keel interaction model, The Cryosphere, 16,
+!! 1963-1977.
 !!
 !! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
 !!
@@ -1971,17 +1972,14 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         do n =1, ncat
           v_i = v_i + vcat(n)**2 / (max(acat(n), CS%puny))
         enddo
-        v_i = v_i - m_i**2
+        v_i = max( (v_i - m_i**2), CS%puny )
 
         ! parameters for the log-normal
         mu_i    = log(m_i/(CS%onemeter * sqrt(1.0 + v_i/m_i**2)))
-        sigma_i = 0.0
-        if (v_i > 0.0) then
-          sigma_i = max(sqrt(log(1.0 + v_i/m_i**2)), CS%puny)
-        endif
+        sigma_i = max(sqrt(log(1.0 + v_i/m_i**2)), CS%puny)
 
         ! max thickness associated with percentile of log-normal PDF
-        ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al.)
+        ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al. 2022)
 
         x_kmax = CS%onemeter * exp(mu_i + sqrt(2.0*sigma_i)*CS%basal_stress_cutoff)
 

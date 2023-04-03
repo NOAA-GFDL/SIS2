@@ -1,4 +1,4 @@
-!> A full implementation of Icepack ponds parameterizations
+!> A full implementation of Icepack ponds parameterizations (to come)
 module ice_ponds_mod
 
 ! This file is a part of SIS2. See LICENSE.md for the license.
@@ -23,7 +23,6 @@ use ice_grid,          only : ice_grid_type
 !Icepack modules
 use icepack_kinds
 use icepack_itd, only: icepack_init_itd, cleanup_itd
-use icepack_meltpond_cesm, only: compute_ponds_cesm
 use icepack_meltpond_lvl,  only: compute_ponds_lvl
 use icepack_meltpond_topo, only: compute_ponds_topo
 use icepack_warnings, only: icepack_warnings_flush, icepack_warnings_aborted, &
@@ -37,19 +36,20 @@ implicit none ; private
 
 public :: ice_ponds, ice_ponds_init
 
+!> Ice ponds control structure
 type, public :: ice_ponds_CS ; private
   logical :: &
-  cesm_pond = .false., &       !< .true. = deprecated CESM ponds
   level_pond = .false., &      !< .true. = preferred ponds on level ice
   topo_pond = .false.          !< .true. = topographic ponds
   real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
-                               !! ridging scheme. This is defaulted to zero, but a reasonable
+                               !! ponding scheme. This is defaulted to zero, but a reasonable
                                !! value might be 10^-26 which for a km square grid cell
                                !! would equate to an Angstrom scale ice patch.
 end type ice_ponds_CS
 
 contains
 
+!> Initialize the ice ponds
 subroutine ice_ponds_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
@@ -62,12 +62,10 @@ subroutine ice_ponds_init(G, IG, PF, CS, US)
   character(len=40) :: mdl = "ice_ponds_init" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
-! call get_param(PF, mdl, "NEW_RIDGE_PARTICIPATION", CS%new_rdg_partic, &
-!                "Participation function used in ponds, .false. for Thorndike et al. 1975 "//&
-!                ".true. for Lipscomb et al. 2007", default=.false.)
-! call get_param(PF, mdl, "NEW_RIDGE_REDISTRIBUTION", CS%new_rdg_redist, &
-!                "Redistribution function used in ponds, .false. for Hibler 1980 "//&
-!                ".true. for Lipscomb et al. 2007", default=.false.)
+  call get_param(PF, mdl, "MELTPOND_LEVEL", CS%level_pond, &
+                 "Use level melt ponds", default=.false.)
+  call get_param(PF, mdl, "MELTPOND_TOPO", CS%topo_pond, &
+                 "Use topographic melt ponds", default=.false.)
 
   ncat = IG%CatIce ! The number of sea-ice thickness categories
   nilyr = IG%NkIce ! The number of ice layers per category
@@ -97,9 +95,8 @@ subroutine ice_ponds_init(G, IG, PF, CS, US)
 ! call icepack_init_parameters(mu_rdg_in=CS%mu_rdg, conserv_check_in=.true.)
 
 end subroutine ice_ponds_init
-!
-! ice_ponds is a wrapper for the icepack pond routines
-!
+
+!> ice_ponds is a wrapper for the Icepack pond routines
 subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
                        rdg_rate, rdg_height)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
@@ -110,7 +107,7 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water?
   type(SIS_tracer_registry_type),    pointer       :: TrReg  !< TrReg - The registry of registered SIS ice and
                                                           !! snow tracers.
-  type(ice_ponds_CS),              intent(in)    :: CS  !< The ponds control structure.
+  type(ice_ponds_CS),                intent(in)    :: CS  !< The ponds control structure.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors.
   real,                              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds. [T ~> s]
@@ -377,36 +374,43 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
       closing_flag = .false.
 
       ! call Icepack routine; how are ponds treated?
-!     call compute_ponds_cesm (dt_sec,       ndtd,           &
-!                     ncat,         n_aero,         &
-!                     nilyr,        nslyr,          &
-!                     ntrcr,        hin_max,        &
-!                     rdg_conv,     rdg_shear,      &
-!                     aicen,                        &
-!                     trcrn,                        &
-!                     vicen,        vsnon,          &
-!                     aice0,                        &
-!                     trcr_depend,                  &
-!                     trcr_base,                    &
-!                     n_trcr_strata,                &
-!                     nt_strata,                    &
-!                     krdg_partic,  krdg_redist,    &
-!                     CS%mu_rdg,    tr_brine,       &
-!                     dardg1dt=dardg1dt,     dardg2dt=dardg2dt,       &
-!                     dvirdgdt=dvirdgdt,     opening=opening,        &
-!                     fpond=fpond,                        &
-!                     fresh=fresh,        fhocn=fhocn,          &
-!                     faero_ocn=faero_ocn,   fiso_ocn=fiso_ocn,   &
-!                     aparticn=aparticn,       &
-!                     krdgn=krdgn,             &
-!                     aredistn=aredistn,       &
-!                     vredistn=vredistn,       &
-!                     dardg1ndt=dardg1ndt,     &
-!                     dardg2ndt=dardg2ndt,     &
-!                     dvirdgndt=dvirdgndt,     &
-!                     araftn=araftn,           &
-!                     vraftn=vraftn,           &
-!                     closing_flag=closing_flag, closing=closing)
+!       call compute_ponds_lvl (dt=dt,            &
+!                               nilyr=nilyr,      &
+!                               ktherm=ktherm,    &
+!                               hi_min=hi_min,    &
+!                               dpscale=dpscale,  &
+!                               frzpnd=frzpnd,    &
+!                               rfrac=rfrac,      &
+!                               meltt=melttn (n), &
+!                               melts=meltsn (n), &
+!                               frain=frain,      &
+!                               Tair=Tair,        &
+!                               fsurfn=fsurfn(n), &
+!                               dhs=dhsn     (n), &
+!                               ffrac=ffracn (n), &
+!                               aicen=aicen  (n), &
+!                               vicen=vicen  (n), &
+!                               vsnon=vsnon  (n), &
+!                               qicen=zqin (:,n), &
+!                               sicen=zSin (:,n), &
+!                               Tsfcn=Tsfc   (n), &
+!                               alvl=alvl    (n), &
+!                               apnd=apnd    (n), &
+!                               hpnd=hpnd    (n), &
+!                               ipnd=ipnd    (n), &
+!                               meltsliqn=l_meltsliqn(n))
+
+!       call compute_ponds_topo(dt,       ncat,      nilyr,     &
+!                               ktherm,                         &
+!                               aice,     aicen,                &
+!                               vice,     vicen,                &
+!                               vsno,     vsnon,                &
+!                               meltt,                &
+!                               fsurf,    fpond,                &
+!                               Tsfc,     Tf,                   &
+!                               zqin,     zSin,                 &
+!                               apnd,     hpnd,      ipnd       )
+!       if (icepack_warnings_aborted(subname)) return
 
       if (present(rdg_rate)) rdg_rate(i,j) = (dardg1dt - dardg2dt)*US%T_to_s
       if (present(rdg_height)) rdg_height(i,j,:) = krdgn(:)*US%m_to_Z
@@ -502,12 +506,9 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
 
 end subroutine ice_ponds
 
-!
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_ponds_end deallocates the memory associated with this module.
 subroutine ice_ponds_end()
 
 end subroutine ice_ponds_end
-
 
 end module ice_ponds_mod

@@ -56,6 +56,7 @@ end type ice_ridging_CS
 
 contains
 
+!> Initialize ridging control structure.
 subroutine ice_ridging_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
@@ -112,9 +113,8 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   call icepack_init_parameters(mu_rdg_in=CS%mu_rdg, conserv_check_in=.true.)
 
 end subroutine ice_ridging_init
-!
-! ice_ridging is a wrapper for the icepack ridging routine ridge_ice
-!
+
+!> ice_ridging is a wrapper for the icepack ridging routine ridge_ice
 subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
                        rdg_rate, rdg_height)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
@@ -523,8 +523,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
 end subroutine ice_ridging
 
-!
-!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_ridging_end deallocates the memory associated with this module.
 subroutine ice_ridging_end()
 
