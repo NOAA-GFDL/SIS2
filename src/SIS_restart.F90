@@ -309,7 +309,7 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
         if (fexists) then
           nf = nf + 1
           if (present(IO_handles)) &
-            call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
+            call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, MOM_domain=domain, &
                            threading=MULTIPLE, fileset=SINGLE_FILE)
           if (present(global_files)) global_files(nf) = .true.
           if (present(file_paths)) file_paths(nf) = filepath
