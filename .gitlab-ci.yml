@@ -25,7 +25,7 @@ before_script:
 merge:
   stage: builds
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - cd $CI_PROJECT_DIR
     - git pull --no-edit https://github.com/NOAA-GFDL/SIS2.git dev/gfdl
@@ -34,35 +34,35 @@ merge:
 gnu:repro:
   stage: builds
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-gnu -s -j
 
 #gnu:ice-ocean-nolibs:
 #  stage: builds
 #  tags:
-#    - ncrc4
+#    - ncrc5
 #  script:
 #    - make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-gnu-iceocean-nolibs
 
 intel:repro:
   stage: builds
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-intel -s -j
 
 pgi:repro:
   stage: builds
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-pgi -s -j
 
 gnu:debug:
   stage: builds
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-debug-gnu -s -j
 
@@ -70,7 +70,7 @@ gnu:debug:
 run:
   stage: run
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-run
 
@@ -78,42 +78,42 @@ run:
 gnu:non-symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_non_symmetric
 
 gnu:symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_symmetric
 
 gnu:memory:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_memory
 
 #gnu:static:
 #  stage: tests
 #  tags:
-#    - ncrc4
+#    - ncrc5
 #  script:
 #    - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_static
 
 gnu:restart:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_restarts
 
 gnu:params:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-params_gnu_symmetric
   allow_failure: true
@@ -121,49 +121,49 @@ gnu:params:
 intel:symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_symmetric
 
 intel:non-symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_non_symmetric
 
 intel:memory:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_memory
 
 pgi:symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_symmetric
 
 pgi:non-symmetric:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_non_symmetric
 
 pgi:memory:
   stage: tests
   tags:
-    - ncrc4
+    - ncrc5
   script:
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_memory
 
 cleanup:
   stage: cleanup
   tags:
-    - ncrc4
+    - ncrc5
   before_script:
     - echo Skipping submodule update
   script:
