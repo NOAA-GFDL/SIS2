@@ -270,7 +270,7 @@ subroutine open_boundary_config(G, US, param_file, OBC)
         (OBC%freeslip_vorticity .and. OBC%computed_vorticity) .or.  &
         (OBC%freeslip_vorticity .and. OBC%specified_vorticity) .or.  &
         (OBC%computed_vorticity .and. OBC%specified_vorticity))  &
-         call MOM_error(FATAL, "MOM_open_boundary.F90, open_boundary_config:\n"// &
+         call MOM_error(FATAL, "SIS_open_boundary.F90, open_boundary_config:\n"// &
          "Only one of OBC_ZERO_VORTICITY, OBC_FREESLIP_VORTICITY, OBC_COMPUTED_VORTICITY\n"// &
          "and OBC_IMPORTED_VORTICITY can be True at once.")
     call get_param(param_file, mdl, "OBC_ZERO_STRAIN", OBC%zero_strain, &
@@ -364,7 +364,7 @@ subroutine open_boundary_config(G, US, param_file, OBC)
       elseif (segment_str(1:2) == 'J=') then
         call setup_v_point_obc(OBC, G, US, segment_str, l, param_file, reentrant_x)
       else
-        call MOM_error(FATAL, "MOM_open_boundary.F90, open_boundary_config: "//&
+        call MOM_error(FATAL, "SIS_open_boundary.F90, open_boundary_config: "//&
              "Unable to interpret "//segment_param_str//" = "//trim(segment_str))
       endif
     enddo
@@ -412,7 +412,7 @@ subroutine open_boundary_config(G, US, param_file, OBC)
   ! Safety check
   if ((OBC%open_u_BCs_exist_globally .or. OBC%open_v_BCs_exist_globally) .and. &
        .not.G%symmetric ) call MOM_error(FATAL, &
-       "MOM_open_boundary, open_boundary_config: "//&
+       "SIS_open_boundary, open_boundary_config: "//&
        "Symmetric memory must be used when using Flather OBCs.")
 
   if (.not.(OBC%specified_u_BCs_exist_globally .or. OBC%specified_v_BCs_exist_globally .or. &
@@ -652,7 +652,7 @@ subroutine setup_u_point_obc(OBC, G, US, segment_str, l_seg, PF, reentrant_y)
       OBC%segment(l_seg)%specified_grad = .true.
       OBC%segment(l_seg)%g_values_needed = .true.
     else
-      call MOM_error(FATAL, "MOM_open_boundary.F90, setup_u_point_obc: "//&
+      call MOM_error(FATAL, "SIS_open_boundary.F90, setup_u_point_obc: "//&
                      "String '"//trim(action_str(a_loop))//"' not understood.")
     endif
     if (OBC%segment(l_seg)%nudged .or. OBC%segment(l_seg)%nudged_tan) then
@@ -774,7 +774,7 @@ subroutine setup_v_point_obc(OBC, G, US, segment_str, l_seg, PF, reentrant_x)
       OBC%segment(l_seg)%specified_grad = .true.
       OBC%segment(l_seg)%g_values_needed = .true.
     else
-      call MOM_error(FATAL, "MOM_open_boundary.F90, setup_v_point_obc: "//&
+      call MOM_error(FATAL, "SIS_open_boundary.F90, setup_v_point_obc: "//&
                      "String '"//trim(action_str(a_loop))//"' not understood.")
     endif
     if (OBC%segment(l_seg)%nudged .or. OBC%segment(l_seg)%nudged_tan) then
@@ -1039,14 +1039,14 @@ subroutine mask_outside_OBCs(G, US, param_file, OBC)
   do j=G%jsd,G%jed ; do i=G%isd,G%ied
     if (color(i,j) /= color2(i,j)) then
       fatal_error = .True.
-      write(mesg,'("MOM_open_boundary: problem with OBC segments specification at ",I5,",",I5," during\n", &
+      write(mesg,'("SIS_open_boundary: problem with OBC segments specification at ",I5,",",I5," during\n", &
           "the masking of the outside grid points.")') i, j
       call MOM_error(WARNING,"MOM register_tracer: "//mesg, all_print=.true.)
     endif
     if (color(i,j) == cout) G%bathyT(i,j) = min_depth
   enddo ; enddo
   if (fatal_error) call MOM_error(FATAL, &
-      "MOM_open_boundary: inconsistent OBC segments.")
+      "SIS_open_boundary: inconsistent OBC segments.")
 
   deallocate(color)
   deallocate(color2)
