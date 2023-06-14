@@ -1097,14 +1097,14 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
     call IST_bounds_check(IST, G, US, IG, "Midpoint set_ice_surface_state", Rad=Rad) !, OSS=OSS)
 
   ! Copy the surface temperatures into the externally visible data type.
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Ice,ncat,i_off,j_off,OSS,US) &
 !$OMP                          private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off
     Ice%t_surf(i2,j2,1) = US%C_to_degC*OSS%SST_C(i,j) + T_0degC
     Ice%part_size(i2,j2,1) = IST%part_size(i,j,0)
   enddo ; enddo
-!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS) &
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,IST,Rad,Ice,ncat,i_off,j_off,OSS,US) &
 !$OMP                          private(i2,j2,k2)
   do j=jsc,jec ; do k=1,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
