@@ -1853,8 +1853,9 @@ end subroutine basal_stress_coeff_C
 !! a normal distribution with sigma_b = 2.5d0. An improvement would
 !! be to provide the distribution based on high resolution data.
 !!
-!! Dupont, F. Dumont, D., Lemieux, J.F., Dumas-Lefebvre, E., Caya, A.
-!! in prep.
+!! Dupont, F., D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, A. Caya (2022).
+!! A probabilistic seabed-ice keel interaction model, The Cryosphere, 16,
+!! 1963-1977.
 !!
 !! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
 !!
@@ -1902,8 +1903,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   real :: rho_water  ! water density [R ~> kg m-3]
   real :: pi         ! [nondim]
   integer :: i, ii, j, isc, iec, jsc, jec, k, n, ncat
-  real :: ci_u ! Concentration at u-points [nondim]
-  real :: ci_v ! Concentration at u-points [nondim]
+  real :: ci_u       ! Concentration at u-points [nondim]
+  real :: ci_v       ! Concentration at u-points [nondim]
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   ncat = IG%CatIce
@@ -1956,50 +1957,54 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
 
         ! parameters for the log-normal
         mu_i    = log(m_i/(CS%onemeter * sqrt(1.0 + v_i/m_i**2)))
-        sigma_i = max(sqrt(log(1.0 + v_i/m_i**2)), CS%puny)
+        sigma_i = sqrt(log(1.0 + v_i/m_i**2))
 
         ! max thickness associated with percentile of log-normal PDF
-        ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al.)
+        ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al. 2022)
 
-        x_kmax = CS%onemeter * exp(mu_i + sqrt(2.0*sigma_i)*CS%basal_stress_cutoff)
+        if (sigma_i > 0) then
+          x_kmax = CS%onemeter * exp(mu_i + sqrt(2.0*sigma_i)*CS%basal_stress_cutoff)
 
-        ! Set x_kmax to hlev of the last category where there is ice
-        ! when there is no ice in the last category
-        cut = x_k(CS%ncat_i)
-        do n = ncat,-1,1
-          if (acat(n) < CS%puny) then
-            cut = hin_max(n-1)
-          else
-            exit
-          endif
-        enddo
-        x_kmax = min(cut, x_kmax)
+          ! Set x_kmax to hlev of the last category where there is ice
+          ! when there is no ice in the last category
+          cut = x_k(CS%ncat_i)
+          do n = ncat,-1,1
+            if (acat(n) < CS%puny) then
+              cut = hin_max(n-1)
+            else
+              exit
+            endif
+          enddo
+          x_kmax = min(cut, x_kmax)
 
-        g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
-                 (x_k(:) * sigma_i * sqrt(2.0 * pi))
+          g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
+                   (x_k(:) * sigma_i * sqrt(2.0 * pi))
 
-        b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0*pi))
+          b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0*pi))
 
-        P_x(:) = g_k(:) * wid_i
-        P_y(:) = b_n(:) * wid_b
+          P_x(:) = g_k(:) * wid_i
+          P_y(:) = b_n(:) * wid_b
 
-        do n =1, CS%ncat_i
-          if (x_k(n) > x_kmax) P_x(n)=0.0
-        enddo
+          do n =1, CS%ncat_i
+            if (x_k(n) > x_kmax) P_x(n)=0.0
+          enddo
 
-        ! calculate Tb factor at t-location
-        do n=1, CS%ncat_i
-          gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
-          tmp(:) = merge(1,0,gt(:))
-          ii = sum(tmp)
-          if (ii == 0) then
-            tb_tmp(n) = 0.0
-          else
-            tb_tmp(n) = max(CS%basal_stress_mu_s * G%g_Earth * P_x(n) * &
-                        sum(P_y(1:ii)*(rho_ice*x_k(n) - rho_water*y_n(1:ii))), 0.0)
-          endif
-        enddo
-        Tbt(i,j) = sum(tb_tmp) * exp(-CS%lemieux_alphab * (1.0 - atot))
+          ! calculate Tb factor at t-location
+          do n=1, CS%ncat_i
+            gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
+            tmp(:) = merge(1,0,gt(:))
+            ii = sum(tmp)
+            if (ii == 0) then
+              tb_tmp(n) = 0.0
+            else
+              tb_tmp(n) = max(CS%basal_stress_mu_s * G%g_Earth * P_x(n) * &
+                          sum(P_y(1:ii)*(rho_ice*x_k(n) - rho_water*y_n(1:ii))), 0.0)
+            endif
+          enddo
+          Tbt(i,j) = sum(tb_tmp) * exp(-CS%lemieux_alphab * (1.0 - atot))
+        else
+          Tbt(i,j) = 0.0
+        endif
       endif
     enddo
   enddo
