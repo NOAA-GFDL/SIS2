@@ -2031,7 +2031,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call clone_MOM_domain(sGD, dG%Domain)
 
     ! Set up the restart file and determine whether this is a new simulation.
-    call set_domain(sGD%mpp_domain)
+    call set_domain(sGD)
     if (.not.associated(Ice%Ice_restart)) &
       call SIS_restart_init(Ice%Ice_restart, restart_file, sGD, param_file)
     new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, sG, Ice%Ice_restart)
@@ -2189,7 +2189,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! Allocate and register fields for restarts.
 
-    if (.not.slow_ice_PE) call set_domain(fGD%mpp_domain)
+    if (.not.slow_ice_PE) call set_domain(fGD)
     if (split_restart_files) then
       if (.not.associated(Ice%Ice_fast_restart)) &
         call SIS_restart_init(Ice%Ice_fast_restart, fast_rest_file, fGD, param_file)
@@ -2515,7 +2515,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
 
 !  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
-!    call set_domain(fGD%mpp_domain)
+!    call set_domain(fGD)
     call astronomy_init()
 !    call nullify_domain()
 !  endif

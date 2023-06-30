@@ -4,8 +4,6 @@ module SIS_framework
 
 ! This file is part of SIS2. See LICENSE.md for the license.
 
-use fms_io_mod,        only : set_domain, nullify_domain
-
 use MOM_coms_infra,    only : SIS_chksum=>field_chksum
 use MOM_coupler_types, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
 use MOM_coupler_types, only : coupler_type_spawn, coupler_type_initialized, coupler_type_send_data
@@ -15,6 +13,7 @@ use MOM_coupler_types, only : coupler_type_set_diags, coupler_type_write_chksums
 use MOM_domain_infra,  only : MOM_domain_type, domain2D, get_domain_extent
 use MOM_domain_infra,  only : global_field, redistribute_data=>redistribute_array, broadcast_domain
 use MOM_domain_infra,  only : CENTER, CORNER, EAST=>EAST_FACE, NORTH=>NORTH_FACE, EAST_FACE, NORTH_FACE
+use MOM_domain_infra,  only : set_domain, nullify_domain
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser,   only : get_param, read_param, log_param, log_version, param_file_type
 ! use MOM_io,            only : MULTIPLE, READONLY_FILE, SINGLE_FILE
