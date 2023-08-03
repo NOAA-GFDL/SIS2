@@ -506,7 +506,7 @@ subroutine ice_model_restart(Ice, time_stamp)
   type(ice_data_type),        intent(inout) :: Ice !< The publicly visible ice data type.
   character(len=*), optional, intent(in)    :: time_stamp !< A date stamp to include in the restart file name
 
-  if (associated(Ice%Ice_restart)) then
+  if (associated(Ice%Ice_restart) .and. associated(Ice%sCS)) then
     call save_restart(Ice%restart_output_dir, Ice%Time, Ice%sCS%G, Ice%Ice_restart, IG=Ice%sCS%IG, &
                       time_stamp=time_stamp)
     if (associated(Ice%Ice_fast_restart)) then
