@@ -39,8 +39,7 @@ use MOM_string_functions, only : uppercase
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager,  only : operator(+), operator(-)
 use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
-use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init
-use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
+use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init, unit_scaling_end
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
@@ -104,8 +103,7 @@ use SIS_types,         only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_
 use SIS_types,         only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types,         only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types,         only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
-use SIS_types,         only : register_unit_conversion_restarts
-use SIS_types,         only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
+use SIS_types,         only : rescale_ice_state_restart_fields
 use SIS_types,         only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types,         only : copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
 use SIS_types,         only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
@@ -2053,7 +2051,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call alloc_IST_arrays(sHI, sIG, US, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
     call ice_state_register_restarts(sIST, sG, sIG, US, Ice%Ice_restart)
-    call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
     Ice%sCS%OSS%kmelt = kmelt
@@ -2202,8 +2199,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! whether the Ice%Ice...restart types are associated.
     call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_fast_restart)
-    if (split_restart_files) &
-      call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart)
 
     if (redo_fast_update .or. .not.single_IST) then
       call alloc_IST_arrays(fHI, Ice%fCS%IG, US, Ice%fCS%IST, &
@@ -2508,11 +2503,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
 
-    if (split_fast_slow_flag) then
-      call rescale_fast_to_slow_restart_fields(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
-                                               Ice%fCS%G, US, Ice%fCS%IG)
-    endif
-
 
 !  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
 !    call set_domain(fGD)
@@ -2564,8 +2554,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
     endif
   endif ! fast_ice_PE
-
-  call fix_restart_unit_scaling(US, unscaled=.true.)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
   !but it should be called after restore_SIS_state() otherwise it causes a restart mismatch
