@@ -21,7 +21,7 @@ use MOM_file_parser,   only : get_param, log_param, read_param, log_version, par
 use MOM_domains,       only : pass_var, pass_vector, CGRID_NE, CORNER, pe_here
 use MOM_domains,       only : MOM_domain_type, clone_MOM_domain
 use MOM_hor_index,     only : hor_index_type
-use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
+use MOM_io,            only : open_ASCII_file, APPEND_FILE, ASCII_FILE, MULTIPLE, SINGLE_FILE
 use MOM_io,            only : MOM_read_data
 use MOM_time_manager,  only : time_type, real_to_time, operator(+), operator(-)
 use MOM_time_manager,  only : set_date, get_time, get_date
@@ -1920,8 +1920,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   real :: rho_water  ! water density [R ~> kg m-3]
   real :: pi         ! [nondim]
   integer :: i, ii, j, isc, iec, jsc, jec, k, n, ncat
-  real :: ci_u ! Concentration at u-points [nondim]
-  real :: ci_v ! Concentration at u-points [nondim]
+  real :: ci_u       ! Concentration at u-points [nondim]
+  real :: ci_v       ! Concentration at u-points [nondim]
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   ncat = IG%CatIce
@@ -1976,50 +1976,54 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
 
         ! parameters for the log-normal
         mu_i    = log(m_i/(CS%onemeter * sqrt(1.0 + v_i/m_i**2)))
-        sigma_i = max(sqrt(log(1.0 + v_i/m_i**2)), CS%puny)
+        sigma_i = sqrt(log(1.0 + v_i/m_i**2))
 
         ! max thickness associated with percentile of log-normal PDF
         ! x_kmax=x997 was obtained from an optimization procedure (Dupont et al. 2022)
 
-        x_kmax = CS%onemeter * exp(mu_i + sqrt(2.0*sigma_i)*CS%basal_stress_cutoff)
+        if (sigma_i > 0) then
+          x_kmax = CS%onemeter * exp(mu_i + sqrt(2.0*sigma_i)*CS%basal_stress_cutoff)
 
-        ! Set x_kmax to hlev of the last category where there is ice
-        ! when there is no ice in the last category
-        cut = x_k(CS%ncat_i)
-        do n = ncat,-1,1
-          if (acat(n) < CS%puny) then
-            cut = hin_max(n-1)
-          else
-            exit
-          endif
-        enddo
-        x_kmax = min(cut, x_kmax)
+          ! Set x_kmax to hlev of the last category where there is ice
+          ! when there is no ice in the last category
+          cut = x_k(CS%ncat_i)
+          do n = ncat,-1,1
+            if (acat(n) < CS%puny) then
+              cut = hin_max(n-1)
+            else
+              exit
+            endif
+          enddo
+          x_kmax = min(cut, x_kmax)
 
-        g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
-                 (x_k(:) * sigma_i * sqrt(2.0 * pi))
+          g_k(:) = exp(-(log(x_k(:)/CS%onemeter) - mu_i) ** 2 / (2.0 * sigma_i ** 2)) / &
+                   (x_k(:) * sigma_i * sqrt(2.0 * pi))
 
-        b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0*pi))
+          b_n(:)  = exp(-(y_n(:) - mu_b) ** 2 / (2.0 * CS%sigma_b(i,j) ** 2)) / (CS%sigma_b(i,j) * sqrt(2.0*pi))
 
-        P_x(:) = g_k(:) * wid_i
-        P_y(:) = b_n(:) * wid_b
+          P_x(:) = g_k(:) * wid_i
+          P_y(:) = b_n(:) * wid_b
 
-        do n =1, CS%ncat_i
-          if (x_k(n) > x_kmax) P_x(n)=0.0
-        enddo
+          do n =1, CS%ncat_i
+            if (x_k(n) > x_kmax) P_x(n)=0.0
+          enddo
 
-        ! calculate Tb factor at t-location
-        do n=1, CS%ncat_i
-          gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
-          tmp(:) = merge(1,0,gt(:))
-          ii = sum(tmp)
-          if (ii == 0) then
-            tb_tmp(n) = 0.0
-          else
-            tb_tmp(n) = max(CS%basal_stress_mu_s * G%g_Earth * P_x(n) * &
-                        sum(P_y(1:ii)*(rho_ice*x_k(n) - rho_water*y_n(1:ii))), 0.0)
-          endif
-        enddo
-        Tbt(i,j) = sum(tb_tmp) * exp(-CS%lemieux_alphab * (1.0 - atot))
+          ! calculate Tb factor at t-location
+          do n=1, CS%ncat_i
+            gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
+            tmp(:) = merge(1,0,gt(:))
+            ii = sum(tmp)
+            if (ii == 0) then
+              tb_tmp(n) = 0.0
+            else
+              tb_tmp(n) = max(CS%basal_stress_mu_s * G%g_Earth * P_x(n) * &
+                          sum(P_y(1:ii)*(rho_ice*x_k(n) - rho_water*y_n(1:ii))), 0.0)
+            endif
+          enddo
+          Tbt(i,j) = sum(tb_tmp) * exp(-CS%lemieux_alphab * (1.0 - atot))
+        else
+          Tbt(i,j) = 0.0
+        endif
       endif
     enddo
   enddo
@@ -2191,8 +2195,8 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   ! Open up the file for output if this is the first call.
     if (CS%u_file < 0) then
       if (len_trim(CS%u_trunc_file) < 1) return
-      call open_file(CS%u_file, trim(CS%u_trunc_file), action=APPEND_FILE, &
-                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      call open_ASCII_file(CS%u_file, trim(CS%u_trunc_file), &
+          action=APPEND_FILE)
       if (CS%u_file < 0) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%u_trunc_file)//'.')
         return
@@ -2267,8 +2271,8 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   ! Open up the file for output if this is the first call.
     if (CS%v_file < 0) then
       if (len_trim(CS%v_trunc_file) < 1) return
-      call open_file(CS%v_file, trim(CS%v_trunc_file), action=APPEND_FILE, &
-                     form=ASCII_FILE, threading=MULTIPLE, fileset=SINGLE_FILE)
+      call open_ASCII_file(CS%v_file, trim(CS%v_trunc_file), &
+          action=APPEND_FILE)
       if (CS%v_file < 0) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%v_trunc_file)//'.')
         return
