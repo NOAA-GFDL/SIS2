@@ -128,7 +128,7 @@ public :: ice_model_restart  ! for intermediate restarts
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: update_ice_atm_deposition_flux
-public :: unpack_ocean_ice_boundary, exchange_slow_to_fast_ice, set_ice_surface_fields
+public :: unpack_ocean_ice_boundary, unpack_ocn_ice_bdry, exchange_slow_to_fast_ice, set_ice_surface_fields
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
@@ -1719,7 +1719,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
                               ! categories after initialization.
   logical :: Verona
-  logical :: Concurrent
+  logical :: split_fast_slow_flag
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
@@ -1737,7 +1737,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   Verona = .false. ; if (present(Verona_coupler)) Verona = Verona_coupler
   if (Verona) call SIS_error(FATAL, "SIS2 no longer works with pre-Warsaw couplers.")
   fast_ice_PE = Ice%fast_ice_pe ; slow_ice_PE = Ice%slow_ice_pe
-  Concurrent = .false. ; if (present(Concurrent_ice)) Concurrent = Concurrent_ice
+  split_fast_slow_flag = .false. ;
+  if (present(Concurrent_ice)) split_fast_slow_flag = Concurrent_ice
 
   ! Open the parameter file.
   if (slow_ice_PE) then
@@ -1938,7 +1939,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, "MOM", "REDO_FAST_ICE_UPDATE", redo_fast_update, &
                  "If true, recalculate the thermal updates from the fast "//&
                  "dynamics on the slowly evolving ice state, rather than "//&
-                 "copying over the slow ice state to the fast ice state.", default=Concurrent)
+                 "copying over the slow ice state to the fast ice state.", default=split_fast_slow_flag)
 
   call get_param(param_file, mdl, "NUDGE_SEA_ICE", nudge_sea_ice, &
                  "If true, constrain the sea ice concentrations using observations.", &
@@ -1974,7 +1975,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
   else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
-
   Ice%Time = Time
 
   !   Now that all top-level sea-ice parameters have been read, allocate the
@@ -2221,7 +2221,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%fCS%Rad%do_sun_angle_for_alb = do_sun_angle_for_alb
     Ice%fCS%Rad%add_diurnal_sw = add_diurnal_sw
 
-    if (Concurrent) then
+    if (split_fast_slow_flag) then
       call register_fast_to_slow_restarts(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
                        fGD%mpp_domain, US, Ice%Ice_fast_restart, fast_rest_file)
     endif
@@ -2497,7 +2497,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       ! Read the fast restart file, if it exists and this is indicated by the value of dirs%input_filename.
       new_sim = determine_is_new_run(dirs%input_filename, dirs%restart_input_dir, fG, Ice%Ice_fast_restart)
       if (.not.new_sim) then
-        call restore_SIS_state(Ice%Ice_restart, dirs%restart_input_dir, dirs%input_filename, fG)
+        call restore_SIS_state(Ice%Ice_fast_restart, dirs%restart_input_dir, dirs%input_filename, fG)
         init_coszen = .not.query_initialized(Ice%Ice_fast_restart, 'coszen')
         init_Tskin  = .not.query_initialized(Ice%Ice_fast_restart, 'T_skin')
         init_rough  = .not.(query_initialized(Ice%Ice_fast_restart, 'rough_mom') .and. &
@@ -2508,7 +2508,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
 
-    if (Concurrent) then
+    if (split_fast_slow_flag) then
       call rescale_fast_to_slow_restart_fields(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
                                                Ice%fCS%G, US, Ice%fCS%IG)
     endif
@@ -2588,6 +2588,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   else
     Ice%xtype = REDIST
   endif
+
+!  if (fast_ice_PE .and. slow_ice_PE) then
+!  if (split_fast_slow_flag) then
+!    call exchange_fast_to_slow_ice(Ice)
+!  endif
 
   if (Ice%shared_slow_fast_PEs) then
     iceClock = cpu_clock_id( 'Ice', grain=CLOCK_COMPONENT )
