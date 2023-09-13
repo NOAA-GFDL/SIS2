@@ -1274,7 +1274,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   ! timestep.  However, it is safe (if wasteful) to call it more frequently.
   if (Rad%do_sun_angle_for_alb) then
     call set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
-  elseif (coszen_changed) then
+  elseif (coszen_changed .or. Ice%sCS%specified_ice) then
     call set_ocean_albedo_from_coszen(Ice, G, Rad%coszen_nextrad)
   endif
 
