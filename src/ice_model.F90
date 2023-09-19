@@ -35,7 +35,7 @@ use MOM_file_parser,   only : open_param_file, close_param_file
 use MOM_hor_index,     only : hor_index_type, hor_index_init
 use MOM_io,            only : file_exists
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
-use MOM_string_functions, only : uppercase
+use MOM_string_functions, only : uppercase, extract_real
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager,  only : operator(+), operator(-)
 use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
@@ -1718,12 +1718,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! after a restart.Provide a switch to turn this option off.
   logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
                               ! categories after initialization.
+  logical :: read_hlim_vals   ! If true, read the list of ice thickness lower limits
+                              ! from an input file.
+  real,  allocatable, dimension(:) :: &
+    hlim_vals                 ! List of lower limits on ice thickness categories.
   logical :: Verona
   logical :: split_fast_slow_flag
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16) :: stagger, dflt_stagger
+  character(len=200) :: hlim_string
   type(ice_OBC_type), pointer :: OBC_in => NULL()
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
@@ -1948,7 +1953,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, allow ice to be transmuted directly into seawater with a spatially "//&
                  "varying rate as a form of outflow open boundary condition.", &
                  default=.false., do_not_log=.true.) ! Defer logging to SIS_slow_thermo.
-
+  call get_param(param_file, mdl, "READ_HLIM_VALS", read_hlim_vals, &
+                 "If true, read the lower limits on the ice thickness"//&
+                 "categories.", default=.false.)
 
   nCat_dflt = 5 ; if (slab_ice) nCat_dflt = 1
   opm_dflt = 0.0 ; if (redo_fast_update) opm_dflt = 1.0e-40
@@ -2004,8 +2011,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call set_ice_grid(sIG, US, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
     if (slab_ice) sIG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = sIG%CatIce ; NkIce = sIG%NkIce
-    call initialize_ice_categories(sIG, Rho_ice, US, param_file)
 
+    if (read_hlim_vals) then
+      allocate(hlim_vals(CatIce))
+      call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
+                   "This sets the list of lower limits on the ice thickness "//&
+                   "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
+      hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
+      call initialize_ice_categories(sIG, Rho_ice, US, param_file, hLim_vals=hlim_vals)
+    else
+      call initialize_ice_categories(sIG, Rho_ice, US, param_file)
+    endif
 
     ! Set up the domains and lateral grids.
     if (.not.associated(Ice%sCS%G)) allocate(Ice%sCS%G)
@@ -2185,7 +2201,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (slab_ice) Ice%fCS%IG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
 
-    call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file)
+    if (read_hlim_vals) then
+      if (.not. allocated(hlim_vals)) then
+        allocate(hlim_vals(CatIce))
+        call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
+                     "This sets the list of lower limits on the ice thickness "//&
+                     "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
+        hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
+      endif
+      call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file, hLim_vals=hlim_vals)
+    else
+      call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file)
+    endif
 
   ! Allocate and register fields for restarts.
 
