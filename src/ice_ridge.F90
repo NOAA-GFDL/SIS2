@@ -355,13 +355,13 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
         do k=1,nL_ice
           ntrcr=ntrcr+1
-          trcrn(ntrcr,1:ncat) = Tr_ice_enth_ptr(i,j,1:nCat,k)
+          trcrn(ntrcr,1:ncat) = Tr_ice_enth_ptr(i,j,1:nCat,k) * rho_ice
           trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
           trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
         enddo
         do k=1,nL_snow
           ntrcr=ntrcr+1
-          trcrn(ntrcr,1:nCat) = Tr_snow_enth_ptr(i,j,1:nCat,k)
+          trcrn(ntrcr,1:nCat) = Tr_snow_enth_ptr(i,j,1:nCat,k) * rho_snow
           trcr_depend(ntrcr) = 2; ! 2 means snow-based tracer
           trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,3) = 1.0; ! 3rd index for snow
         enddo
@@ -480,12 +480,12 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
          do k=1,nL_ice
            tr_tmp(1:nCat)=trcrn(1+k,1:nCat)
-           Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat)
+           Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_ice
          enddo
 
          do k=1,nL_snow
            tr_tmp(1:nCat)=trcrn(1+nl_ice+k,1:ncat)
-           Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat)
+           Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_snow
          enddo
 
          do k=1,nL_ice
