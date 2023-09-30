@@ -392,10 +392,12 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       dardg1dt = 0.0
       dardg2dt = 0.0
       opening = 0.0
+      closing = 0.0
       fpond = 0.0
       fresh = 0.0
       fhocn = 0.0
       fsalt = 0.0
+      fzsal = 0.0
       faero_ocn(:) = 0.0
       fiso_ocn = 0.0
       aparticn = 0.0
