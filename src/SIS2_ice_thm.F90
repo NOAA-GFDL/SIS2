@@ -1005,7 +1005,7 @@ end subroutine ice_check
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> ice_resize_SIS2 makes snow and ice thickness and temperature changes in ice
 !! columns due to thermodynamic forcing.
-subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
+subroutine ice_resize_SIS2(a_ice, m_pond, m_pond_ice, m_lay, Enthalpy, Sice_therm, Salin, &
                            snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, US, CS, ablation, &
@@ -1013,6 +1013,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   ! mw/new - melt pond - added first two arguments & rain
   real, intent(in   ) :: a_ice       !< area of ice (1-open_water_frac) for pond retention [nondim]
   real, intent(inout) :: m_pond      !< melt pond mass [R Z ~> kg m-2]
+  real, intent(inout) :: m_pond_ice  !< melt pond ice mass [R Z ~> kg m-2]
   real, dimension(0:NkIce), &
         intent(inout) :: m_lay       !< Snow and ice mass per unit area by layer [R Z ~> kg m-2].
   real, dimension(0:NkIce+1), &

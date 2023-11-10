@@ -1,19 +1,11 @@
-!> A full implementation of Icepack ridging parameterizations
-module ice_ridging_mod
+!> A full implementation of Icepack ponds parameterizations (to come)
+module ice_ponds_mod
 
 ! This file is a part of SIS2. See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-! replaced T. Martin code with wrapper for Icepack ridging function - mw 1/18  !
 !                                                                              !
-! Prioritized to do list as of 6/4/19 (mw):                                    !
 !                                                                              !
-! 1) implement new snow_to_ocean diagnostic to record this flux.               !
-! 2) implement ridging_rate diagnostics: ridging_shear, ridging_conv           !
-! 3) implement "do_j" style optimization as in "compress_ice" or               !
-!    "adjust_ice_categories" (SIS_transport.F90) if deemed necessary
-!
-!
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
@@ -24,13 +16,15 @@ use MOM_file_parser,   only : get_param, log_param, read_param, log_version, par
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, ist_chksum
+use fms_io_mod,        only : register_restart_field, restart_file_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, get_SIS_tracer_pointer
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
 use ice_grid,          only : ice_grid_type
 !Icepack modules
 use icepack_kinds
 use icepack_itd, only: icepack_init_itd, cleanup_itd
-use icepack_mechred, only: ridge_ice
+use icepack_meltpond_lvl,  only: compute_ponds_lvl
+use icepack_meltpond_topo, only: compute_ponds_topo
 use icepack_warnings, only: icepack_warnings_flush, icepack_warnings_aborted, &
                             icepack_warnings_setabort
 use icepack_tracers, only: icepack_init_tracer_indices, icepack_init_tracer_sizes
@@ -40,64 +34,53 @@ implicit none ; private
 
 #include <SIS2_memory.h>
 
-public :: ice_ridging, ice_ridging_init
+public :: ice_ponds, ice_ponds_init
 
-type, public :: ice_ridging_CS ; private
+!> Ice ponds control structure
+type, public :: ice_ponds_CS ; private
   logical :: &
-  new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
-  new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
-  real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
+  level_pond = .false., &      !< .true. = preferred ponds on level ice
+  topo_pond = .false.          !< .true. = topographic ponds
   real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
-                               !! ridging scheme. This is defaulted to zero, but a reasonable
+                               !! ponding scheme. This is defaulted to zero, but a reasonable
                                !! value might be 10^-26 which for a km square grid cell
                                !! would equate to an Angstrom scale ice patch.
-end type ice_ridging_CS
+end type ice_ponds_CS
 
 contains
 
-!> Initialize ridging control structure.
-subroutine ice_ridging_init(G, IG, PF, CS, US)
+!> Initialize the ice ponds
+subroutine ice_ponds_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
   type(param_file_type),      intent(in) :: PF     !< A structure to parse for run-time parameters
-  type(ice_ridging_CS),       pointer    :: CS     !< The ridging control structure.
+  type(ice_ponds_CS),       pointer    :: CS     !< The ponds control structure.
   type(unit_scale_type),      intent(in) :: US     !< A structure with unit conversion factors.
 
   integer (kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
   integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
-  character(len=40) :: mdl = "ice_ridging_init" ! This module's name.
+  character(len=40) :: mdl = "ice_ponds_init" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
-  call get_param(PF, mdl, "NEW_RIDGE_PARTICIPATION", CS%new_rdg_partic, &
-                 "Participation function used in ridging, .false. for Thorndike et al. 1975 "//&
-                 ".true. for Lipscomb et al. 2007", default=.false.)
-  call get_param(PF, mdl, "NEW_RIDGE_REDISTRIBUTION", CS%new_rdg_redist, &
-                 "Redistribution function used in ridging, .false. for Hibler 1980 "//&
-                 ".true. for Lipscomb et al. 2007", default=.false.)
-  if (CS%new_rdg_partic) then
-    call get_param(PF, mdl, "RIDGE_MU", CS%mu_rdg, &
-                   "E-folding scale of ridge ice from Lipscomb et al. 2007", &
-                   units="m^0.5", default=3.0)
-    call get_param(PF, mdl, "RIDGE_AREA_UNDERFLOW", CS%area_underflow, &
-                   "A fractional area limit below which ice fraction is set to zero "//&
-                   "A reasonable default value for a km scale grid cell is 10^-24.",&
-                   units="none", default=0.0)
-  endif
+  call get_param(PF, mdl, "MELTPOND_LEVEL", CS%level_pond, &
+                 "Use level melt ponds", default=.false.)
+  call get_param(PF, mdl, "MELTPOND_TOPO", CS%topo_pond, &
+                 "Use topographic melt ponds", default=.false.)
 
-  ncat=IG%CatIce ! The number of sea-ice thickness categories
-  nilyr=IG%NkIce ! The number of ice layers per category
-  nslyr=IG%NkSnow ! The number if snow layers per category
-  nblyr=0 ! The number of bio/brine layers per category
-  nfsd=0 ! The number of floe size distribution layers
-  n_iso=0 ! The number of isotopes in use
-  n_aero=0 ! The number of aerosols in use
-  nt_Tsfc=1 ! Tracer index for ice/snow surface temperature
-  nt_qice=2 ! Starting index for ice enthalpy in layers
-  nt_qsno=2+nilyr ! Starting index for snow enthalpy
-  nt_sice=2+nilyr+nslyr ! Index for ice salinity
+  ncat = IG%CatIce ! The number of sea-ice thickness categories
+  nilyr = IG%NkIce ! The number of ice layers per category
+  nslyr = IG%NkSnow ! The number if snow layers per category
+  nblyr = 0 ! The number of bio/brine layers per category
+  nfsd = 0 ! The number of floe size distribution layers
+  n_iso = 0 ! The number of isotopes in use
+  n_aero = 0 ! The number of aerosols in use
+  nt_Tsfc = 1 ! Tracer index for ice/snow surface temperature
+  nt_qice = 2 ! Starting index for ice enthalpy in layers
+  nt_qsno = 2 + nilyr ! Starting index for snow enthalpy
+  nt_sice = 2 + nilyr + nslyr ! Index for ice salinity
 ! nt_alvl=2+2*nilyr+nslyr ! Index for level ice fraction
 ! nt_vlvl=3+2*nilyr+nslyr ! Index for level ice volume fraction
-  ntrcr=2+2*nilyr+nslyr ! number of tracers in use
+  ntrcr = 2 + 2 * nilyr + nslyr ! number of tracers in use
   ! (1,2) snow/ice surface temperature +
   ! (3) ice salinity*nilyr  + (4) pond thickness
 
@@ -109,12 +92,12 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
            nt_sice_in=nt_sice, nt_qice_in=nt_qice, nt_qsno_in=nt_qsno)
 !          nt_alvl_in=nt_alvl, nt_vlvl_in=nt_vlvl )
 
-  call icepack_init_parameters(mu_rdg_in=CS%mu_rdg, conserv_check_in=.true.)
+! call icepack_init_parameters(mu_rdg_in=CS%mu_rdg, conserv_check_in=.true.)
 
-end subroutine ice_ridging_init
+end subroutine ice_ponds_init
 
-!> ice_ridging is a wrapper for the icepack ridging routine ridge_ice
-subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
+!> ice_ponds is a wrapper for the Icepack pond routines
+subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
                        rdg_rate, rdg_height)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< G The ocean's grid structure.
@@ -124,7 +107,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water?
   type(SIS_tracer_registry_type),    pointer       :: TrReg  !< TrReg - The registry of registered SIS ice and
                                                           !! snow tracers.
-  type(ice_ridging_CS),              intent(in)    :: CS  !< The ridging control structure.
+  type(ice_ponds_CS),                intent(in)    :: CS  !< The ponds control structure.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors.
   real,                              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds. [T ~> s]
@@ -148,9 +131,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   integer :: i, j, k ! loop vars
   integer :: isc, iec, jsc, jec ! loop bounds
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
-  integer :: &
-       krdg_redist = 0, &
-       krdg_partic = 0
 
   integer :: &
        ncat  , & ! number of thickness categories
@@ -249,7 +229,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   call icepack_query_tracer_sizes(ncat_out=ncat_out, ntrcr_out=ntrcr_out, nilyr_out=nilyr_out, nslyr_out=nslyr_out)
 
   if (nIlyr .ne. nilyr_out .or. nSlyr .ne. nslyr_out ) &
-    call SIS_error(FATAL, "Oops!! It looks like you are trying to use sea-ice ridging "//&
+    call SIS_error(FATAL, "Oops!! It looks like you are trying to use sea-ice ponds "//&
                           "but did not include the Icepack (https://github.com/CICE-Consortium/Icepack)"//&
                           "source code repository in your compilation procedure, and are instead using the default "//&
                           "stub routine contained in config_src/external. Adjust your compilation accordingly." )
@@ -265,9 +245,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
          G%dyBu(I,J)*G%IdxBu(I,J)*(IST%v_ice_C(i+1,J)*G%IdyCv(i+1,J) - IST%v_ice_C(i,J)*G%IdyCv(i,J)))
   enddo; enddo
 
-  if (CS%new_rdg_partic) krdg_partic = 1
-  if (CS%new_rdg_redist) krdg_redist = 1
-
   ! set category limits; Icepack has a max on the largest, unlimited, category (why?)
 
   hin_max(0)=0.0
@@ -275,7 +252,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
     hin_max(k) = US%Z_to_m * IG%mH_cat_bound(k) / Rho_ice
   end do
 
-  trcr_base = 0.0; n_trcr_strata = 0; nt_strata = 0 ! init some tracer vars
+  trcr_base = 0.0; n_trcr_strata = 0; nt_strata = 0  ! init some tracer vars
   ! When would we use icepack tracer "strata"?
 
   ! set icepack tracer index "nt_lvl" to (last) pond tracer so it gets dumped when
@@ -285,10 +262,10 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   call get_SIS_tracer_pointer("enth_ice", TrReg, Tr_ice_enth_ptr, nL_ice)
   call get_SIS_tracer_pointer("enth_snow", TrReg, Tr_snow_enth_ptr, nL_snow)
   call get_SIS_tracer_pointer("salin_ice", TrReg, Tr_ice_salin_ptr, nL_ice)
-! call get_SIS_tracer_pointer("level_area",TrReg,Tr_ice_alvl_ptr,1)
-! call get_SIS_tracer_pointer("level_mass",TrReg,Tr_ice_mlvl_ptr,1)
+! call get_SIS_tracer_pointer("level_area", TrReg, Tr_ice_alvl_ptr, 1)
+! call get_SIS_tracer_pointer("level_mass", TrReg, Tr_ice_mlvl_ptr, 1)
 
-!  call IST_chksum('before ice ridging ', IST, G, US, IG)
+!  call IST_chksum('before ice ponds ', IST, G, US, IG)
 
   if (present(rdg_rate)) rdg_rate(:,:)=0.0
   do j=jsc,jec; do i=isc,iec
@@ -302,7 +279,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
     aicen(1:nCat) = IST%part_size(i,j,1:nCat)
 
 
-    if (sum(aicen) .eq. 0.0) then ! no ice -> no ridging
+    if (sum(aicen) .eq. 0.0) then ! no ice -> no ponds
       IST%part_size(i,j,0) = 1.0
     else
       ! set up ice and snow volumes
@@ -326,7 +303,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
       aice0 = IST%part_size(i,j,0)
       if (aice0<0.) then
-         call SIS_error(WARNING, 'aice0<0. before call to ridge ice.')
+         call SIS_error(WARNING, 'aice0<0. before call to pond ice.')
          aice0=0.
       endif
 
@@ -397,36 +374,43 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       closing_flag = .false.
 
       ! call Icepack routine; how are ponds treated?
-      call ridge_ice (dt_sec,       ndtd,           &
-                      ncat,         n_aero,         &
-                      nilyr,        nslyr,          &
-                      ntrcr,        hin_max,        &
-                      rdg_conv,     rdg_shear,      &
-                      aicen,                        &
-                      trcrn,                        &
-                      vicen,        vsnon,          &
-                      aice0,                        &
-                      trcr_depend,                  &
-                      trcr_base,                    &
-                      n_trcr_strata,                &
-                      nt_strata,                    &
-                      krdg_partic,  krdg_redist,    &
-                      CS%mu_rdg,    tr_brine,       &
-                      dardg1dt=dardg1dt,     dardg2dt=dardg2dt,       &
-                      dvirdgdt=dvirdgdt,     opening=opening,        &
-                      fpond=fpond,                        &
-                      fresh=fresh,        fhocn=fhocn,          &
-                      faero_ocn=faero_ocn,   fiso_ocn=fiso_ocn,   &
-                      aparticn=aparticn,       &
-                      krdgn=krdgn,             &
-                      aredistn=aredistn,       &
-                      vredistn=vredistn,       &
-                      dardg1ndt=dardg1ndt,     &
-                      dardg2ndt=dardg2ndt,     &
-                      dvirdgndt=dvirdgndt,     &
-                      araftn=araftn,           &
-                      vraftn=vraftn,           &
-                      closing_flag=closing_flag, closing=closing)
+!       call compute_ponds_lvl (dt=dt,            &
+!                               nilyr=nilyr,      &
+!                               ktherm=ktherm,    &
+!                               hi_min=hi_min,    &
+!                               dpscale=dpscale,  &
+!                               frzpnd=frzpnd,    &
+!                               rfrac=rfrac,      &
+!                               meltt=melttn (n), &
+!                               melts=meltsn (n), &
+!                               frain=frain,      &
+!                               Tair=Tair,        &
+!                               fsurfn=fsurfn(n), &
+!                               dhs=dhsn     (n), &
+!                               ffrac=ffracn (n), &
+!                               aicen=aicen  (n), &
+!                               vicen=vicen  (n), &
+!                               vsnon=vsnon  (n), &
+!                               qicen=zqin (:,n), &
+!                               sicen=zSin (:,n), &
+!                               Tsfcn=Tsfc   (n), &
+!                               alvl=alvl    (n), &
+!                               apnd=apnd    (n), &
+!                               hpnd=hpnd    (n), &
+!                               ipnd=ipnd    (n), &
+!                               meltsliqn=l_meltsliqn(n))
+
+!       call compute_ponds_topo(dt,       ncat,      nilyr,     &
+!                               ktherm,                         &
+!                               aice,     aicen,                &
+!                               vice,     vicen,                &
+!                               vsno,     vsnon,                &
+!                               meltt,                &
+!                               fsurf,    fpond,                &
+!                               Tsfc,     Tf,                   &
+!                               zqin,     zSin,                 &
+!                               apnd,     hpnd,      ipnd       )
+!       if (icepack_warnings_aborted(subname)) return
 
       if (present(rdg_rate)) rdg_rate(i,j) = (dardg1dt - dardg2dt)*US%T_to_s
       if (present(rdg_height)) rdg_height(i,j,:) = krdgn(:)*US%m_to_Z
@@ -434,7 +418,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       if ( icepack_warnings_aborted() ) then
         call icepack_warnings_flush(0)
         call icepack_warnings_setabort(.false.)
-        call SIS_error(WARNING, 'icepack ridge_ice error')
+        call SIS_error(WARNING, 'icepack compute_ponds error')
       endif
 
       ! pop pond off top of stack
@@ -445,18 +429,18 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
       enddo
       if (any(vicen < 0)) then
-!       print *, "Negative ice volume after ridging: ", i+G%idg_offset, j+G%jdg_offset, vicen
-!       print *, "Before ridging: ", mca_ice(i,j,1:nCat) /Rho_ice
-!       print *, "Ice concentration before/after ridging: ", IST%part_size(i,j,1:nCat), aicen
+!       print *, "Negative ice volume after ponds: ", i+G%idg_offset, j+G%jdg_offset, vicen
+!       print *, "Before ponds: ", mca_ice(i,j,1:nCat) /Rho_ice
+!       print *, "Ice concentration before/after ponds: ", IST%part_size(i,j,1:nCat), aicen
         do k=1,nCat
           if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
-            write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
+            write(mesg,'("Negative ice volume after ponds: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
                           i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
             call SIS_error(WARNING, mesg, all_print=.true.)
           endif
           vicen(k) = max(vicen(k),0.0)
         enddo
-!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
+!       write(mesg,'("Negative ice volume after ponds: ", 2i6, 2x, (1pe12.4))') &
 !                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
 !       call SIS_error(WARNING, mesg, all_print=.true.)
       endif
@@ -518,14 +502,13 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   endif; enddo; enddo ! part_sz, j, i
 
-!  call IST_chksum('after ice ridging ', IST, G, US, IG)
+!  call IST_chksum('after ice ponds ', IST, G, US, IG)
 
-end subroutine ice_ridging
+end subroutine ice_ponds
 
-!> ice_ridging_end deallocates the memory associated with this module.
-subroutine ice_ridging_end()
+!> ice_ponds_end deallocates the memory associated with this module.
+subroutine ice_ponds_end()
 
-end subroutine ice_ridging_end
+end subroutine ice_ponds_end
 
-
-end module ice_ridging_mod
+end module ice_ponds_mod

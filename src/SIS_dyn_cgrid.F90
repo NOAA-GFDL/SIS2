@@ -131,14 +131,16 @@ type, public :: SIS_C_dyn_CS ; private
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
-  integer :: ncat_b           ! number of bathymetry categories
-  integer :: ncat_i           ! number of ice thickness categories (log-normal)
+  integer :: ncat_b           !< number of bathymetry categories
+  integer :: ncat_i           !< number of ice thickness categories (log-normal)
+  logical :: adjust_depth = .false. !< Whether or not to make an adjustment to the depth seen by landfast ice code
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: sigma_b=>NULL()   !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: sigma_b=>NULL()    !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: depth_adj=>NULL()  !< !< Bottom depth adjustment [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
@@ -184,7 +186,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_C_dyn" ! This module's name.
-  character(len=200) :: filename, h2_file, inputdir
+  character(len=200) :: filename, h2_file, hadj_file, inputdir
   logical           :: debug
   real, parameter   :: missing = -1e34
 
@@ -313,48 +315,53 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                  "If true, turn on Lemieux landfast ice parameterization.", default=.false.)
   if (CS%lemieux_landfast) then
     call get_param(param_file, mdl, "LEMIEUX_K1", CS%lemieux_k1, &
-                   "The value of the first Lemieux landfast ice tuneable parameter.", &
-                   units="Nondim", default=8.0)
+                 "The value of the first Lemieux landfast ice tuneable parameter.", &
+                 units="Nondim", default=8.0)
     call get_param(param_file, mdl, "LEMIEUX_K2", CS%lemieux_k2, &
-                   "The value of the second Lemieux landfast ice tuneable parameter.", &
-                   units="N m-3", default=15.0, scale=US%kg_m3_to_R*US%m_s_to_L_T*US%T_to_s)
+                 "The value of the second Lemieux landfast ice tuneable parameter.", &
+                 units="N m-3", default=15.0, scale=US%kg_m3_to_R*US%m_s_to_L_T*US%T_to_s)
     call get_param(param_file, mdl, "LEMIEUX_THRESHOLD_HW", CS%lemieux_threshold_hw, &
-                   "Maximum water depth for grounding in Lemieux landfast ice.", &
-                   units="m", default=30.0, scale=US%m_to_Z)
+                 "Maximum water depth for grounding in Lemieux landfast ice.", &
+                 units="m", default=30.0, scale=US%m_to_Z)
   endif
   call get_param(param_file, mdl, "ITD_LANDFAST", CS%itd_landfast, &
                  "If true, turn on probabilistic landfast ice parameterization.", default=.false.)
 
   if (CS%lemieux_landfast .or. CS%itd_landfast) then
     call get_param(param_file, mdl, "LEMIEUX_ALPHA_B", CS%lemieux_alphab, &
-                   "The value of a third Lemieux landfast ice tuneable parameter.", &
-                   units="Nondim", default=20.0)
+                 "The value of a third Lemieux landfast ice tuneable parameter.", &
+                 units="Nondim", default=20.0)
     call get_param(param_file, mdl, "LEMIEUX_U0", CS%lemieux_u0, &
-                   "Velocity for Lemieux landfast ice.", &
-                   units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
+                 "Velocity for Lemieux landfast ice.", &
+                 units="m s-1", default=5.e-5, scale=US%m_s_to_L_T)
+    call get_param(param_file, mdl, "H_ADJ_FILE", hadj_file, &
+                 "The path to the file containing an adjustment to "//&
+                 "the bottom depth for the landfast ice.", default="")
+    call get_param(param_file, mdl, "ADJUST_DEPTH", CS%adjust_depth, &
+                 "If true, read in a depth adjustment for landfast ice.", default=.false.)
 
     allocate(CS%Tb_u(G%IsdB:G%IedB,G%jsd:G%jed), source=0.0)
     allocate(CS%Tb_v(G%isd:G%ied,G%JsdB:G%JedB), source=0.0)
   endif
   if (CS%itd_landfast) then
     call get_param(param_file, mdl, "BASAL_STRESS_MIN_THICK", CS%basal_stress_min_thick, &
-                   "Minimum ice thickness for grounding in ITD landfast ice.", &
-                   units="m", default=0.01, scale=US%m_to_Z)
+                 "Minimum ice thickness for grounding in ITD landfast ice.", &
+                 units="m", default=0.01, scale=US%m_to_Z)
     call get_param(param_file, mdl, "BASAL_STRESS_MAX_DEPTH", CS%basal_stress_max_depth, &
-                   "Maximum water depth for grounding in ITD landfast ice.", &
-                   units="m", default=50.0, scale=US%m_to_Z)
+                 "Maximum water depth for grounding in ITD landfast ice.", &
+                 units="m", default=50.0, scale=US%m_to_Z)
     call get_param(param_file, mdl, "BASAL_STRESS_MU_S", CS%basal_stress_mu_s, &
-                   "Drag coefficient in ITD landfast ice.", &
-                   units="nondim", default=0.1, scale=US%L_to_Z)
+                 "Drag coefficient in ITD landfast ice.", &
+                 units="nondim", default=0.1, scale=US%L_to_Z)
     call get_param(param_file, mdl, "BASAL_STRESS_PUNY", CS%puny, &
-                   "Small number in ITD landfast ice.", &
-                   units="nondim", default=1.0e-20)
+                 "Small number in ITD landfast ice.", &
+                 units="nondim", default=1.0e-20)
     call get_param(param_file, mdl, "BASAL_STRESS_SCALE", CS%onemeter, &
-                   "Scale factor in ITD landfast ice.", &
-                   units="m", default=1.0, scale=US%m_to_Z)
+                 "Scale factor in ITD landfast ice.", &
+                 units="m", default=1.0, scale=US%m_to_Z)
     call get_param(param_file, mdl, "BASAL_STRESS_CUTOFF", CS%basal_stress_cutoff, &
-                   "Scale factor in ITD landfast ice.", &
-                   units="nondim", default=1.9430)
+                 "Scale factor in ITD landfast ice.", &
+                 units="nondim", default=1.9430)
     call get_param(param_file, mdl, "H2_FILE", h2_file, &
                  "The path to the file containing the sub-grid-scale "//&
                  "topographic roughness amplitude with ITD_LANDFAST.", &
@@ -364,19 +371,25 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
     allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed), source=0.0)
     call MOM_read_data(filename, 'h2', CS%sigma_b, G%domain, scale=US%m_to_Z**2)
     call get_param(param_file, mdl, "BATHY_ROUGHNESS_MIN", CS%bathy_roughness_min, &
-                   "Minimum bathymetric roughness.", &
-                   units="m", default=2.5, scale=US%m_to_Z)
+                 "Minimum bathymetric roughness.", &
+                 units="m", default=2.5, scale=US%m_to_Z)
     call get_param(param_file, mdl, "BATHY_ROUGHNESS_MAX", CS%bathy_roughness_max, &
-                   "Maximum bathymetric roughness.", &
-                   units="m", default=2.5, scale=US%m_to_Z)
+                 "Maximum bathymetric roughness.", &
+                 units="m", default=2.5, scale=US%m_to_Z)
     CS%sigma_b(:,:) = min(max(sqrt(CS%sigma_b(:,:)), CS%bathy_roughness_min), CS%bathy_roughness_max)
     call pass_var(CS%sigma_b, G%Domain)
     call get_param(param_file, mdl, "BASAL_STRESS_NCAT_B", CS%ncat_b, &
-                   "Number of bathymetric depth categories in landfast ice computation.", &
-                   default=100)
+                 "Number of bathymetric depth categories in landfast ice computation.", &
+                 default=100)
     call get_param(param_file, mdl, "BASAL_STRESS_NCAT_I", CS%ncat_i, &
-                   "Number of ice thickness categories in landfast ice computation.", &
-                   default=100)
+                 "Number of ice thickness categories in landfast ice computation.", &
+                 default=100)
+  endif
+  if (CS%adjust_depth) then
+    call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
+    filename = trim(inputdir) // "/" // trim(hadj_file)
+    allocate(CS%depth_adj(G%isd:G%ied,G%jsd:G%jed), source=0.0)
+    call MOM_read_data(filename, 'depth_adj', CS%depth_adj, G%domain, scale=US%m_to_Z)
   endif
 
 !  if (len_trim(dirs%output_directory) > 0) then
@@ -1802,6 +1815,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
   do j=jsc,jec
     do I=isc-1,iec
       hw_u = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i+1,j) + sea_lev(i+1,j))
+      if (CS%adjust_depth) &
+            hw_u = hw_u + 0.5*(CS%depth_adj(i,j) + CS%depth_adj(i+1,j))
       ci_u = max(ci(i,j), ci(i+1,j))
       if (ci_u > 0.01 .and. G%mask2dCu(I,j) > 0.0 .and. hw_u < CS%lemieux_threshold_hw) then
         h_u = max(mi(i,j), mi(i+1,j))/CS%Rho_ice
@@ -1823,6 +1838,8 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
   do J=jsc-1,jec
     do i=isc,iec
       hw_v = min(G%bathyT(i,j) + sea_lev(i,j), G%bathyT(i,j+1) + sea_lev(i,j+1))
+      if (CS%adjust_depth) &
+            hw_v = hw_v + 0.5*(CS%depth_adj(i,j) + CS%depth_adj(i,j+1))
       ci_v = max(ci(i,j), ci(i,j+1))
       if (ci_v > 0.01 .and. G%mask2dCv(i,J) > 0.0 .and. hw_v < CS%lemieux_threshold_hw) then
         h_v = max(mi(i,j), mi(i,j+1))/CS%Rho_ice
@@ -1942,6 +1959,8 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
           sea_lev(i,j) < CS%basal_stress_max_depth) then
 
         mu_b = G%bathyT(i,j) + sea_lev(i,j)         ! (hwater) mean of PDF (normal dist) bathymetry
+        if (CS%adjust_depth) &
+              mu_b = mu_b + CS%depth_adj(i,j)
         wid_i = CS%basal_stress_max_depth/CS%ncat_i    ! width of ice categories
         wid_b = 6.0*CS%sigma_b(i,j)/CS%ncat_b          ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
 
@@ -1953,7 +1972,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         do n =1, ncat
           v_i = v_i + vcat(n)**2 / (max(acat(n), CS%puny))
         enddo
-        v_i = v_i - m_i**2
+        v_i = max( (v_i - m_i**2), CS%puny )
 
         ! parameters for the log-normal
         mu_i    = log(m_i/(CS%onemeter * sqrt(1.0 + v_i/m_i**2)))

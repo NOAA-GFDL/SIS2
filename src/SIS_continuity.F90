@@ -617,7 +617,7 @@ end subroutine summed_continuity
 !! using input total mass fluxes with the fluxes proportionate to the relative upwind
 !! thicknesses.
 subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS, &
-                                    h1, uh1, vh1, h2, uh2, vh2, h3, uh3, vh3)
+                                    h1, uh1, vh1, h2, uh2, vh2, h3, uh3, vh3, h4, uh4, vh4)
   type(SIS_hor_grid_type),        intent(inout) :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(inout) :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)),  intent(in) :: h_tot_in !< Initial total ice and snow mass per unit
@@ -656,6 +656,15 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
                                                        !! [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
                         optional, intent(out)   :: vh3 !< Meridional mass flux of medium 3 by category
+                                                       !! [R Z L2 T-1 ~> kg s-1].
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(inout) :: h4  !< Updated mass of medium 4 (pond ice?) by
+                                                       !! category [R Z ~> kg m-2].
+  real, dimension(SZIB_(G),SZJ_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: uh4 !< Zonal mass flux of medium 4 by category
+                                                       !! [R Z L2 T-1 ~> kg s-1].
+  real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)), &
+                        optional, intent(out)   :: vh4 !< Meridional mass flux of medium 4 by category
                                                        !! [R Z L2 T-1 ~> kg s-1].
 
   ! Local variables
@@ -730,6 +739,20 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
              ((uh3(I,j,k) - uh3(I-1,j,k)) + (vh3(i,J,k) - vh3(i,J-1,k))))
       enddo ; enddo ; enddo
     endif
+    if (present(h4)) then
+      if (do_mask) then
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB, masking_uh=uh1)
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB, masking_vh=vh1)
+      else
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB)
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB)
+      endif
+      !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h4(i,j,k) = h4(i,j,k) - G%IareaT(i,j) * (dt * &
+             ((uh4(I,j,k) - uh4(I-1,j,k)) + (vh4(i,J,k) - vh4(i,J-1,k))))
+      enddo ; enddo ; enddo
+    endif
 
   elseif (x_first) then
     ! First, advect zonally.
@@ -765,6 +788,17 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h4)) then
+      if (do_mask) then
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB, masking_uh=uh1)
+      else
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB)
+      endif
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h4(i,j,k) = h4(i,j,k) - G%IareaT(i,j) * (dt * (uh4(I,j,k) - uh4(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
 
@@ -809,6 +843,17 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       !$OMP parallel do default(shared)
       do j=js,je ; do k=1,nCat ; do i=is,ie
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
+    if (present(h4)) then
+      if (do_mask) then
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB, masking_vh=vh1)
+      else
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB)
+      endif
+      !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h4(i,j,k) = h4(i,j,k) - G%IareaT(i,j) * (dt * (vh4(i,J,k) - vh4(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
 
@@ -857,6 +902,17 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (vh3(i,J,k) - vh3(i,J-1,k)) )
       enddo ; enddo ; enddo
     endif
+    if (present(h4)) then
+      if (do_mask) then
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB, frac_neglect=CS%frac_neglect)
+      else
+        call merid_proportionate_fluxes(vh_tot, I_htot, h4, vh4, G, IG, LB)
+      endif
+      !$OMP parallel do default(shared)
+      do j=js,je ; do k=1,nCat ; do i=is,ie
+        h4(i,j,k) = h4(i,j,k) - G%IareaT(i,j) * (dt * (vh4(i,J,k) - vh4(i,J-1,k)) )
+      enddo ; enddo ; enddo
+    endif
 
     !$OMP parallel do default(shared)
     do j=LB%jsh,LB%jeh ; do i=LB%ish,LB%ieh
@@ -899,6 +955,17 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
       !$OMP parallel do default(shared)
       do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
         h3(i,j,k) = h3(i,j,k) - G%IareaT(i,j) * (dt * (uh3(I,j,k) - uh3(I-1,j,k)))
+      enddo ; enddo ; enddo
+    endif
+    if (present(h4)) then
+      if (do_mask) then
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB, masking_uh=uh1)
+      else
+        call zonal_proportionate_fluxes(uh_tot, I_htot, h4, uh4, G, IG, LB)
+      endif
+      !$OMP parallel do default(shared)
+      do j=LB%jsh,LB%jeh ; do k=1,nCat ; do i=LB%ish,LB%ieh
+        h4(i,j,k) = h4(i,j,k) - G%IareaT(i,j) * (dt * (uh4(I,j,k) - uh4(I-1,j,k)))
       enddo ; enddo ; enddo
     endif
 
