@@ -33,7 +33,7 @@
                                !    If defined, the velocity point data domain
                                !  includes every face of the thickness points.
                                !  In other words, some arrays are larger than
-                               !  others, depending on where they are on the 
+                               !  others, depending on where they are on the
                                !  staggered grid.
 
 #define NIPROC_ NONSENSE_NIPROC
@@ -43,7 +43,9 @@
                                !    NJPROC_ is the number of processors in the
                                !  y-direction.
 
+#ifndef MAX_FIELDS_
 #define MAX_FIELDS_ 50
+#endif
                                !    The maximum permitted number (each) of
                                !  restart variables, time derivatives, etc.
                                !  This is mostly used for the size of pointer

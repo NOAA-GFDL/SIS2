@@ -1007,6 +1007,9 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, IST, dt_cycle, Time_start, G
 !        call hchksum_pair("WindStr_[xy]_A before SIS_C_dynamics", WindStr_x_A, WindStr_y_A, G, halos=1)
       endif
 
+      if (nds>1) &
+        call pass_var(DS2d%mca_step(:,:,DS2d%nts), G%Domain, complete=.true.)
+
       call cpu_clock_begin(iceClocka)
       !### Ridging needs to be added with C-grid dynamics.
       if (CS%do_ridging) rdg_rate(:,:) = 0.0

@@ -9,9 +9,9 @@ use MOM_domains,       only : PE_here, num_PEs, MOM_domain_type, clone_MOM_domai
 use MOM_dyn_horgrid,   only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe, SIS_mesg=>MOM_mesg
 use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
-use MOM_io,            only : create_file, file_type, fieldtype, file_exists, open_file, close_file
-use MOM_io,            only : MOM_read_data, MOM_write_field, read_field_chksum, field_exists
-use MOM_io,            only : get_file_info, get_file_fields, get_field_atts, get_file_times
+use MOM_io,            only : MOM_infra_file, MOM_field, create_MOM_file
+use MOM_io,            only : MOM_read_data, MOM_write_field
+use MOM_io,            only : file_exists, field_exists
 use MOM_io,            only : axis_info, set_axis_info, delete_axis_info
 use MOM_io,            only : vardesc, var_desc, query_vardesc, modify_vardesc, get_filename_appendix
 use MOM_io,            only : MULTIPLE, READONLY_FILE, SINGLE_FILE
@@ -224,7 +224,7 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
   type(MOM_domain_type), intent(in)  :: domain    !< The MOM domain descriptor being used
   type(SIS_restart_CS),  pointer     :: CS        !< The control structure returned by a previous
                                                   !! call to SIS_restart_init
-  type(file_type), dimension(:), &
+  type(MOM_infra_file), dimension(:), &
                optional, intent(out) :: IO_handles !< The I/O handles of all opened files
   character(len=*), dimension(:), &
                optional, intent(out) :: file_paths !< The full paths to the restart files
@@ -309,8 +309,8 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
         if (fexists) then
           nf = nf + 1
           if (present(IO_handles)) &
-            call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
-                           threading=MULTIPLE, fileset=SINGLE_FILE)
+            call IO_handles(nf)%open(trim(filepath), READONLY_FILE, &
+                MOM_domain=domain, threading=MULTIPLE, fileset=SINGLE_FILE)
           if (present(global_files)) global_files(nf) = .true.
           if (present(file_paths)) file_paths(nf) = filepath
         elseif (CS%parallel_restartfiles) then
@@ -319,8 +319,8 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
           if (fexists) then
             nf = nf + 1
             if (present(IO_handles)) &
-              call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, MOM_domain=domain, &
-                             threading=MULTIPLE, fileset=MULTIPLE)
+              call IO_handles(nf)%open(trim(filepath), READONLY_FILE, &
+                  MOM_domain=domain, threading=MULTIPLE, fileset=MULTIPLE)
             if (present(global_files)) global_files(nf) = .false.
             if (present(file_paths)) file_paths(nf) = filepath
           endif
@@ -343,8 +343,8 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
       if (fexists) then
         nf = nf + 1
         if (present(IO_handles)) &
-          call open_file(IO_handles(nf), trim(filepath), READONLY_FILE, &
-                       threading=MULTIPLE, fileset=SINGLE_FILE)
+          call IO_handles(nf)%open(trim(filepath), READONLY_FILE, &
+              threading=MULTIPLE, fileset=SINGLE_FILE)
         if (present(global_files)) global_files(nf) = .true.
         if (present(file_paths)) file_paths(nf) = filepath
         if (is_root_pe() .and. (present(IO_handles))) &
@@ -1036,7 +1036,7 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
   ! Local variables
   type(vardesc) :: vars(CS%max_fields)  ! Descriptions of the fields that
                                         ! are to be read from the restart file.
-  type(fieldtype) :: fields(CS%max_fields) ! Opaque types containing metadata describing
+  type(MOM_field) :: fields(CS%max_fields) ! Opaque types containing metadata describing
                                         ! each variable that will be written.
   type(axis_info)    :: extra_axes(5)   ! Descriptors for extra axes that might be used
   type(dyn_horgrid_type), pointer :: dG => NULL() ! Common horizontal grid type between SIS2 and MOM6
@@ -1051,7 +1051,7 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
                                         ! for any one file.
   integer :: start_var, next_var        ! The starting variables of the
                                         ! current and next files.
-  type(file_type) :: IO_handle          ! The I/O handle of the open fileset
+  type(MOM_infra_file) :: IO_handle     ! The I/O handle of the open fileset
   integer :: file_thread                ! A flag indicating whether to use parallel restart files
   integer :: m, n, nz
   integer :: num_files                  ! The number of restart files that will be used.
@@ -1182,11 +1182,11 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
 
     file_thread = SINGLE_FILE ; if (CS%parallel_restartfiles) file_thread = MULTIPLE
     if (present(IG)) then
-      call create_file(IO_handle, trim(restartpath), vars, (next_var-start_var), &
-                       fields, file_thread, dG=dG, checksums=check_val, extra_axes=extra_axes)
+      call create_MOM_file(IO_handle, trim(restartpath), vars, (next_var-start_var), &
+          fields, file_thread, dG=dG, checksums=check_val, extra_axes=extra_axes)
     else
-      call create_file(IO_handle, trim(restartpath), vars, (next_var-start_var), &
-                       fields, file_thread, dG=dG, checksums=check_val)
+      call create_MOM_file(IO_handle, trim(restartpath), vars, (next_var-start_var), &
+          fields, file_thread, dG=dG, checksums=check_val)
     endif
 
     do m=start_var,next_var-1
@@ -1208,7 +1208,7 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
       endif
     enddo
 
-    call close_file(IO_handle)
+    call IO_handle%close()
 
     num_files = num_files+1
 
@@ -1246,11 +1246,11 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
   integer :: nvar ! The number of fields in a file
   integer :: pos  ! The staggering position of a variable
 
-  type(file_type) :: IO_handles(CS%max_fields) ! The I/O units of all open files.
+  type(MOM_infra_file) :: IO_handles(CS%max_fields) ! The I/O units of all open files.
   character(len=200) :: unit_path(CS%max_fields) ! The file names.
 
   character(len=8)   :: hor_grid ! String indicating horizontal grid position
-  type(fieldtype), allocatable, dimension(:) :: fields ! Structures with information about each variable
+  type(MOM_field), allocatable, dimension(:) :: fields ! Structures with information about each variable
   logical, allocatable, dimension(:) :: global_file  ! True if the file is global
   logical            :: is_there_a_checksum ! Is there a valid checksum that should be checked.
   integer(kind=8)    :: checksum_file  ! The checksum value recorded in the input file.
@@ -1280,13 +1280,13 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
 
   ! Read each variable from the first file in which it is found.
   do n=1,num_file
-    call get_file_info(IO_handles(n), nvar=nvar)
+    call IO_handles(n)%get_file_info(nvar=nvar)
 
     allocate(fields(nvar))
-    call get_file_fields(IO_handles(n), fields(1:nvar))
+    call IO_handles(n)%get_file_fields(fields(1:nvar))
 
     do m=1, nvar
-      call get_field_atts(fields(m), name=varname)
+      call IO_handles(n)%get_field_atts(fields(m), name=varname)
       do i=1,CS%num_obsolete_vars
         if (adjustl(lowercase(trim(varname))) == adjustl(lowercase(trim(CS%restart_obsolete(i)%field_name)))) then
             call SIS_error(FATAL, "SIS_restart restore_state: Attempting to use obsolete restart field "//&
@@ -1319,11 +1319,11 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
       call SIS_mesg("Attempting to read "//trim(CS%restart_field(m)%var_name), 9)
 
       do i=1,nvar  ! Loop through the fields that are in the file.
-        call get_field_atts(fields(i), name=varname)
+        call IO_handles(n)%get_field_atts(fields(i), name=varname)
         if (lowercase(trim(varname)) == lowercase(trim(CS%restart_field(m)%var_name))) then
           checksum_data = -1
           if (CS%checksum_required) then
-            call read_field_chksum(fields(i), checksum_file, is_there_a_checksum)
+            call IO_handles(n)%read_field_chksum(fields(i), checksum_file, is_there_a_checksum)
           else
             checksum_file = -1
             is_there_a_checksum = .false. ! Do not need to do data checksumming.
@@ -1405,7 +1405,7 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
   enddo
 
   do n=1,num_file
-    call close_file(IO_handles(n))
+    call IO_handles(n)%close()
   enddo
 
   deallocate(global_file)

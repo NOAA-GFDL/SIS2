@@ -19,7 +19,7 @@ use MOM_coms,          only : EFP_sum_across_PEs, max_across_PEs
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
 ! use MOM_io,          only : create_file, fieldtype, flush_file, reopen_file, vardesc, write_field
-use MOM_io,            only : open_file, APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
+use MOM_io,            only : open_ASCII_file, APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
 use MOM_string_functions, only : slasher
 use MOM_time_manager,  only : time_type, get_time, operator(>), operator(-)
 use MOM_time_manager,  only : get_date, get_calendar_type, NO_CALENDAR
@@ -369,11 +369,11 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     !  Reopen or create a text output file, with an explanatory header line.
     if (is_root_pe()) then
       if (day > CS%Start_time) then
-        call open_file(CS%statsfile_ascii, trim(CS%statsfile), &
-                       action=APPEND_FILE, form=ASCII_FILE, nohdrs=.true.)
+        call open_ASCII_file(CS%statsfile_ascii, trim(CS%statsfile), &
+            action=APPEND_FILE)
       else
-        call open_file(CS%statsfile_ascii, trim(CS%statsfile), &
-                       action=WRITEONLY_FILE, form=ASCII_FILE, nohdrs=.true.)
+        call open_ASCII_file(CS%statsfile_ascii, trim(CS%statsfile), &
+            action=WRITEONLY_FILE)
         if (abs(CS%timeunit - 86400.0) < 1.0) then
           write(CS%statsfile_ascii,'("  Step,",7x,"Day,",28x,"Area(N/S),",22x,"Extent(N/S),",27x,&
               &"Mass(N/S),",22x,"Heat(N/S),",14x,"Salinty(N/S),   Frac Mass Err,   Temp Err,   Salin Err")')
