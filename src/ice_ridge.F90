@@ -241,7 +241,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(:,:,:),         pointer    :: Tr_ice_alvl_ptr=>NULL()  !< A pointer to the named tracer
   real, dimension(:,:,:),         pointer    :: Tr_ice_mlvl_ptr=>NULL()  !< A pointer to the named tracer
 
-  real :: rho_ice, rho_snow ! Density of ice and snow [R ~> kg m-3]
+  real :: rho_ice, rho_snow, rho_water ! Density of ice, snow and water [R ~> kg m-3]
   real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
   real :: divu_adv
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
@@ -257,6 +257,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   call get_SIS2_thermo_coefs(IST%ITV, rho_snow=rho_snow)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_water=rho_water)
   call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water)
   dt_sec = dt*US%T_to_s
 
@@ -352,7 +353,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       if (TrReg%ntr>0) then ! load tracer array
         ntrcr=ntrcr+1
         do k=1,ncat
-          trcrn(ntrcr,k) = Cp_water * OSS%SST_C(i,j) ! surface ocean enthalpy
+          trcrn(ntrcr,k) = Cp_water * OSS%SST_C(i,j) * rho_water ! surface ocean enthalpy
                                                      ! copying across all categories.
         enddo
         trcr_depend(ntrcr) = 0; ! ice/snow surface temperature
