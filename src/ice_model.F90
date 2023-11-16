@@ -35,12 +35,11 @@ use MOM_file_parser,   only : open_param_file, close_param_file
 use MOM_hor_index,     only : hor_index_type, hor_index_init
 use MOM_io,            only : file_exists
 use MOM_obsolete_params, only : obsolete_logical, obsolete_real
-use MOM_string_functions, only : uppercase
+use MOM_string_functions, only : uppercase, extract_real
 use MOM_time_manager,  only : time_type, time_type_to_real, real_to_time
 use MOM_time_manager,  only : operator(+), operator(-)
 use MOM_time_manager,  only : operator(>), operator(*), operator(/), operator(/=)
-use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init
-use MOM_unit_scaling,  only : unit_scaling_end, fix_restart_unit_scaling
+use MOM_unit_scaling,  only : unit_scale_type, unit_scaling_init, unit_scaling_end
 
 use astronomy_mod, only : astronomy_init, astronomy_end
 use astronomy_mod, only : universal_time, orbital_time, diurnal_solar, daily_mean_solar
@@ -104,8 +103,7 @@ use SIS_types,         only : simple_OSS_type, alloc_simple_OSS, dealloc_simple_
 use SIS_types,         only : ice_state_type, alloc_IST_arrays, dealloc_IST_arrays
 use SIS_types,         only : IST_chksum, IST_bounds_check, ice_state_register_restarts
 use SIS_types,         only : ice_state_read_alt_restarts, register_fast_to_slow_restarts
-use SIS_types,         only : register_unit_conversion_restarts
-use SIS_types,         only : rescale_fast_to_slow_restart_fields, rescale_ice_state_restart_fields
+use SIS_types,         only : rescale_ice_state_restart_fields
 use SIS_types,         only : copy_IST_to_IST, copy_FIA_to_FIA, copy_sOSS_to_sOSS
 use SIS_types,         only : copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
 use SIS_types,         only : copy_Rad_to_Rad, redistribute_Rad_to_Rad
@@ -1269,6 +1267,10 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
     Ice%t_surf(i2,j2,k2) = US%C_to_degC*Rad%t_skin(i,j,k) + T_0degC
   enddo ; enddo ; enddo
 
+  ! coszen has changed if we are using the specified ice mode
+  if (associated(Ice%sCS)) then
+    if(Ice%sCS%specified_ice) coszen_changed = .true.
+  endif
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
   ! if the coupled model's radiation timestep is shorter than the slow coupling
   ! timestep.  However, it is safe (if wasteful) to call it more frequently.
@@ -1718,12 +1720,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! after a restart.Provide a switch to turn this option off.
   logical :: recategorize_ice ! If true, adjust the distribution of the ice among thickness
                               ! categories after initialization.
+  logical :: read_hlim_vals   ! If true, read the list of ice thickness lower limits
+                              ! from an input file.
+  real,  allocatable, dimension(:) :: &
+    hlim_vals                 ! List of lower limits on ice thickness categories.
   logical :: Verona
   logical :: split_fast_slow_flag
   logical :: read_aux_restart
   logical :: split_restart_files
   logical :: is_restart = .false.
   character(len=16) :: stagger, dflt_stagger
+  character(len=200) :: hlim_string
   type(ice_OBC_type), pointer :: OBC_in => NULL()
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
@@ -1948,7 +1955,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, allow ice to be transmuted directly into seawater with a spatially "//&
                  "varying rate as a form of outflow open boundary condition.", &
                  default=.false., do_not_log=.true.) ! Defer logging to SIS_slow_thermo.
-
+  call get_param(param_file, mdl, "READ_HLIM_VALS", read_hlim_vals, &
+                 "If true, read the lower limits on the ice thickness"//&
+                 "categories.", default=.false.)
 
   nCat_dflt = 5 ; if (slab_ice) nCat_dflt = 1
   opm_dflt = 0.0 ; if (redo_fast_update) opm_dflt = 1.0e-40
@@ -2004,8 +2013,17 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call set_ice_grid(sIG, US, param_file, nCat_dflt, ocean_part_min_dflt=opm_dflt)
     if (slab_ice) sIG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = sIG%CatIce ; NkIce = sIG%NkIce
-    call initialize_ice_categories(sIG, Rho_ice, US, param_file)
 
+    if (read_hlim_vals) then
+      allocate(hlim_vals(CatIce))
+      call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
+                   "This sets the list of lower limits on the ice thickness "//&
+                   "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
+      hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
+      call initialize_ice_categories(sIG, Rho_ice, US, param_file, hLim_vals=hlim_vals)
+    else
+      call initialize_ice_categories(sIG, Rho_ice, US, param_file)
+    endif
 
     ! Set up the domains and lateral grids.
     if (.not.associated(Ice%sCS%G)) allocate(Ice%sCS%G)
@@ -2053,7 +2071,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     call alloc_IST_arrays(sHI, sIG, US, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
     call ice_state_register_restarts(sIST, sG, sIG, US, Ice%Ice_restart)
-    call register_unit_conversion_restarts(Ice%sCS%US, Ice%Ice_restart)
 
     call alloc_ocean_sfc_state(Ice%sCS%OSS, sHI, sIST%Cgrid_dyn, gas_fields_ocn)
     Ice%sCS%OSS%kmelt = kmelt
@@ -2185,7 +2202,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     if (slab_ice) Ice%fCS%IG%CatIce = 1 ! open water and ice ... but never in same place
     CatIce = Ice%fCS%IG%CatIce ; NkIce = Ice%fCS%IG%NkIce
 
-    call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file)
+    if (read_hlim_vals) then
+      if (.not. allocated(hlim_vals)) then
+        allocate(hlim_vals(CatIce))
+        call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
+                     "This sets the list of lower limits on the ice thickness "//&
+                     "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
+        hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
+      endif
+      call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file, hLim_vals=hlim_vals)
+    else
+      call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file)
+    endif
 
   ! Allocate and register fields for restarts.
 
@@ -2202,8 +2230,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! whether the Ice%Ice...restart types are associated.
     call ice_type_fast_reg_restarts(fGD%mpp_domain, CatIce, &
                       param_file, Ice, Ice%Ice_fast_restart)
-    if (split_restart_files) &
-      call register_unit_conversion_restarts(Ice%fCS%US, Ice%Ice_fast_restart)
 
     if (redo_fast_update .or. .not.single_IST) then
       call alloc_IST_arrays(fHI, Ice%fCS%IG, US, Ice%fCS%IST, &
@@ -2508,11 +2534,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       endif
     endif
 
-    if (split_fast_slow_flag) then
-      call rescale_fast_to_slow_restart_fields(Ice%fCS%FIA, Ice%fCS%Rad, Ice%fCS%TSF, &
-                                               Ice%fCS%G, US, Ice%fCS%IG)
-    endif
-
 
 !  if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) then
 !    call set_domain(fGD)
@@ -2564,8 +2585,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%axes(1:3) = Ice%fCS%diag%axesTc0%handles(1:3)
     endif
   endif ! fast_ice_PE
-
-  call fix_restart_unit_scaling(US, unscaled=.true.)
 
   !nullify_domain perhaps could be called somewhere closer to set_domain
   !but it should be called after restore_SIS_state() otherwise it causes a restart mismatch

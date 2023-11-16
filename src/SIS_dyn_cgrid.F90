@@ -2083,7 +2083,6 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
   ! then discarded.
   real, allocatable, target, dimension(:,:) :: str_tmp
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
-  real :: stress_rescale
   logical :: read_values
   integer :: i, j, id
 
@@ -2123,21 +2122,14 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
   if (allocated(str_tmp)) deallocate(str_tmp)
   if (associated(domain_tmp)) then ; deallocate(domain_tmp%mpp_domain) ; deallocate(domain_tmp) ; endif
 
-  ! Now redo the dimensional rescaling of the stresses if necessary.
-  if (US%s_to_T_restart*US%m_to_L_restart*US%kg_m3_to_R_restart*US%m_to_Z_restart /= 0.0) then
-    stress_rescale = US%s_to_T_restart**2 / &
-                     (US%kg_m3_to_R_restart * US%m_to_Z_restart * US%m_to_L_restart**2)
-    do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
-      CS%str_s(I,J) = stress_rescale * CS%str_s(I,J)
-      if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
-    enddo ; enddo
-    do j=G%jsc,G%jec ; do i=G%isc,G%iec
-      CS%str_d(i,j) = stress_rescale * CS%str_d(i,j)
-      CS%str_t(i,j) = stress_rescale * CS%str_t(i,j)
-      if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
-      if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
-    enddo ; enddo
-  endif
+  ! Zero out any excessively small stresses from the restart files.
+  do J=G%jsc-1,G%jec ; do I=G%isc-1,G%iec
+    if (abs(CS%str_s(I,J)) < CS%str_underflow) CS%str_s(I,J) = 0.0
+  enddo ; enddo
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    if (abs(CS%str_d(i,j)) < CS%str_underflow) CS%str_d(i,j) = 0.0
+    if (abs(CS%str_t(i,j)) < CS%str_underflow) CS%str_t(i,j) = 0.0
+  enddo ; enddo
 
 end subroutine SIS_C_dyn_read_alt_restarts
 
