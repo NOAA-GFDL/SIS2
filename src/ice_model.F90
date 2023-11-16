@@ -2019,7 +2019,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
                    "This sets the list of lower limits on the ice thickness "//&
                    "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
-      hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
+      do k=1,CatIce
+        hlim_vals(k) = extract_real(hlim_string, ', ', k) * US%m_to_L
+      enddo
       call initialize_ice_categories(sIG, Rho_ice, US, param_file, hLim_vals=hlim_vals)
     else
       call initialize_ice_categories(sIG, Rho_ice, US, param_file)
