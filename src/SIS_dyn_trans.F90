@@ -407,7 +407,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
                                G, US, IG, CS, OBC)
 
       ! Complete the category-resolved mass and tracer transport and update the ice state type.
-      call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, US, IG, CS)
+      call complete_IST_transport(CS%DS2d, CS%CAS, IST, OSS, dt_adv_cycle, G, US, IG, CS)
 
     else !  (.not.CS%merged_cont)
 
@@ -624,10 +624,10 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
         if (CS%do_ridging) then
           call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, US, IG, dt_slow, CS%SIS_transport_CSp, &
                !                                    rdg_rate=DS2d%avg_ridge_rate)
-                                    rdg_rate=IST%rdg_rate)
+                                    OSS=OSS, rdg_rate=IST%rdg_rate)
           DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
         else
-          call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, US, IG, dt_slow,CS%SIS_transport_CSp)
+          call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, US, IG, dt_slow, CS%SIS_transport_CSp)
         endif
       endif
       call cpu_clock_end(iceClock8)
@@ -716,7 +716,7 @@ subroutine SIS_multi_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, 
     ! Complete the category-resolved mass and tracer transport and update the ice state type.
     ! This must be done before the next thermodynamic step.
     if (end_of_cycle) &
-      call complete_IST_transport(CS%DS2d, CS%CAS, IST, dt_adv_cycle, G, US, IG, CS)
+      call complete_IST_transport(CS%DS2d, CS%CAS, IST, OSS, dt_adv_cycle, G, US, IG, CS)
 
     if (CS%column_check .and. IST%valid_IST) &  ! This is just here from early debugging exercises,
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
@@ -735,14 +735,16 @@ end subroutine SIS_multi_dyn_trans
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> Complete the category-resolved mass and tracer transport and update the ice state type.
-subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
+subroutine complete_IST_transport(DS2d, CAS, IST, OSS, dt_adv_cycle, G, US, IG, CS)
   type(ice_state_type),          intent(inout) :: IST !< A type describing the state of the sea ice
+  type(ocean_sfc_state_type),    intent(in)    :: OSS !< A structure containing the arrays that describe
+                                                      !! the ocean's surface state for the ice model.
   type(dyn_state_2d),            intent(inout) :: DS2d !< A simplified 2-d description of the ice state
-                                                   !! integrated across thickness categories and layers.
+                                                      !! integrated across thickness categories and layers.
   type(cell_average_state_type), intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   real,                          intent(in)    :: dt_adv_cycle !< The time since the last IST transport [T ~> s].
   type(SIS_hor_grid_type),       intent(inout) :: G   !< The horizontal grid type
-  type(unit_scale_type),         intent(in)    :: US    !< A structure with unit conversion factors
+  type(unit_scale_type),         intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),           intent(inout) :: IG  !< The sea-ice specific grid type
   type(dyn_trans_CS),            pointer       :: CS  !< The control structure for the SIS_dyn_trans module
 
@@ -763,7 +765,7 @@ subroutine complete_IST_transport(DS2d, CAS, IST, dt_adv_cycle, G, US, IG, CS)
   if (CS%do_ridging) then
     call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, US, IG, dt_adv_cycle, CS%SIS_transport_CSp, &
          !                              rdg_rate=DS2d%avg_ridge_rate)
-                              rdg_rate=IST%rdg_rate)
+                              OSS=OSS, rdg_rate=IST%rdg_rate)
     DS2d%ridge_rate_count = 0. ; DS2d%avg_ridge_rate(:,:) = 0.0
   else
     call finish_ice_transport(CS%CAS, IST, IST%TrReg, G, US, IG, dt_adv_cycle, CS%SIS_transport_CSp)

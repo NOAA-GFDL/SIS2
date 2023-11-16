@@ -23,7 +23,7 @@ use SIS_tracer_advect, only : advect_scalar
 use SIS_tracer_registry, only : SIS_tracer_registry_type, get_SIS_tracer_pointer
 use SIS_tracer_registry, only : update_SIS_tracer_halos, set_massless_SIS_tracers
 use SIS_tracer_registry, only : check_SIS_tracer_bounds
-use SIS_types,         only : ice_state_type
+use SIS_types,         only : ice_state_type, ocean_sfc_state_type
 use ice_grid,          only : ice_grid_type
 use ice_ridging_mod,   only : ice_ridging_init, ice_ridging, ice_ridging_CS
 
@@ -224,7 +224,7 @@ end subroutine ice_cat_transport
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> finish_ice_transport completes the ice transport and thickness class redistribution
-subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
+subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rate)
   type(cell_average_state_type),     intent(inout) :: CAS !< A structure with ocean-cell averaged masses.
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice
   type(SIS_hor_grid_type),           intent(inout) :: G   !< The horizontal grid type
@@ -233,6 +233,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
   type(SIS_tracer_registry_type),    pointer       :: TrReg !< The registry of SIS ice and snow tracers.
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_transport_CS),            pointer       :: CS  !< A pointer to the control structure for this module
+  type(ocean_sfc_state_type), optional, intent(in) :: OSS !< A structure containing the arrays that describe
+                                                          !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(in) :: rdg_rate !< The ice ridging rate [T-1 ~> s-1].
 
   ! Local variables
@@ -265,7 +267,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, rdg_rate)
   if (CS%do_ridging) then
     ! Compress the ice using the ridging scheme taken from the CICE-Icepack module
     call ice_ridging(IST, G, IG, CAS%m_ice, CAS%m_snow, CAS%m_pond, TrReg, CS%ice_ridging_CSp, US, &
-                     dt, rdg_rate=IST%rdg_rate, rdg_height=IST%rdg_height)
+                     dt, OSS=OSS, rdg_rate=IST%rdg_rate, rdg_height=IST%rdg_height)
     ! Clean up any residuals
     call compress_ice(IST%part_size, IST%mH_ice, IST%mH_snow, IST%mH_pond, TrReg, G, US, IG, CS, CAS)
   else

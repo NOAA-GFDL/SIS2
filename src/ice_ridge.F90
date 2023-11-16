@@ -23,7 +23,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_hor_grid,      only : SIS_hor_grid_type
-use SIS_types,         only : ice_state_type, ist_chksum
+use SIS_types,         only : ice_state_type, ist_chksum, ocean_sfc_state_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, get_SIS_tracer_pointer
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
 use ice_grid,          only : ice_grid_type
@@ -55,6 +55,7 @@ end type ice_ridging_CS
 
 contains
 
+!> Read the ice ridging parameters from the input files and pass them to Icepack.
 subroutine ice_ridging_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
@@ -120,10 +121,9 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
 
 end subroutine ice_ridging_init
 !
-! ice_ridging is a wrapper for the icepack ridging routine ridge_ice
-!
+!> ice_ridging is a wrapper for the icepack ridging routine ridge_ice
 subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
-                       rdg_rate, rdg_height)
+                       OSS, rdg_rate, rdg_height)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< G The ocean's grid structure.
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice-specific grid structure.
@@ -136,6 +136,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors.
   real,                              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds. [T ~> s]
+  type(ocean_sfc_state_type), intent(in), optional :: OSS !< A structure containing the arrays that describe
+                                                          !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G)), intent(out), optional :: rdg_rate !< Diagnostic of the rate of fractional
                                                               !! area loss-gain due to ridging (1/s)
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout), optional :: rdg_height !< A diagnostic of the ridged ice
@@ -240,6 +242,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(:,:,:),         pointer    :: Tr_ice_mlvl_ptr=>NULL()  !< A pointer to the named tracer
 
   real :: rho_ice, rho_snow ! Density of ice and snow [R ~> kg m-3]
+  real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
   real :: divu_adv
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
@@ -254,6 +257,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   call get_SIS2_thermo_coefs(IST%ITV, rho_snow=rho_snow)
+  call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water)
   dt_sec = dt*US%T_to_s
 
   call icepack_query_tracer_sizes(ncat_out=ncat_out,ntrcr_out=ntrcr_out, nilyr_out=nilyr_out, nslyr_out=nslyr_out)
@@ -348,8 +352,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       if (TrReg%ntr>0) then ! load tracer array
         ntrcr=ntrcr+1
         do k=1,ncat
-          trcrn(ntrcr,k) = Tr_ice_enth_ptr(i,j,1,1) ! surface temperature taken from the ice-free category
-                                                    ! copying across all categories.
+          trcrn(ntrcr,k) = Cp_water * OSS%SST_C(i,j) ! surface ocean enthalpy
+                                                     ! copying across all categories.
         enddo
         trcr_depend(ntrcr) = 0; ! ice/snow surface temperature
         trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
