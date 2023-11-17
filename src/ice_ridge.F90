@@ -73,10 +73,10 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   if (.not.associated(CS)) allocate(CS)
   call get_param(PF, mdl, "NEW_RIDGE_PARTICIPATION", CS%new_rdg_partic, &
                  "Participation function used in ridging, .false. for Thorndike et al. 1975 "//&
-                 ".true. for Lipscomb et al. 2007", default=.false.)
+                 ".true. for Lipscomb et al. 2007", default=.true.)
   call get_param(PF, mdl, "NEW_RIDGE_REDISTRIBUTION", CS%new_rdg_redist, &
                  "Redistribution function used in ridging, .false. for Hibler 1980 "//&
-                 ".true. for Lipscomb et al. 2007", default=.false.)
+                 ".true. for Lipscomb et al. 2007", default=.true.)
   if (CS%new_rdg_partic) then
     call get_param(PF, mdl, "RIDGE_MU", CS%mu_rdg, &
                    "E-folding scale of ridge ice from Lipscomb et al. 2007", &
@@ -458,22 +458,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         IST%mH_pond(i,j,k) = tr_tmp(k)
         mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
       enddo
-      if (any(vicen < 0)) then
-!       print *, "Negative ice volume after ridging: ", i+G%idg_offset, j+G%jdg_offset, vicen
-!       print *, "Before ridging: ", mca_ice(i,j,1:nCat) /Rho_ice
-!       print *, "Ice concentration before/after ridging: ", IST%part_size(i,j,1:nCat), aicen
-        do k=1,nCat
-          if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
-            write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
-                          i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
-            call SIS_error(WARNING, mesg, all_print=.true.)
-          endif
-          vicen(k) = max(vicen(k),0.0)
-        enddo
-!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
-!                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
-!       call SIS_error(WARNING, mesg, all_print=.true.)
-      endif
 
       if (TrReg%ntr>0) then
         ! unload tracer array reversing order of load -- stack-like fashion
