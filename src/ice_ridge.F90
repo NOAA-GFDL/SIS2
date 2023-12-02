@@ -25,7 +25,7 @@ use MOM_unit_scaling,  only : unit_scale_type
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_types,         only : ice_state_type, ist_chksum, ocean_sfc_state_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, get_SIS_tracer_pointer
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, T_freeze
 use ice_grid,          only : ice_grid_type
 !Icepack modules
 use icepack_kinds
@@ -243,6 +243,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   real :: rho_ice, rho_snow, rho_water ! Density of ice, snow and water [R ~> kg m-3]
   real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
+  real :: Tf          ! The freezing temperature of sea water [C ~> degC]
   real :: divu_adv
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
@@ -414,6 +415,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       dvirdgndt(:) = 0.0
       araftn(:) = 0.0
       vraftn(:) = 0.0
+      Tf = T_freeze(OSS%s_surf(i,j), IST%ITV)
 
       ! call Icepack routine; how are ponds treated?
       call icepack_step_ridge (dt_sec,       ndtd,          &
@@ -440,7 +442,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
                                araftn,       vraftn,        &
                                aice,         fsalt,         &
                                first_ice,    fzsal,         &
-                               flux_bio,     closing )
+                               flux_bio,     closing,       &
+                               Tf)
 
       if (present(rdg_rate)) rdg_rate(i,j) = (dardg1dt - dardg2dt)*US%T_to_s
       if (present(rdg_height)) rdg_height(i,j,:) = krdgn(:)*US%m_to_Z
@@ -458,6 +461,23 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         IST%mH_pond(i,j,k) = tr_tmp(k)
         mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
       enddo
+
+      if (any(vicen < 0)) then
+!       print *, "Negative ice volume after ridging: ", i+G%idg_offset, j+G%jdg_offset, vicen
+!       print *, "Before ridging: ", mca_ice(i,j,1:nCat) /Rho_ice
+!       print *, "Ice concentration before/after ridging: ", IST%part_size(i,j,1:nCat), aicen
+        do k=1,nCat
+          if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
+            write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
+                          i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
+            call SIS_error(WARNING, mesg, all_print=.true.)
+          endif
+          vicen(k) = max(vicen(k),0.0)
+        enddo
+!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
+!                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
+!       call SIS_error(WARNING, mesg, all_print=.true.)
+      endif
 
       if (TrReg%ntr>0) then
         ! unload tracer array reversing order of load -- stack-like fashion

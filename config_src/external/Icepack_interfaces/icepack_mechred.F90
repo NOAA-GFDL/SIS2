@@ -36,7 +36,8 @@
                                     araftn,       vraftn,        &
                                     aice,         fsalt,         &
                                     first_ice,    fzsal,         &
-                                    flux_bio,     closing )
+                                    flux_bio,     closing,       &
+                                    Tf)
 
       real (kind=dbl_kind), intent(in) :: &
          dt        !< The time step over which ridging occurs [s]
@@ -112,6 +113,8 @@
 
       logical (kind=log_kind), dimension(:), intent(inout) :: &
          first_ice    !< True until ice forms
+      real (kind=dbl_kind), intent(in) :: &
+         Tf           ! freezing temperature
 
       end subroutine icepack_step_ridge
 
