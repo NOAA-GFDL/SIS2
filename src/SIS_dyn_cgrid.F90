@@ -131,14 +131,14 @@ type, public :: SIS_C_dyn_CS ; private
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
-  integer :: ncat_b           ! number of bathymetry categories
-  integer :: ncat_i           ! number of ice thickness categories (log-normal)
+  integer :: ncat_b           !< number of bathymetry categories
+  integer :: ncat_i           !< number of ice thickness categories (log-normal)
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: sigma_b=>NULL()   !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: sigma_b=>NULL() !< Bottom depth variance [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
@@ -356,9 +356,9 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                    "Scale factor in ITD landfast ice.", &
                    units="nondim", default=1.9430)
     call get_param(param_file, mdl, "H2_FILE", h2_file, &
-                 "The path to the file containing the sub-grid-scale "//&
-                 "topographic roughness amplitude with ITD_LANDFAST.", &
-                 fail_if_missing=.true.)
+                   "The path to the file containing the sub-grid-scale "//&
+                   "topographic roughness amplitude with ITD_LANDFAST.", &
+                   fail_if_missing=.true.)
     call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
     filename = trim(inputdir) // "/" // trim(h2_file)
     allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed), source=0.0)
