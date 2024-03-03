@@ -22,6 +22,7 @@ use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_open_boundary, only : ice_OBC_type
 use SIS_types,         only : ice_state_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : ice_thermo_type, energy_0degC, get_SIS2_thermo_coefs
+use ice_boundary_types, only : surface_mass_balance_type
 use iso_fortran_env,   only : int64
 
 implicit none ; private
@@ -30,7 +31,7 @@ public :: ice_data_type, dealloc_ice_arrays
 public :: ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 public :: ice_model_restart, ice_stock_pe, ice_data_type_chksum
 public :: Ice_public_type_chksum, Ice_public_type_bounds_check
-
+public :: surface_mass_balance_type
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This structure contains the ice model data (some used by calling routines);   !
 !! the third index is partition (1 is open water; 2... are ice cover by category)!
@@ -156,7 +157,8 @@ type ice_data_type !  ice_public_type
   type(ice_OBC_type), pointer :: OBC => NULL()
           !< A pointer to the ice OBC control structure
   character(len=240) :: restart_output_dir = './RESTART/'
-          !< The directory into which to write restart files.
+  !< The directory into which to write restart files.
+  type(surface_mass_balance_type), dimension(:), pointer :: SMB => NULL()
 end type ice_data_type !  ice_public_type
 
 contains
@@ -176,6 +178,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                  optional, intent(in)    :: gas_fluxes !< If present, this type describes the
                                               !! additional gas or other tracer fluxes between the
                                               !! ocean, ice, and atmosphere.
+
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
   ! registers the appropriate ones for inclusion in the restart file.

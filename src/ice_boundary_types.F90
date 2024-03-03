@@ -13,6 +13,7 @@ use MOM_error_handler, only : stdout, is_root_pe
 use MOM_domains,       only : CGRID_NE, BGRID_NE, AGRID
 use SIS_framework,     only : coupler_2d_bc_type, coupler_3d_bc_type
 use SIS_framework,     only : SIS_chksum, coupler_type_write_chksums
+use MOM_interpolate,   only : external_field
 use iso_fortran_env,   only : int64
 
 implicit none ; private
@@ -21,6 +22,8 @@ public :: ocean_ice_boundary_type, atmos_ice_boundary_type
 public :: land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum
+
+public ::  surface_mass_balance_type
 
 !   The following three types are for data exchange with the FMS coupler
 ! they are defined here but declared in coupler_main and allocated in flux_init.
@@ -113,6 +116,25 @@ type land_ice_boundary_type
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and is used by coupler
 end type land_ice_boundary_type
+
+type surface_mass_balance_type
+   real, dimension(:,:),   pointer :: smb              =>NULL() ! surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: smb_in              =>NULL() ! surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: smb_out              =>NULL() ! surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: mask              =>NULL()
+   real                            :: lat_south
+   real                            :: lat_north
+   integer                         :: ts_win
+   logical                         :: read_pmt
+   real                            :: smb_target
+   type(external_field)            :: id_target
+   real, dimension(:), pointer     :: smb_hist=>NULL()
+   real                            :: total
+   real                            :: total_in
+   real                            :: total_out
+   real                            :: scale_factor
+   real                            :: sum_mask
+end type surface_mass_balance_type
 
 contains
 
