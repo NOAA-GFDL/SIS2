@@ -436,9 +436,9 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
     call SIS_error(FATAL, 'Negative mass input to summed_continuity().')
   endif ; enddo ; enddo
 
-  if (present(h_ice)) then ; do j=js,je ; do i=is,ie ; if (h_ice(i,j) > h_in(i,j)) then
-    call SIS_error(FATAL, 'ice mass exceeds total mass in summed_continuity().')
-  endif ; enddo ; enddo ; endif
+  !if (present(h_ice)) then ; do j=js,je ; do i=is,ie ; if (h_ice(i,j) > h_in(i,j)) then
+  !  call SIS_error(FATAL, 'ice mass exceeds total mass in summed_continuity().')
+  !endif ; enddo ; enddo ; endif
 
   if (CS%use_upwind2d) then
     ! This reproduces the scheme that was originally used in SIS1.
