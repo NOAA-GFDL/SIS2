@@ -2245,11 +2245,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
          if (SMB(k)%read_pmt) then
             call time_interp_external_init()
             if (k==1) then
-               SMB(k)%id_target = init_external_field('INPUT/pmt_south.nc',&
-                    'poleward_moisture_transport')
+               SMB(k)%id_target = init_external_field('INPUT/ocn_flux_south.nc',&
+                    'ocn_flux')
             else if (k==3) then
-               SMB(k)%id_target = init_external_field('INPUT/pmt_north.nc',&
-                    'poleward_moisture_transport')
+               SMB(k)%id_target = init_external_field('INPUT/ocn_flux_north.nc',&
+                    'ocn_flux')
+            else
+               SMB(k)%id_target = init_external_field('INPUT/land_storage_residual.nc',&
+                    'land_storage_residual')
             endif
             Smb(k)%ts_win=ipmt_window
             allocate(Smb(k)%smb_hist(1:ipmt_window),source=0.0)
@@ -2939,7 +2942,10 @@ subroutine update_surface_mass_balance(Ice, Smb)
 
 
     G=>Ice%sCs%G
-    SmbC%smb_target = -1.0*(SmbA%total + SmbB%total)
+
+    if (SmbC%read_pmt) call time_interp_external(SmbC%id_target, Ice%Time, SmbC%smb_target )
+
+    SmbC%smb_target = -1.0*(SmbA%total + SmbB%total) + SmbC%smb_target
 
 
     is=G%isc;ie=G%iec
@@ -2957,6 +2963,8 @@ subroutine update_surface_mass_balance(Ice, Smb)
       enddo
     enddo
 
+    if (SmbC%read_pmt) call time_interp_external(SmbC%id_target, Ice%Time, SmbC%smb_target )
+
     SmbC%total=sum(SmbC%smb)
     call sum_across_PEs(SmbC%total)
     SmbC%total_in=sum(SmbC%smb_in)
@@ -2964,7 +2972,8 @@ subroutine update_surface_mass_balance(Ice, Smb)
     SmbC%total_out=sum(SmbC%smb_out)
     call sum_across_PEs(SmbC%total_out)
 
-    dif = SmbC%smb_target - SmbC%total
+    dif = SmbC%smb_target - SmbC%total + SmbC%smb_target
+
     pr_scale=1.0
     SmbC%scale_factor=1.0
     if (SmbC%total_in  > 0.) pr_scale = 1.0 + dif/SmbC%total_in
@@ -2986,10 +2995,8 @@ subroutine ice_model_end(Ice)
 
   call ice_model_restart(Ice=Ice)
 
-  !if (associated(Ice%SMB)) then
-  !  call save_restart(Ice%SMB(1)%restart_file)
-  !  call save_restart(Ice%SMB(3)%restart_file)
-  !endif
+!  if (associated(Ice%SMB)) then
+!  endif
 
 
 
