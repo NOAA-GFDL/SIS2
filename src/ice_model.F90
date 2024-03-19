@@ -2031,12 +2031,12 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     ! Set up the MOM_domain_type structures.
 #ifdef STATIC_MEMORY_
-    call MOM_domains_init(Ice%sCS%G%domain, param_file, symmetric=symmetric, &
+    call MOM_domains_init(Ice%sCS%G%domain, US, param_file, symmetric=symmetric, &
               static_memory=.true., NIHALO=NIHALO_, NJHALO=NJHALO_, &
               NIGLOBAL=NIGLOBAL_, NJGLOBAL=NJGLOBAL_, NIPROC=NIPROC_, &
               NJPROC=NJPROC_, domain_name="ice model", include_name="SIS2_memory.h")
 #else
-    call MOM_domains_init(Ice%sCS%G%domain, param_file, symmetric=symmetric, &
+    call MOM_domains_init(Ice%sCS%G%domain, US, param_file, symmetric=symmetric, &
              domain_name="ice model", include_name="SIS2_memory.h")
 #endif
     sGD => Ice%sCS%G%Domain
@@ -2170,7 +2170,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       fG => Ice%fCS%G
 
       ! Set up the MOM_domain_type structures.
-      call MOM_domains_init(Ice%fCS%G%domain, param_file, symmetric=.true., &
+      call MOM_domains_init(Ice%fCS%G%domain, US, param_file, symmetric=.true., &
                domain_name="ice model fast", include_name="SIS2_memory.h", &
                static_memory=.false., NIHALO=0, NJHALO=0, param_suffix="_FAST")
       fGD => Ice%fCS%G%Domain
