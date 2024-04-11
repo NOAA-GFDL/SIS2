@@ -39,6 +39,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_dyn_bgrid,     only : SIS_B_dyn_CS, SIS_B_dynamics, SIS_B_dyn_init
 use SIS_dyn_bgrid,     only : SIS_B_dyn_register_restarts, SIS_B_dyn_end
 use SIS_dyn_cgrid,     only : SIS_C_dyn_CS, SIS_C_dynamics, SIS_C_dyn_init
@@ -311,6 +312,7 @@ subroutine update_icebergs(IST, OSS, IOF, FIA, icebergs_CS, dt_slow, G, US, IG, 
   if (IOF%id_mass_berg>0 .and. associated(IOF%mass_berg)) then
     call post_data(IOF%id_mass_berg, IOF%mass_berg, CS%diag)
   endif
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
 end subroutine update_icebergs
@@ -606,7 +608,7 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
             DS2d%avg_ridge_rate(i,j) = wt_new * rdg_rate(i,j) + wt_prev * DS2d%avg_ridge_rate(i,j)
           enddo ; enddo
         endif
-
+        call SIS_diag_send_complete()
         call cpu_clock_end(iceClock4)
 
       enddo ! nds=1,ndyn_steps
@@ -818,6 +820,7 @@ subroutine ice_state_cleanup(IST, OSS, IOF, dt_slow, G, US, IG, CS, tracer_CSp)
 
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
   if (CS%verbose) call ice_line(CS%Time, IST%part_size(:,:,0), OSS%SST_C(:,:), G)
@@ -1140,7 +1143,7 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, IST, dt_cycle, Time_start, G
     enddo
     DS2d%nts = DS2d%nts + CS%adv_substeps
     call cpu_clock_end(iceClock4)
-
+    call SIS_diag_send_complete()
   enddo ! nds=1,ndyn_steps
 
 end subroutine SIS_merged_dyn_cont
@@ -1360,6 +1363,7 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
       call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
                                 message="      Post_transport")! , check_column=.true.)
 
+    call SIS_diag_send_complete()
   enddo ! nds=1,ndyn_steps
   call finish_ocean_top_stresses(IOF, G)
 

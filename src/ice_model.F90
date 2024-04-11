@@ -63,6 +63,7 @@ use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_dyn_trans,     only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
 use SIS_dyn_trans,     only : slab_ice_dyn_trans
 use SIS_dyn_trans,     only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
@@ -1504,6 +1505,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
 
   if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, CS%diag)
 
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
 end subroutine fast_radiation_diagnostics

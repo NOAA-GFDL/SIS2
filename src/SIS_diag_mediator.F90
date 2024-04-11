@@ -8,6 +8,7 @@ use MOM_coms,               only : PE_here
 use MOM_diag_manager_infra, only : diag_manager_init=>MOM_diag_manager_init
 use MOM_diag_manager_infra, only : register_diag_field_infra, register_static_field_infra
 use MOM_diag_manager_infra, only : send_data_infra, diag_axis_init=>MOM_diag_axis_init, EAST, NORTH
+use MOM_diag_manager_infra, only : diag_send_complete_infra
 use MOM_error_handler,      only : SIS_error=>MOM_error, FATAL, is_root_pe
 use MOM_file_parser,        only : get_param, log_param, log_version, param_file_type
 use MOM_safe_alloc,         only : safe_alloc_ptr, safe_alloc_alloc
@@ -22,7 +23,7 @@ public safe_alloc_ptr, safe_alloc_alloc
 public enable_SIS_averaging, disable_SIS_averaging, query_SIS_averaging_enabled
 public SIS_diag_mediator_init, SIS_diag_mediator_end, set_SIS_diag_mediator_grid
 public SIS_diag_mediator_close_registration, get_SIS_diag_time_end
-public diag_axis_init, register_static_field
+public diag_axis_init, register_static_field, SIS_diag_send_complete
 
 !> Make a diagnostic available for averaging or output.
 interface post_SIS_data
@@ -974,5 +975,9 @@ subroutine assert(logical_arg, msg)
   endif
 
 end subroutine assert
+
+subroutine SIS_diag_send_complete()
+  call diag_send_complete_infra()
+end subroutine SIS_diag_send_complete
 
 end module SIS_diag_mediator
