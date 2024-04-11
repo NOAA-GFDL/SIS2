@@ -29,7 +29,7 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
 use MOM_dyn_horgrid,   only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
-use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
+use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint, is_root_pe
 use MOM_file_parser,   only : get_param, log_param, log_version, read_param, param_file_type
 use MOM_file_parser,   only : open_param_file, close_param_file
 use MOM_hor_index,     only : hor_index_type, hor_index_init
@@ -57,7 +57,7 @@ use ice_type_mod,       only : ice_data_type, dealloc_ice_arrays
 use ice_type_mod,       only : ice_type_slow_reg_restarts, ice_type_fast_reg_restarts
 use ice_type_mod,       only : Ice_public_type_chksum, Ice_public_type_bounds_check
 use ice_type_mod,       only : ice_model_restart, ice_stock_pe, ice_data_type_chksum
-use ice_type_mod,       only : surface_mass_balance_type
+use ice_type_mod,       only : surface_mb_type
 use SIS_ctrl_types,    only : SIS_slow_CS, SIS_fast_CS
 use SIS_ctrl_types,    only : ice_diagnostics_init, ice_diags_fast_init
 use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
@@ -131,6 +131,7 @@ public :: unpack_ocean_ice_boundary, unpack_ocn_ice_bdry, exchange_slow_to_fast_
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
+public :: sfc_mass_in_rescale_factor, close_sfc_mass_balance, rescale_mass_in
 
 !>@{ CPU time clock IDs
 integer :: iceClock
@@ -139,6 +140,8 @@ integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
 
 integer, parameter :: REDIST=2 !< Redistribute for exchange
 integer, parameter :: DIRECT=3 !< Use direct exchange
+
+real :: pr_max_rescale
 
 contains
 
@@ -149,8 +152,14 @@ contains
 subroutine update_ice_model_slow(Ice)
   type(ice_data_type), intent(inout) :: Ice !< The publicly visible ice data type.
 
-  call update_ice_slow_thermo(Ice)
+  if (Ice%do_smb_adjustment) then
+    call sfc_mass_in_rescale_factor(Ice,Ice%SMB(1),'South')
+    call sfc_mass_in_rescale_factor(Ice,Ice%SMB(3),'North')
+    call close_sfc_mass_balance(Ice, Ice%Smb)
+    call rescale_mass_in(Ice,Ice%Smb)
+  endif
 
+  call update_ice_slow_thermo(Ice)
   call update_ice_dynamics_trans(Ice)
 
 end subroutine update_ice_model_slow
@@ -173,12 +182,14 @@ subroutine update_ice_slow_thermo(Ice)
   real :: dt_slow  ! The time step over which to advance the model [T ~> s].
   integer :: i, j, i2, j2, i_off, j_off
 
+
   if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
       "The pointer to Ice%sCS must be associated in update_ice_slow_thermo.")
 
   sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G ; FIA => Ice%sCS%FIA
   Rad => Ice%sCS%Rad ; US => Ice%sCS%US
   call cpu_clock_begin(iceClock) ; call cpu_clock_begin(ice_clock_slow)
+
 
   ! Advance the slow PE clock to give the end time of the slow timestep.  There
   ! is a separate clock inside the fCS that is advanced elsewhere.
@@ -251,7 +262,11 @@ subroutine update_ice_slow_thermo(Ice)
     call IST_chksum("Before set_ocean_top_fluxes", sIST, sG, US, sIG)
   endif
   ! Set up the thermodynamic fluxes in the externally visible structure Ice.
-  call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, US, sIG, Ice%sCS)
+  if (ASSOCIATED(Ice%SMB)) then
+     call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, US, sIG, Ice%sCS,Ice%SMB)
+  else
+     call set_ocean_top_fluxes(Ice, sIST, Ice%sCS%IOF, FIA, Ice%sCS%OSS, sG, US, sIG, Ice%sCS)
+  endif
 
   call cpu_clock_end(ice_clock_slow) ; call cpu_clock_end(iceClock)
 
@@ -549,8 +564,8 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS, SMB)
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
-  type(surface_mass_balance_type), dimension(3), optional, intent(inout) :: SMB !< An optional flag surface
-                                                   !! mass balance constraint.
+  type(surface_mb_type), dimension(3), optional, intent(inout) :: SMB !< An optional surface
+                                                   !! mass balance constraint type.
   real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
   integer :: i2, j2, i_off, j_off, ncat, NkIce
@@ -620,23 +635,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS, SMB)
 !   Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + US%L_T_to_m_s**2*US%m_to_Z*G%g_Earth*Ice%mi(i2,j2)
   enddo; enddo
 
-  if (smb_present) then
-
-     ! do not actually modify precipitation here, but calculate new scale factors
-     call update_surface_mass_balance(Ice,SMB(1))
-     call update_surface_mass_balance(Ice,SMB(2))
-     call smb_balance(Ice,Smb(1),Smb(2),SMB(3))
-
-     do k=1,3
-       do j=jsc,jec ; do i=isc,iec
-         i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-         if (Smb(k)%mask(i,j) .eq. 1.0) then
-            Ice%lprec(i,j)=Ice%lprec(i,j)*Smb(k)%scale_factor
-            Ice%fprec(i,j)=Ice%fprec(i,j)*Smb(k)%scale_factor
-         endif
-       enddo; enddo
-     enddo
-  endif
 
   if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
@@ -1764,7 +1762,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: smb_north_lat, smb_south_lat, smb_window, smb_north, smb_south, pmt_window
   real :: pmt_south, pnt_north
   integer :: ipmt_window, outunit
-  type(surface_mass_balance_type), dimension(:), pointer :: SMB
+  type(surface_mb_type), dimension(:), pointer :: SMB
 
   if (associated(Ice%sCS)) then ; if (associated(Ice%sCS%IST)) then
     call SIS_error(WARNING, "ice_model_init called with an associated "// &
@@ -1991,7 +1989,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "READ_HLIM_VALS", read_hlim_vals, &
                  "If true, read the lower limits on the ice thickness"//&
                  "categories.", default=.false.)
-  call get_param(param_file, mdl, "ADJUST_SMB", adjust_smb, &
+  call get_param(param_file, mdl, "ADJUST_SMB", Ice%do_smb_adjustment, &
                  "If true, constrain the surface mass fluxes at the top of "//&
                  "the sea-ice using pre-calculated values. ", &
                  default=.false.)
@@ -2175,14 +2173,14 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       Ice%area(i2,j2) = US%L_to_m**2 * sG%areaT(i,j) * sG%mask2dT(i,j)
     enddo ; enddo
 
-    if (adjust_smb) then
+    if (Ice%do_smb_adjustment) then
        allocate(Ice%SMB(3))
        SMB=>Ice%SMB
        call get_param(param_file, mdl, "SMB_N_LAT", smb_north_lat, &
                  "Latitude boundary for the northern hemisphere.", &
                  units="degN", default=90.0, scale=1.0)
        call get_param(param_file, mdl, "SMB_S_LAT", smb_south_lat, &
-                 "Latitude boundary for the northern hemisphere.", &
+                 "Latitude boundary for the southern hemisphere.", &
                  units="degN", default=-90.0, scale=1.0)
        call get_param(param_file, mdl, "SMB_WINDOW", pmt_window, &
                  "timewindow for averaging smb.", &
@@ -2197,46 +2195,37 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
        call get_param(param_file, mdl, "SMB_SOUTH", smb_south, &
                  "southern SMB.", &
                  units="kg s-1", default=1.e9, scale=1.0)
+       call get_param(param_file, mdl, "SMB_MAX_RESCALE",pr_max_rescale, &
+                 "Maximum rescaling for precipitation.", &
+                 units="none", default=0.25, scale=1.0)
 
        do k=1,3
-         allocate(SMB(k)%smb(isc:iec,jsc:jec)); SMB(k)%smb(:,:)=0.0
-         allocate(SMB(k)%smb_in(isc:iec,jsc:jec)); SMB(k)%smb_in(:,:)=0.0
-         allocate(SMB(k)%smb_out(isc:iec,jsc:jec)); SMB(k)%smb_out(:,:)=0.0
+         allocate(SMB(k)%net_mass_in(isc:iec,jsc:jec)); SMB(k)%net_mass_in(:,:)=0.0
+         allocate(SMB(k)%mass_in(isc:iec,jsc:jec)); SMB(k)%mass_in(:,:)=0.0
+         allocate(SMB(k)%mass_out(isc:iec,jsc:jec)); SMB(k)%mass_out(:,:)=0.0
          allocate(SMB(k)%mask(isc:iec,jsc:jec)); SMB(k)%mask(:,:)=0.0
        enddo
 
-       SMB(1)%lat_south=-90.
-       SMB(1)%lat_north=smb_south_lat
+       SMB(1)%lat_bounds(1)=-90.
+       SMB(1)%lat_bounds(2)=smb_south_lat
        SMB(1)%read_pmt = read_pmt
-       do j=jsc,jec ; do i=isc,iec
-         if (Smb(1)%lat_south<=sG%geolatCv(i,j) &
-          .and. sG%geolatCv(i,j+1)<=Smb(1)%lat_north) then
-            Smb(1)%mask(i,j)=1.0
-         endif
-       enddo; enddo
-
-       SMB(2)%lat_south=smb_south_lat
-       SMB(2)%lat_north=smb_north_lat
+       SMB(2)%lat_bounds(1)=smb_south_lat
+       SMB(2)%lat_bounds(2)=smb_north_lat
        SMB(2)%read_pmt = read_pmt
-       do j=jsc,jec ; do i=isc,iec
-         if (Smb(2)%lat_south<sG%geolatCv(i,j) &
-              .and. sG%geolatCv(i,j+1)<=Smb(2)%lat_north) then
-            Smb(2)%mask(i,j)=1.0
-         endif
-       enddo; enddo
-
-
-       SMB(3)%lat_south=smb_north_lat
-       SMB(3)%lat_north=90.
+       SMB(3)%lat_bounds(1)=smb_north_lat
+       SMB(3)%lat_bounds(2)=90.
        SMB(3)%read_pmt = read_pmt
-       do j=jsc,jec ; do i=isc,iec
-         if (Smb(3)%lat_south<sG%geolatCv(i,j) &
-              .and. sG%geolatCv(i,j+1)<=Smb(3)%lat_north) then
-            Smb(3)%mask(i,j)=1.0
-         endif
-       enddo; enddo
 
-       pmt_window = (pmt_window*8.64e4)/time_type_to_real(Ice%sCs%time_step_slow)
+       do k=1,3
+         do j=jsc,jec ; do i=isc,iec
+           if (Smb(k)%lat_bounds(1)<=sG%geolatCv(i,j) &
+               .and. sG%geolatCv(i,j+1)<=Smb(k)%lat_bounds(2)) then
+            Smb(k)%mask(i,j)=1.0
+           endif
+         enddo; enddo
+       enddo
+
+       pmt_window = (pmt_window*8.64e4)/time_type_to_real(time_step_slow)
        ipmt_window = max(int(pmt_window),1)
        do k=1,3
          SMB(k)%total=0.0
@@ -2256,14 +2245,16 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
             endif
             Smb(k)%ts_win=ipmt_window
             allocate(Smb(k)%smb_hist(1:ipmt_window),source=0.0)
-         else
-            SMB(1)%smb_target=smb_south
-            SMB(3)%smb_target=smb_north
-            SMB(2)%smb_target=-1.0*(smb_north+smb_south)
-
          endif
        enddo
 
+       if (.not. read_pmt) then
+          SMB(1)%smb_target=smb_south
+          SMB(3)%smb_target=smb_north
+          SMB(2)%smb_target=-1.0*(smb_north+smb_south)
+       endif
+
+       !call register_restart_field(Ice_restart, 'smb_hist', SMB(k)%smb_hist, mandatory=.false.)
        k=1
        if (associated(Smb(k)%smb_hist)) then
           filename='pmt_s.res.nc'
@@ -2857,46 +2848,62 @@ subroutine update_ice_atm_deposition_flux( Atmos_boundary, Ice )
 
 end subroutine update_ice_atm_deposition_flux
 
-subroutine update_surface_mass_balance(Ice, Smb)
+subroutine sfc_mass_in_rescale_factor(Ice, Smb, rname)
 
-    type (ice_data_type), intent(in) :: Ice
-    type(surface_mass_balance_type), intent(inout)  :: Smb
+    type(ice_data_type),  intent(in) :: Ice
+    type(surface_mb_type), intent(inout)  :: Smb
+    character(len=*), intent(in) :: rname
 
+    type(fast_ice_avg_type), pointer :: FIA
+    type(ice_grid_type), pointer :: IG
+    type(ice_state_type), pointer :: IST
 
     integer :: is, ie, js, je
-    integer :: i,j,cwlen
+    integer :: i,j,k, cwlen, ncat
     real :: lat1, lat2
     real :: avg, dif, pr_scale
     real :: min_lat, max_lat
-
+    !real :: pr_max_rescale = 0.75
 
     type(SIS_hor_grid_type), pointer :: G
 
     integer :: i2, j2,i_off,j_off
 
-    G=>Ice%sCs%G
+
+    IG=>Ice%sCs%IG
+    ncat=IG%CatIce
+    FIA => Ice%sCS%FIA
+    IST => Ice%sCS%IST
+    G => Ice%sCS%G
+
 
     is=G%isc;ie=G%iec
     js=G%jsc;je=G%jec
 
     i_off = LBOUND(Ice%flux_t,1) - is ; j_off = LBOUND(Ice%flux_t,2) - js
 
+
     do j=js,je
       do i=is,ie
         i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-        Smb%smb_in(i,j) = Smb%mask(i,j)*G%areaT(i,j)*(Ice%lprec(i2,j2) + Ice%fprec(i2,j2) + Ice%runoff(i2,j2) + Ice%calving(i2,j2))
-        Smb%smb_out(i,j) = Smb%mask(i,j)*G%areaT(i,j)*(Ice%flux_q(i2,j2))
-        Smb%smb(i,j) = Smb%smb_in(i,j) - Smb%smb_out(i,j)
+        Smb%mass_out(i,j)=0.0
+        Smb%mass_in(i,j) = Smb%mask(i,j)*G%areaT(i,j)*(FIA%runoff(i,j) + FIA%calving(i,j))
+        do k=0,ncat
+          Smb%mass_in(i,j) = Smb%mass_in(i,j) + IST%part_size(i,j,k)*Smb%mask(i,j)*G%areaT(i,j)*&
+               (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k))
+          Smb%mass_out(i,j) = Smb%mass_out(i,j) + IST%part_size(i,j,k)*Smb%mask(i,j)*G%areaT(i,j)*(FIA%evap_top(i,j,k))
+        enddo
+        Smb%net_mass_in(i,j) = Smb%mass_in(i,j) - Smb%mass_out(i,j)
       enddo
     enddo
 
-    Smb%total=sum(Smb%smb)
+    Smb%total=sum(Smb%net_mass_in(is:ie,js:je))
     call sum_across_PEs(Smb%total)
-    Smb%total_in=sum(Smb%smb_in)
+    Smb%total_in=sum(Smb%mass_in(is:ie,js:je))
     call sum_across_PEs(Smb%total_in)
-    Smb%total_out=sum(Smb%smb_out)
+    Smb%total_out=sum(Smb%mass_out(is:ie,js:je))
     call sum_across_PEs(Smb%total_out)
-    Smb%sum_mask=sum(Smb%mask)
+    Smb%sum_mask=sum(Smb%mask(is:ie,js:je))
     call sum_across_PEs(Smb%sum_mask)
     cwlen=0
     do i=1,size(Smb%smb_hist)
@@ -2919,33 +2926,43 @@ subroutine update_surface_mass_balance(Ice, Smb)
     dif = Smb%smb_target - avg
     pr_scale=1.0
     if (Smb%total_in  > 0.) pr_scale = 1.0 + dif/Smb%total_in
-    Smb%scale_factor = pr_scale
+    Smb%scale_factor = max(min(pr_scale,1.0+pr_max_rescale),1.0-pr_max_rescale)
 
     Smb%total = Smb%scale_factor*Smb%total_in - Smb%total_out
 
-!    if (mpp_pe()==mpp_root_pe()) print *,'scale factor for precip= ',Smb%scale_factor, Smb%total, Smb%total_in, Smb%total_out
+
+    if (is_root_pe()) print *,'update_smb: ',rname, Smb%scale_factor, avg/1.e9, Smb%total/1.e9, Smb%total_in/1.e9,&
+         Smb%total_out/1.e9, Smb%smb_target/1.e9
 
     return
 
-  end subroutine update_surface_mass_balance
+  end subroutine sfc_mass_in_rescale_factor
 
-  subroutine smb_balance(Ice,SmbA,SmbB,SmbC)
+  subroutine close_sfc_mass_balance(Ice,Smb)
     type(ice_data_type), intent(in) :: Ice
-    type(surface_mass_balance_type), intent(inout)  :: SmbA,SmbB
-    type(surface_mass_balance_type), intent(inout)  :: SmbC
+    type(surface_mb_type), dimension(3), intent(inout)  :: Smb
+
 
     type(SIS_hor_grid_type), pointer :: G
+    type(ice_grid_type), pointer :: IG
+    type(ice_state_type), pointer :: IST
+    type(fast_ice_avg_type), pointer :: FIA
 
-    integer :: is, ie, js, je
+    integer :: is, ie, js, je, nc, ncat, k
     integer :: i,j,i_off,j_off, i2, j2
     real :: dif, pr_scale
 
 
     G=>Ice%sCs%G
+    IG=>Ice%sCs%IG
+    ncat=IG%CatIce
+    FIA => Ice%sCS%FIA
+    IST => Ice%sCS%IST
 
-    if (SmbC%read_pmt) call time_interp_external(SmbC%id_target, Ice%Time, SmbC%smb_target )
+    ! Get target for Central Domain
+    if (Smb(2)%read_pmt) call time_interp_external(Smb(2)%id_target, Ice%Time, Smb(2)%smb_target )
 
-    SmbC%smb_target = -1.0*(SmbA%total + SmbB%total) + SmbC%smb_target
+    Smb(2)%smb_target = -1.0*(Smb(1)%total + Smb(3)%total) + Smb(2)%smb_target
 
 
     is=G%isc;ie=G%iec
@@ -2957,32 +2974,89 @@ subroutine update_surface_mass_balance(Ice, Smb)
     do j=js,je
       do i=is,ie
         i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-        SmbC%smb_in(i,j) = SmbC%mask(i,j)*G%areaT(i,j)*(Ice%lprec(i2,j2) + Ice%fprec(i2,j2) + Ice%runoff(i2,j2) + Ice%calving(i2,j2))
-        SmbC%smb_out(i,j) = SmbC%mask(i,j)*G%areaT(i,j)*Ice%flux_q(i2,j2)
-        SmbC%smb(i,j)=SmbC%smb_in(i,j)-SmbC%smb_out(i,j)
+        Smb(2)%mass_in(i,j)=0.0; Smb(2)%mass_out(i,j)=0.0;Smb(2)%net_mass_in(i,j)=0.0
+        Smb(2)%mass_in(i,j) = Smb(2)%mask(i,j)*G%areaT(i,j)*(FIA%runoff(i,j) + FIA%calving(i,j))
+        do k=0,ncat
+          Smb(2)%mass_in(i,j) = Smb(2)%mass_in(i,j) + IST%part_size(i,j,k)*Smb(2)%mask(i,j)*G%areaT(i,j)*&
+               (FIA%lprec_top(i,j,k) + FIA%fprec_top(i,j,k))
+          Smb(2)%mass_out(i,j) = Smb(2)%mass_out(i,j) + IST%part_size(i,j,k)*Smb(2)%mask(i,j)*G%areaT(i,j)*(FIA%evap_top(i,j,k))
+        enddo
+        Smb(2)%net_mass_in(i,j) = Smb(2)%mass_in(i,j) - Smb(2)%mass_out(i,j)
       enddo
     enddo
 
-    if (SmbC%read_pmt) call time_interp_external(SmbC%id_target, Ice%Time, SmbC%smb_target )
+    Smb(2)%total=sum(Smb(2)%net_mass_in)
+    call sum_across_PEs(Smb(2)%total)
+    Smb(2)%total_in=sum(Smb(2)%mass_in)
+    call sum_across_PEs(Smb(2)%total_in)
+    Smb(2)%total_out=sum(Smb(2)%mass_out)
+    call sum_across_PEs(Smb(2)%total_out)
 
-    SmbC%total=sum(SmbC%smb)
-    call sum_across_PEs(SmbC%total)
-    SmbC%total_in=sum(SmbC%smb_in)
-    call sum_across_PEs(SmbC%total_in)
-    SmbC%total_out=sum(SmbC%smb_out)
-    call sum_across_PEs(SmbC%total_out)
-
-    dif = SmbC%smb_target - SmbC%total + SmbC%smb_target
+    dif = Smb(2)%smb_target - Smb(2)%total
 
     pr_scale=1.0
-    SmbC%scale_factor=1.0
-    if (SmbC%total_in  > 0.) pr_scale = 1.0 + dif/SmbC%total_in
-    if (pr_scale>0.) SmbC%scale_factor = pr_scale
+    Smb(2)%scale_factor=1.0
+    if (Smb(2)%total_in  > 0.) then
+       pr_scale = 1.0 + dif/Smb(2)%total_in
+    else
+       if (is_root_pe()) print *, 'smb_balance: NEGATIVE MASS_IN',Smb(2)%total_in
+    endif
+
+    if (pr_scale>0.) Smb(2)%scale_factor = pr_scale
+
+    Smb(2)%total = Smb(2)%scale_factor*Smb(2)%total_in - Smb(2)%total_out
+
+
+    if (is_root_pe()) print *,'smb_balance: ',Smb(2)%scale_factor, Smb(2)%total/1.e9, Smb(2)%total_in/1.e9, Smb(2)%total_out/1.e9 , Smb(2)%smb_target/1.e9
+
+    return
+
+  end subroutine close_sfc_mass_balance
+
+
+  subroutine rescale_mass_in(Ice,Smb)
+    type(ice_data_type), intent(in) :: Ice
+    type(surface_mb_type), dimension(3), intent(inout)  :: Smb
+
+
+    type(SIS_hor_grid_type), pointer :: G
+    type(fast_ice_avg_type), pointer :: FIA
+
+    integer :: is, ie, js, je
+    integer :: i,j,i_off,j_off, i2, j2, k, nc
+    real :: dif, pr_scale
+
+
+    G=>Ice%sCs%G
+    FIA=>Ice%sCs%FIA
+
+    is=G%isc;ie=G%iec
+    js=G%jsc;je=G%jec
+    i_off = LBOUND(Ice%flux_t,1) - is ; j_off = LBOUND(Ice%flux_t,2) - js
+
+
+    do j=js,je
+      do i=is,ie
+        i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+        do k=1,3
+          if (Smb(k)%mask(i,j) .eq. 1.0) then
+            do nc = 0,Ice%sCS%IG%CatIce
+              FIA%lprec_top(i,j,nc)=FIA%lprec_top(i,j,nc)*Smb(k)%scale_factor
+              FIA%fprec_top(i,j,nc)=FIA%fprec_top(i,j,nc)*Smb(k)%scale_factor
+            enddo
+            FIA%runoff(i,j)=FIA%runoff(i,j)*Smb(k)%scale_factor
+            FIA%runoff_hflx(i,j)=FIA%runoff_hflx(i,j)*Smb(k)%scale_factor
+            FIA%calving(i,j)=FIA%calving(i,j)*Smb(k)%scale_factor
+            FIA%calving_hflx(i,j)=FIA%calving_hflx(i,j)*Smb(k)%scale_factor
+          endif
+        enddo
+      enddo
+    enddo
 
 
     return
 
-  end subroutine smb_balance
+  end subroutine rescale_mass_in
 
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!

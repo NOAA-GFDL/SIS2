@@ -25,6 +25,7 @@ use MOM_time_manager,   only : operator(+), operator(-), operator(>)
 use ice_model_mod,      only : ice_data_type, ice_model_end
 use ice_model_mod,      only : update_ice_slow_thermo, update_ice_dynamics_trans
 use ice_model_mod,      only : unpack_ocn_ice_bdry, ocn_ice_bnd_type_chksum
+use ice_model_mod,      only : sfc_mass_in_rescale_factor, close_sfc_mass_balance, rescale_mass_in
 use ocean_model_mod,    only : update_ocean_model, ocean_model_end
 use ocean_model_mod,    only : ocean_public_type, ocean_state_type, ice_ocean_boundary_type
 use ocean_model_mod,    only : ocean_public_type_chksum, ice_ocn_bnd_type_chksum
@@ -204,6 +205,13 @@ subroutine update_slow_ice_and_ocean(CS, Ice, Ocn, Ocean_sfc, IOB, &
   if (.not.same_domain(Ocean_sfc%domain, Ice%slow_Domain_NH)) &
     call MOM_error(FATAL, "update_slow_ice_and_ocean can only be used if the "//&
         "ocean and slow ice layouts and domain sizes are identical.")
+
+  if (Ice%do_smb_adjustment) then
+    call sfc_mass_in_rescale_factor(Ice,Ice%SMB(1),'South')
+    call sfc_mass_in_rescale_factor(Ice,Ice%SMB(3),'North')
+    call close_sfc_mass_balance(Ice, Ice%Smb)
+    call rescale_mass_in(Ice,Ice%Smb)
+  endif
 
   if (CS%intersperse_ice_ocn) then
     ! First step the ice, then ocean thermodynamics.

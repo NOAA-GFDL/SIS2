@@ -23,7 +23,7 @@ public :: land_ice_boundary_type
 public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum
 
-public ::  surface_mass_balance_type
+public ::  surface_mb_type
 
 !   The following three types are for data exchange with the FMS coupler
 ! they are defined here but declared in coupler_main and allocated in flux_init.
@@ -117,13 +117,12 @@ type land_ice_boundary_type
                          !! REGRID, REDIST or DIRECT and is used by coupler
 end type land_ice_boundary_type
 
-type surface_mass_balance_type
-   real, dimension(:,:),   pointer :: smb              =>NULL() ! surface mass balance array (kg m-2 s-1)
-   real, dimension(:,:),   pointer :: smb_in              =>NULL() ! surface mass balance array (kg m-2 s-1)
-   real, dimension(:,:),   pointer :: smb_out              =>NULL() ! surface mass balance array (kg m-2 s-1)
-   real, dimension(:,:),   pointer :: mask              =>NULL()
-   real                            :: lat_south
-   real                            :: lat_north
+type surface_mb_type
+   real, dimension(:,:),   pointer :: net_mass_in=>NULL() !< surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: mass_in=>NULL() !< surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: mass_out=>NULL() !< surface mass balance array (kg m-2 s-1)
+   real, dimension(:,:),   pointer :: mask=>NULL() !< mask (nondim)
+   real, dimension(2)              :: lat_bounds
    integer                         :: ts_win
    logical                         :: read_pmt
    real                            :: smb_target
@@ -134,7 +133,7 @@ type surface_mass_balance_type
    real                            :: total_out
    real                            :: scale_factor
    real                            :: sum_mask
-end type surface_mass_balance_type
+end type surface_mb_type
 
 contains
 
