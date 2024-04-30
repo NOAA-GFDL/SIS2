@@ -1529,10 +1529,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 
     if (CS%id_ui_east > 0 .or. CS%id_vi_north > 0) then
       do j=jsc,jec ; do i=isc,iec
-        ui_east(i,j) = (0.5*(ui(I-1,j) + ui(I,j))) * G%cos_rot(i,j) + &
-                        (0.5*(vi(i,J-1) + vi(i,J))) * G%sin_rot(i,j)
-        vi_north(i,j) = - (0.5*(ui(I-1,j) + ui(I,j))) * G%sin_rot(i,j) + &
-                         (0.5*(vi(i,J-1) + vi(i,J))) * G%cos_rot(i,j)
+        ui_east(i,j) = ((0.5*(ui(I-1,j) + ui(I,j))) * G%cos_rot(i,j)) + &
+                       ((0.5*(vi(i,J-1) + vi(i,J))) * G%sin_rot(i,j))
+        vi_north(i,j) = ((0.5*(vi(i,J-1) + vi(i,J))) * G%cos_rot(i,j)) - &
+                        ((0.5*(ui(I-1,j) + ui(I,j))) * G%sin_rot(i,j))
       enddo ; enddo
       if (CS%id_ui_east > 0 ) call post_SIS_data(CS%id_ui_east, ui_east, CS%diag)
       if (CS%id_vi_north > 0 ) call post_SIS_data(CS%id_vi_north, vi_north, CS%diag)
