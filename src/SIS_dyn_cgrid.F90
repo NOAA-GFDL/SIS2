@@ -146,6 +146,7 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_flfx = -1, id_flfy = -1, id_stren = -1, id_stren0 = -1
   integer :: id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
+  integer :: id_ui_east = -1, id_vi_north = -1
   integer :: id_PFu = -1, id_PFv = -1, id_fpx = -1, id_fpy = -1
   integer :: id_fix_d = -1, id_fix_t = -1, id_fix_s = -1
   integer :: id_fiy_d = -1, id_fiy_t = -1, id_fiy_s = -1
@@ -456,6 +457,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,     &
             'ice velocity - y component', 'm/s', missing_value=missing,        &
             interp_method='none', conversion=US%L_T_to_m_s)
+  CS%id_ui_east    = register_diag_field('ice_model', 'ui_east', diag%axesT1, Time,     &
+            'ice velocity - east component', 'm/s', missing_value=missing,        &
+            interp_method='none', conversion=US%L_T_to_m_s)
+  CS%id_vi_north    = register_diag_field('ice_model', 'vi_north', diag%axesT1, Time,     &
+            'ice velocity - north component', 'm/s', missing_value=missing,        &
+            interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,  &
             'Mass of ice and snow at t-points', 'kg m-2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   CS%id_ci0  = register_diag_field('ice_model', 'CI_tot', diag%axesT1, Time,   &
@@ -629,7 +636,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                 ! and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points [L2 ~> m2].
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points [nondim].
-    siu, siv, sispeed  ! diagnostics on T points [L T-1 ~> m s-1].
+    siu, siv, sispeed, & ! diagnostics on T points [L T-1 ~> m s-1].
+    ui_east, & ! Surface velocity due east component [L T-1 ~> m s-1]
+    vi_north   ! Surface velocity due north component [L T-1 ~> m s-1]
+
 
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     fxic, &   ! Zonal force due to internal stresses [R Z L T-2 ~> Pa].
@@ -1515,6 +1525,17 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     if (CS%id_stren0>0) then
       call find_ice_strength(mice, ci, diag_val, G, US, CS)
       call post_SIS_data(CS%id_stren0, diag_val, CS%diag)
+    endif
+
+    if (CS%id_ui_east > 0 .or. CS%id_vi_north > 0) then
+      do j=jsc,jec ; do i=isc,iec
+        ui_east(i,j) = ((0.5*(ui(I-1,j) + ui(I,j))) * G%cos_rot(i,j)) + &
+                       ((0.5*(vi(i,J-1) + vi(i,J))) * G%sin_rot(i,j))
+        vi_north(i,j) = ((0.5*(vi(i,J-1) + vi(i,J))) * G%cos_rot(i,j)) - &
+                        ((0.5*(ui(I-1,j) + ui(I,j))) * G%sin_rot(i,j))
+      enddo ; enddo
+      if (CS%id_ui_east > 0 ) call post_SIS_data(CS%id_ui_east, ui_east, CS%diag)
+      if (CS%id_vi_north > 0 ) call post_SIS_data(CS%id_vi_north, vi_north, CS%diag)
     endif
 
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
