@@ -17,6 +17,7 @@ use MOM_time_manager, only : operator(>), operator(*), operator(/), operator(/=)
 use MOM_unit_scaling, only : unit_scale_type
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_hor_grid,  only : SIS_hor_grid_type
 use SIS_ice_diags, only : ice_state_diags_type, register_ice_state_diagnostics
@@ -93,6 +94,7 @@ subroutine specified_ice_dynamics(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG)
 
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
   call post_ice_state_diagnostics(CS%IDs, IST, OSS, IOF, dt_slow, CS%Time, G, US, IG, CS%diag)
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
   if (CS%debug) call IST_chksum("End specified_ice_dynamics", IST, G, US, IG)

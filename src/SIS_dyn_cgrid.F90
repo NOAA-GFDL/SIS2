@@ -29,6 +29,7 @@ use MOM_unit_scaling,  only : unit_scale_type
 
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
@@ -1362,7 +1363,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
       call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     endif
-
+    call SIS_diag_send_complete()
   enddo ! l=1,EVP_steps
 
   if (CS%debug .or. CS%debug_redundant) &
@@ -1557,6 +1558,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     endif
 
   endif
+  call SIS_diag_send_complete()
 
 end subroutine SIS_C_dynamics
 

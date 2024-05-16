@@ -41,6 +41,7 @@ use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_framework,     only : coupler_type_spawn, coupler_type_initialized
 use SIS_framework,     only : coupler_type_increment_data, coupler_type_rescale_data
 use SIS_framework,     only : coupler_type_send_data
@@ -415,6 +416,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   ! Save out diagnostics of fluxes.  This must go before SIS2_thermodynamics.
   call post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
 
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_input_2(IST, FIA, IOF, OSS, IST%part_size, dt_slow, G, US, IG, CS%sum_output_CSp)
@@ -446,6 +448,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   ! Do tracer column physics
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
   call SIS_call_tracer_column_fns(dt_slow, G, IG, CS%tracer_flow_CSp, IST%mH_ice, mi_old)
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
@@ -1367,6 +1370,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_send_data(IOF%tr_flux_ocn_top, CS%Time)
 
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
   ! Combine the liquid precipitation with the net melt of ice and snow for

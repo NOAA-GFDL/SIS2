@@ -15,6 +15,7 @@ use SIS_continuity,    only : continuity=>ice_continuity, SIS_continuity_CS
 use SIS_continuity,    only : summed_continuity, proportionate_continuity
 use SIS_diag_mediator, only : post_SIS_data, query_SIS_averaging_enabled, SIS_diag_ctrl
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field, time_type
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_framework,     only : safe_alloc
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_tracer_advect, only : advect_tracers_thicker, SIS_tracer_advect_CS
@@ -218,6 +219,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
       write(mesg,'(i4)') n
       call check_SIS_tracer_bounds(TrReg, G, IG, "After advect_SIS_tracers "//trim(mesg))
     endif
+  call SIS_diag_send_complete()
   enddo
 
 end subroutine ice_cat_transport
