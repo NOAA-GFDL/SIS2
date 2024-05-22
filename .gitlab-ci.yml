@@ -5,7 +5,7 @@ stages:
   - cleanup
 
 variables:
-  CACHE_DIR: "/lustre/f2/scratch/oar.gfdl.ogrp-account/runner/cache/"
+  CACHE_DIR: "/gpfs/f5/scratch/oar.gfdl.ogrp-account/gfdl_o/runner/cache/"
 
 
 # Merges SIS2 with dev/gfdl. Changes directory to test directory, if it exists.
@@ -19,6 +19,12 @@ before_script:
   - git clone https://gitlab.gfdl.noaa.gov/ogrp/Gaea-stats-MOM6-examples.git tests
   - cd tests && git submodule init && git submodule update
   - cd MOM6-examples && git checkout dev/gfdl && git pull
+  - mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
+  - test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
+  - test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
+  - git submodule update --init --recursive
+  - git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
+  - (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
   - echo -e "\e[0Ksection_end:`date +%s`:before\r\e[0K"
 
 # Tests that merge with dev/gfdl works.
@@ -36,35 +42,35 @@ gnu:repro:
   tags:
     - ncrc5
   script:
-    - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-gnu -s -j
+    - time make -f tools/MRS/Makefile pipeline-build-repro-gnu -s -j
 
 #gnu:ice-ocean-nolibs:
 #  stage: builds
 #  tags:
 #    - ncrc5
 #  script:
-#    - make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-gnu-iceocean-nolibs
+#    - make -f tools/MRS/Makefile pipeline-build-gnu-iceocean-nolibs
 
 intel:repro:
   stage: builds
   tags:
     - ncrc5
   script:
-    - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-intel -s -j
+    - time make -f tools/MRS/Makefile pipeline-build-repro-intel -s -j
 
 pgi:repro:
   stage: builds
   tags:
     - ncrc5
   script:
-    - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-repro-pgi -s -j
+    - time make -f tools/MRS/Makefile pipeline-build-repro-pgi -s -j
 
 gnu:debug:
   stage: builds
   tags:
     - ncrc5
   script:
-    - time make -f tools/MRS/Makefile SIS2_SRC=../.. pipeline-build-debug-gnu -s -j
+    - time make -f tools/MRS/Makefile pipeline-build-debug-gnu -s -j
 
 # Runs
 run:
@@ -167,4 +173,5 @@ cleanup:
   before_script:
     - echo Skipping submodule update
   script:
+    - rm -rf $HOME/ci/sis2/$CI_PIPELINE_ID
     - rm $CACHE_DIR/*$CI_PIPELINE_ID.tgz
