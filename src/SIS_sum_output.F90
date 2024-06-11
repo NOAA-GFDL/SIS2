@@ -208,6 +208,9 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
                                                    !! the passive tracer statistics.
 
   ! Local variables
+  real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
+  real :: Spec_vol_ice ! The nominal sea ice specific volume [R-1 ~> m3 kg-1]
+
   real, dimension(SZI_(G),SZJ_(G), 2) :: &
     ice_area, &    ! The area of ice in each cell and hemisphere [m2].
     ice_extent, &  ! The extent (cells with >10% coverage) of ice in each cell and hemisphere [m2].
@@ -228,7 +231,8 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     heat_NS, &     ! The total sea-ice enthalpy in the two hemispheres [J].
     mass_NS, &     ! The total sea-ice mass in the two hemispheres [kg].
     salt_NS, &     ! The total sea-ice salt in the two hemispheres [kgSalt].
-    salinity_NS    ! The average sea-ice salinity in the two hemispheres [gSalt kg-1].
+    salinity_NS, & ! The average sea-ice salinity in the two hemispheres [gSalt kg-1].
+    max_thick_NS   ! The maximum sea ice thickness (across categories) in the two hemispheres [m].
 
   real :: Mass         ! The total mass of the sea ice and snow atop it [kg].
   real :: mass_chg     ! The change in total sea ice mass of fresh water since
@@ -252,6 +256,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: mass_scale   ! A mass unit conversion factor for area-integrated mass [kg R-1 Z-1 L-2 ~> 1]
   real :: heat_scale   ! A mass unit conversion factor for area-integrated heat [J Q-1 R-1 Z-1 L-2 ~> 1]
   real :: salt_scale   ! A mass unit conversion factor for area-integrated salt [gSalt S-1 R-1 Z-1 L-2 ~> 1]
+  real :: length_scale ! A unit conversion factor for length [m L-1 ~> 1]
   real :: area_scale   ! A mass unit conversion factor for cell area [m2 L-2 ~> 1]
   real :: area_pt      ! The area of a thickness category in a cell [L2 ~> m2].
   real :: area_h       ! The masked area of a column [L2 ~> m2].
@@ -292,6 +297,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   real :: CFL_u, CFL_v ! Simple CFL numbers for u- and v- advection [nondim].
   real :: dt_CFL       ! The timestep for calculating the CFL number [T ~> s].
   real :: max_CFL      ! The maximum of the CFL numbers [nondim].
+  real :: max_thick_tmp! variable for storing temporary values of the maximum sea ice thickness
   logical :: check_col
   integer :: num_nc_fields  ! The number of fields that will actually go into the NetCDF file.
   integer :: i, j, k, isc, iec, jsc, jec, isr, ier, jsr, jer, L, m, nlay, ncat, hem
@@ -375,10 +381,13 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
         call open_ASCII_file(CS%statsfile_ascii, trim(CS%statsfile), &
             action=WRITEONLY_FILE)
         if (abs(CS%timeunit - 86400.0) < 1.0) then
-          write(CS%statsfile_ascii,'("  Step,",7x,"Day,",28x,"Area(N/S),",22x,"Extent(N/S),",27x,&
-              &"Mass(N/S),",22x,"Heat(N/S),",14x,"Salinty(N/S),   Frac Mass Err,   Temp Err,   Salin Err")')
-          write(CS%statsfile_ascii,'(12x,"[days]",31x,"[m2]",28x,"[m2]",34x,"[kg]",29x,&
-              &"[J]",21x,"[g/kg]",10x,"[Nondim]",6x,"[Nondim]",6x,"[Nondim]")')
+          write(CS%statsfile_ascii,'("  Step,",7x,"Day,",28x,"Area(N/S),",28x,"Extent(N/S),",16x,"CFL,",12x,&
+              &"Mass(N/S),",22x,"Heat(N/S),",14x,"Salinty(N/S),   Frac Mass Err,   Temp Err,   Salin Err",6x,"Max Thick (N/S)")')
+          write(CS%statsfile_ascii,'(12x,"[days]",31x,"[m2]",34x,"[m2]",39x,"[kg]",29x,&
+              &"[J]",21x,"[g/kg]",10x,"[Nondim]",6x,"[Nondim]",6x,"[Nondim]",8x,"[m]")')
+          write(CS%statsfile_ascii,'(12x,"[days]",31x,"[m2]",34x,"[m2]",19x,"[Nondim]",12x,"[kg]",29x,&
+              &"[J]",21x,"[g/kg]",10x,"[Nondim]",6x,"[Nondim]",6x,"[Nondim]",8x,"[m]")')
+         
         else
           if ((CS%timeunit >= 0.99) .and. (CS%timeunit < 1.01)) then
             time_units = "           [seconds]     "
@@ -440,20 +449,35 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   call max_across_PEs(max_CFL)
 
   ! Set combinations of scalign factors that rescale back to MKS units for output
+  length_scale = US%L_to_m
   area_scale = US%L_to_m**2
   mass_scale = US%L_to_m**2 * US%RZ_to_kg_m2
   salt_scale = US%L_to_m**2 * US%RZ_to_kg_m2 * US%S_to_ppt
   heat_scale = US%L_to_m**2 * US%RZ_to_kg_m2 * US%Q_to_J_kg
 
   ! The following quantities are to be written by hemisphere:
-  !   Ice area, ice extent, Ice+snow mass, enthalpy, salt
+  !   Ice area, ice extent, Ice+snow mass, enthalpy, salt, max ice thickness
   ice_area(:,:,:) = 0.0
   ice_extent(:,:,:) = 0.0
   col_mass(:,:,:) = 0.0
   col_heat(:,:,:) = 0.0
   col_salt(:,:,:) = 0.0
+  max_thick_NS(:) = 0.0
 
   enth_liq_0 = enthalpy_liquid_freeze(0.0, IST%ITV)
+
+!compute maximum ice thickness in each hemisphere
+  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)!get ice density
+    Spec_vol_ice = 1.0 / rho_ice
+ do j=jsc,jec ; do i=isc,iec
+    hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
+
+     max_thick_tmp=maxval(IST%mH_ice(i,j,:))*Spec_vol_ice*length_scale
+     max_thick_NS(hem)=max(max_thick_NS(hem),max_thick_tmp)
+ enddo ; enddo
+  call max_across_PEs(max_thick_NS(1))
+  call max_across_PEs(max_thick_NS(2))
+
   do j=jsc,jec ; do i=isc,iec
     hem = 1 ; if (G%geolatT(i,j) < 0.0) hem = 2
     do k=1,ncat ; if (G%mask2dT(i,j) * IST%part_size(i,j,k) > 0.0) then
@@ -590,10 +614,10 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     Salt_anom_norm = 0.0 ; if (Salt /= 0.0) Salt_anom_norm = Salt_anom/Salt
     write(CS%statsfile_ascii,'(A,", Area", 2(ES23.16), ", Ext", 2(es11.4), ", CFL", F6.3, &
                 &", M",2(ES12.5),", Enth",2(ES13.5),", S ",2(f8.4),", Me ",ES9.2,&
-                &", Te ",ES9.2,", Se ",ES9.2)') &
+                &", Te ",ES9.2,", Se ",ES9.2,", MaxH ",2(f6.2))') &
           trim(msg_start), Area_NS(1:2), Extent_NS(1:2), max_CFL, mass_NS(1:2), &
           heat_NS(1:2), salinity_NS(1:2), mass_anom * I_Mass, &
-          Heat_anom_norm, salt_anom_norm
+          Heat_anom_norm, salt_anom_norm, max_thick_NS(1:2)
   endif
 
   if (is_root_pe() .and. CS%write_stdout) then
