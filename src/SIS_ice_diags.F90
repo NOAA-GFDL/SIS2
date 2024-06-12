@@ -51,9 +51,9 @@ type, public :: ice_state_diags_type ; private
   integer :: id_cn = -1, id_hi = -1, id_hp = -1, id_hs = -1, id_tsn = -1, id_ext = -1
   integer :: id_t_iceav = -1, id_s_iceav = -1, id_e2m = -1, id_rdgf = -1, id_rdg_h = -1
 
-  integer :: id_simass = -1, id_simassn = -1, id_sisnmass = -1, id_sivol = -1
+  integer :: id_simass = -1, id_simass_n = -1, id_siitdthick = -1, id_sisnmass = -1, id_sivol = -1
   integer :: id_siconc = -1, id_sithick = -1, id_sisnconc = -1, id_sisnthick = -1
-  integer :: id_siconc_CMOR = -1, id_sisnconc_CMOR = -1, id_sivol_CMOR = -1
+  integer :: id_siconc_CMOR = -1, id_sisnconc_CMOR = -1
   integer :: id_siu = -1, id_siv = -1, id_sispeed = -1, id_sitimefrac = -1
   !!@}
 end type ice_state_diags_type
@@ -106,7 +106,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
 
   ! Sum the concentration weighted mass for diagnostics.
   if ((IDs%id_mi>0) .or. (IDs%id_mib>0) .or. (IDs%id_simass>0) .or. (IDs%id_sisnmass>0) .or. &
-      (IDs%id_sivol_CMOR>0)) then
+      (IDs%id_sivol>0)) then
     Spec_vol_ice = 1.0 / rho_ice
     mass_ice(:,:) = 0.0
     mass_snow(:,:) = 0.0
@@ -123,7 +123,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     if (IDs%id_simass>0) call post_data(IDs%id_simass, mass_ice, diag)
     if (IDs%id_sisnmass>0) call post_data(IDs%id_sisnmass, mass_snow, diag)
     if (IDs%id_mi>0) call post_data(IDs%id_mi, mass, diag)
-    if (IDs%id_sivol_CMOR>0) call post_data(IDs%id_sivol_CMOR, vol_ice, diag)
+    if (IDs%id_sivol>0) call post_data(IDs%id_sivol, vol_ice, diag)
 
     if (IDs%id_mib>0) then
       if (associated(IOF%mass_berg)) then ; do j=jsc,jec ; do i=isc,iec
@@ -137,7 +137,8 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   ! Thermodynamic state diagnostics
   !
   if (IDs%id_cn>0) call post_data(IDs%id_cn, IST%part_size(:,:,1:ncat), diag)
-  if (IDs%id_simassn>0) call post_data(IDs%id_simassn, IST%mH_ice, diag)
+  if (IDs%id_siitdthick>0) call post_data(IDs%id_siitdthick, IST%mH_ice * Spec_vol_ice, diag)
+  if (IDs%id_simass_n>0) call post_data(IDs%id_simass_n, IST%mH_ice * IST%part_size(:,:,1:ncat), diag)
   if ((IDs%id_siconc>0) .or. (IDs%id_siconc_CMOR>0)) then
     diagVar(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec ; do k=1,ncat
@@ -187,8 +188,6 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   if (IDs%id_hi>0) call post_avg(IDs%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
   if (IDs%id_sithick>0) call post_avg(IDs%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
-  if (IDs%id_sivol>0) call post_avg(IDs%id_sivol, IST%mH_ice, IST%part_size(:,:,1:), &
                                  diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
   if (IDs%id_tsn>0) call post_avg(IDs%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
@@ -347,8 +346,6 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'ice thickness', 'm-ice', missing_value=missing)
   IDs%id_sivol  = register_diag_field('ice_model', 'sivol', diag%axesT1, Time, &
                'ice volume', 'm-ice', missing_value=missing)
-  IDs%id_sivol_CMOR = register_diag_field('ice_model', 'sivol_CMOR', diag%axesT1, Time, &
-               'Sea-ice Volume per Area', 'm-ice', missing_value=missing, conversion=US%Z_to_m)
   IDs%id_sisnconc = register_diag_field('ice_model', 'sisnconc', diag%axesT1, Time, &
                'snow concentration', '0-1', missing_value=missing)
   IDs%id_sisnconc_CMOR = register_diag_field('ice_model', 'sisnconc_CMOR', diag%axesT1, Time, &
@@ -377,8 +374,10 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'ice + snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_simass = register_diag_field('ice_model', 'simass', diag%axesT1, Time, &
                'ice mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
-  IDs%id_simassn = register_diag_field('ice_model', 'simass_n', diag%axesTc, Time, &
-               'ice mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
+  IDs%id_simass_n = register_diag_field('ice_model', 'simass_n', diag%axesTc, Time, &
+               'ice mass in categories', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
+  IDs%id_siitdthick = register_diag_field('ice_model', 'siitdthick', diag%axesTc, Time, &
+               'ice thickness in categories', 'm-ice', missing_value=missing)
   IDs%id_sisnmass = register_diag_field('ice_model', 'sisnmass', diag%axesT1, Time, &
                'snow mass', 'kg/m^2', conversion=US%RZ_to_kg_m2, missing_value=missing)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
