@@ -1,4 +1,5 @@
 stages:
+  - setup
   - builds
   - run
   - tests
@@ -15,21 +16,35 @@ variables:
 # - pull down latest of dev/gfdl (MOM6-examples might be ahead of Gaea-stats)
 before_script:
   - echo Cache directory set to $CACHE_DIR
-  - echo -e "\e[0Ksection_start:`date +%s`:before[collapsed=true]\r\e[0KPre-script"
-  - git clone https://gitlab.gfdl.noaa.gov/ogrp/Gaea-stats-MOM6-examples.git tests
-  - cd tests && git submodule init && git submodule update
-  - cd MOM6-examples && git checkout dev/gfdl && git pull
-  - mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
-  - test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
-  - test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
-  - git submodule update --init --recursive
-  - git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
-  - (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
-  - echo -e "\e[0Ksection_end:`date +%s`:before\r\e[0K"
+  #- git clone https://gitlab.gfdl.noaa.gov/ogrp/Gaea-stats-MOM6-examples.git tests
+  #- cd tests && git submodule init && git submodule update
+  #- cd MOM6-examples && git checkout dev/gfdl && git pull
+  #- mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
+  #- test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
+  #- test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
+  #- git submodule update --init --recursive
+  #- git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
+  #- (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
+
+clone:
+  stage: setup
+  tags:
+    - ncrc5
+  script:
+    - cd $CI_PROJECT_DIR
+    - git clone https://gitlab.gfdl.noaa.gov/ogrp/Gaea-stats-MOM6-examples.git tests
+    - cd tests && git submodule init && git submodule update
+    - cd MOM6-examples && git checkout dev/gfdl && git pull
+    - mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
+    - test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
+    - test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
+    - git submodule update --init --recursive
+    - git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
+    - (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
 
 # Tests that merge with dev/gfdl works.
 merge:
-  stage: builds
+  stage: setup
   tags:
     - ncrc5
   script:
@@ -41,7 +56,11 @@ gnu:repro:
   stage: builds
   tags:
     - ncrc5
+  needs: ["clone"]
   script:
+    - echo "$(pwd)"
+    - echo $(pwd)
+    - cd "${CI_PROJECT_DIR}"/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-gnu -s -j
 
 #gnu:ice-ocean-nolibs:
@@ -55,21 +74,27 @@ intel:repro:
   stage: builds
   tags:
     - ncrc5
+  needs: ["clone"]
   script:
+    - cd "${CI_PROJECT_DIR}"/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-intel -s -j
 
 pgi:repro:
   stage: builds
   tags:
     - ncrc5
+  needs: ["clone"]
   script:
+    - cd "${CI_PROJECT_DIR}"/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-pgi -s -j
 
 gnu:debug:
   stage: builds
   tags:
     - ncrc5
+  needs: ["clone"]
   script:
+    - cd "${CI_PROJECT_DIR}"/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-debug-gnu -s -j
 
 # Runs
@@ -77,7 +102,9 @@ run:
   stage: run
   tags:
     - ncrc5
+  needs: ["gnu:debug", "gnu:repro", "intel:repro", "pgi:repro"]
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-run
 
 # Tests
@@ -86,6 +113,7 @@ gnu:non-symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_non_symmetric
 
 gnu:symmetric:
@@ -93,6 +121,7 @@ gnu:symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_symmetric
 
 gnu:memory:
@@ -100,6 +129,7 @@ gnu:memory:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_memory
 
 #gnu:static:
@@ -114,6 +144,7 @@ gnu:restart:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_restarts
 
 gnu:params:
@@ -121,6 +152,7 @@ gnu:params:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-params_gnu_symmetric
   allow_failure: true
 
@@ -129,6 +161,7 @@ intel:symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_symmetric
 
 intel:non-symmetric:
@@ -136,6 +169,7 @@ intel:non-symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_non_symmetric
 
 intel:memory:
@@ -143,6 +177,7 @@ intel:memory:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_memory
 
 pgi:symmetric:
@@ -150,6 +185,7 @@ pgi:symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_symmetric
 
 pgi:non-symmetric:
@@ -157,6 +193,7 @@ pgi:non-symmetric:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_non_symmetric
 
 pgi:memory:
@@ -164,6 +201,7 @@ pgi:memory:
   tags:
     - ncrc5
   script:
+    - cd $CI_PROJECT_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_memory
 
 cleanup:
