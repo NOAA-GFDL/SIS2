@@ -23,14 +23,14 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MO
 use MOM_file_parser,   only : get_param, log_param, read_param, log_version, param_file_type
 use MOM_unit_scaling,  only : unit_scale_type
 use SIS_hor_grid,      only : SIS_hor_grid_type
-use SIS_types,         only : ice_state_type, ist_chksum
+use SIS_types,         only : ice_state_type, ist_chksum, ocean_sfc_state_type
 use SIS_tracer_registry, only : SIS_tracer_registry_type, SIS_tracer_type, get_SIS_tracer_pointer
-use SIS2_ice_thm,      only : get_SIS2_thermo_coefs
+use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, T_freeze
 use ice_grid,          only : ice_grid_type
 !Icepack modules
 use icepack_kinds
 use icepack_itd, only: icepack_init_itd, cleanup_itd
-use icepack_mechred, only: ridge_ice
+use icepack_mechred, only: icepack_step_ridge
 use icepack_warnings, only: icepack_warnings_flush, icepack_warnings_aborted, &
                             icepack_warnings_setabort
 use icepack_tracers, only: icepack_init_tracer_indices, icepack_init_tracer_sizes
@@ -45,16 +45,22 @@ public :: ice_ridging, ice_ridging_init
 type, public :: ice_ridging_CS ; private
   logical :: &
   new_rdg_partic = .false., & !< .true. = new participation, .false. = Thorndike et al 75
-  new_rdg_redist = .false.    !< .true. = new redistribution, .false. = Hibler 80
+  new_rdg_redist = .false., & !< .true. = new redistribution, .false. = Hibler 80
+  do_cleanup = .false., &     !< .true. = call icepack_step_ridge such that it calls
+                              !! itd_cleanup for us.
+  do_rebin = .false.          !< .true. = call icepack_step_ridge such that it calls
+                              !! rebin for us.
   real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
   real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
                                !! ridging scheme. This is defaulted to zero, but a reasonable
                                !! value might be 10^-26 which for a km square grid cell
                                !! would equate to an Angstrom scale ice patch.
+  real :: Cs_frac = 0.25       !< fraction of shear energy contrbtng to ridging
 end type ice_ridging_CS
 
 contains
 
+!> Read the ice ridging parameters from the input files and pass them to Icepack.
 subroutine ice_ridging_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
@@ -64,6 +70,9 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
 
   integer (kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
   integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
+  integer :: &
+       krdg_redist = 0, &
+       krdg_partic = 0
   character(len=40) :: mdl = "ice_ridging_init" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
@@ -81,6 +90,14 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
                    "A fractional area limit below which ice fraction is set to zero "//&
                    "A reasonable default value for a km scale grid cell is 10^-24.",&
                    units="none", default=0.0)
+  endif
+  call get_param(PF, mdl, "ICEPACK_CLEANUP", CS%do_cleanup, &
+                 "Tell icepack_step_ridge to call itd_cleanup for us.", default=.false.)
+  call get_param(PF, mdl, "ICEPACK_REBIN", CS%do_rebin, &
+                 "Tell icepack_step_ridge to call rebin for us.", default=.false.)
+  if (.not. CS%do_cleanup .and. CS%do_rebin) then
+    call SIS_error(WARNING,"ICEPACK_REBIN needs ICEPACK_CLEANUP")
+    CS%do_cleanup = .true.
   endif
 
   ncat=IG%CatIce ! The number of sea-ice thickness categories
@@ -100,6 +117,9 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   ! (1,2) snow/ice surface temperature +
   ! (3) ice salinity*nilyr  + (4) pond thickness
 
+  if (CS%new_rdg_partic) krdg_partic = 1
+  if (CS%new_rdg_redist) krdg_redist = 1
+
   call icepack_init_tracer_sizes(ntrcr_in=ntrcr, &
        ncat_in=ncat, nilyr_in=nilyr, nslyr_in=nslyr, nblyr_in=nblyr, &
        nfsd_in=nfsd, n_iso_in=n_iso, n_aero_in=n_aero)
@@ -108,14 +128,15 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
            nt_sice_in=nt_sice, nt_qice_in=nt_qice, nt_qsno_in=nt_qsno)
 !          nt_alvl_in=nt_alvl, nt_vlvl_in=nt_vlvl )
 
-  call icepack_init_parameters(mu_rdg_in=CS%mu_rdg,conserv_check_in=.true.)
+  call icepack_init_parameters(mu_rdg_in=CS%mu_rdg, &
+           krdg_partic_in=krdg_partic, krdg_redist_in=krdg_redist, &
+           conserv_check_in=.true.)
 
 end subroutine ice_ridging_init
-!
-! ice_ridging is a wrapper for the icepack ridging routine ridge_ice
-!
+
+!> ice_ridging is a wrapper for the icepack ridging routine ridge_ice
 subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt, &
-                       rdg_rate, rdg_height)
+                       OSS, rdg_rate, rdg_height)
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< G The ocean's grid structure.
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice-specific grid structure.
@@ -128,6 +149,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors.
   real,                              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds. [T ~> s]
+  type(ocean_sfc_state_type), intent(in)           :: OSS !< A structure containing the arrays that describe
+                                                          !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G)), intent(out), optional :: rdg_rate !< Diagnostic of the rate of fractional
                                                               !! area loss-gain due to ridging (1/s)
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout), optional :: rdg_height !< A diagnostic of the ridged ice
@@ -138,58 +161,55 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real :: dt_sec ! timestep in seconds
   ! these strain metrics are calculated here from the velocities used for advection
   real :: sh_Dt ! sh_Dt is the horizontal tension (du/dx - dv/dy) including
-                ! all metric terms, in s-1.
+                ! all metric terms. [s-1]
   real :: sh_Dd ! sh_Dd is the flow divergence (du/dx + dv/dy) including all
-                ! metric terms, in s-1.
+                ! metric terms. [s-1]
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     sh_Ds       ! sh_Ds is the horizontal shearing strain (du/dy + dv/dx)
-                ! including all metric terms, in s-1.
+                ! including all metric terms. [s-1]
 
   integer :: i, j, k ! loop vars
   integer :: isc, iec, jsc, jec ! loop bounds
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
-  integer :: &
-       krdg_redist = 0, &
-       krdg_partic = 0
 
   integer :: &
        ncat  , & ! number of thickness categories
        nilyr , & ! number of ice layers
-       nslyr     ! number of snow layers
+       nslyr , & ! number of snow layers
+       nblyr     ! number of bio layers
 
-  real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
-
-  logical :: &
-       closing_flag, &! flag if closing is valid
-       tr_brine       ! if .true., brine height differs from ice thickness
+  real, dimension(0:IG%CatIce) :: hin_max   ! category limits [m]
 
   ! optional history fields
   real :: &
-       dardg1dt   , & ! rate of fractional area loss by ridging ice (1/s)
-       dardg2dt   , & ! rate of fractional area gain by new ridges (1/s)
-       dvirdgdt   , & ! rate of ice volume ridged (m/s)
-       opening    , & ! rate of opening due to divergence/shear (1/s)
-       closing    , & ! rate of closing due to divergence/shear (1/s)
-       fpond      , & ! fresh water flux to ponds (kg/m^2/s)
-       fresh      , & ! fresh water flux to ocean (kg/m^2/s)
-       fhocn          ! net heat flux to ocean (W/m^2)
+       dardg1dt   , & ! rate of fractional area loss by ridging ice [s-1]
+       dardg2dt   , & ! rate of fractional area gain by new ridges [s-1]
+       dvirdgdt   , & ! rate of ice volume ridged [m s-1]
+       opening    , & ! rate of opening due to divergence/shear [s-1]
+       closing    , & ! rate of closing due to divergence/shear [s-1]
+       fpond      , & ! fresh water flux to ponds [kg m-2 s-1]
+       fresh      , & ! fresh water flux to ocean [kg m-2 s-1]
+       fsalt      , & ! salt flux to ocean [kg m-2 s-1]
+       fhocn      , & ! net heat flux to ocean [W m-2]
+       fzsal          ! zsalinity flux to ocean [kg m-2 s-1]
 
   real, dimension(IG%CatIce) :: &
-       dardg1ndt  , & ! rate of fractional area loss by ridging ice (1/s)
-       dardg2ndt  , & ! rate of fractional area gain by new ridges (1/s)
-       dvirdgndt  , & ! rate of ice volume ridged (m/s)
+       dardg1ndt  , & ! rate of fractional area loss by ridging ice [s-1]
+       dardg2ndt  , & ! rate of fractional area gain by new ridges [s-1]
+       dvirdgndt  , & ! rate of ice volume ridged [m s-1]
        aparticn   , & ! participation function
        krdgn      , & ! mean ridge thickness/thickness of ridging ice
        araftn     , & ! rafting ice area
-       vraftn     , & ! rafting ice volume (m)
+       vraftn     , & ! rafting ice volume [m]
        aredistn   , & ! redistribution function: fraction of new ridge area
-       vredistn       ! redistribution function: fraction of new ridge volume (m)
+       vredistn       ! redistribution function: fraction of new ridge volume [m]
 
   real, dimension(IG%CatIce) :: &
-       faero_ocn      ! aerosol flux to ocean (kg/m^2/s)
+       faero_ocn  , & ! aerosol flux to ocean [kg m-2 s-1]
+       flux_bio       ! all bio fluxes to ocean
 
   real, dimension(IG%CatIce) :: &
-       fiso_ocn       ! isotope flux to ocean (kg/m^2/s)
+       fiso_ocn       ! isotope flux to ocean [kg m-2 s-1]
 
   integer :: &
        ndtd = 1  , & ! number of dynamics subcycles
@@ -198,8 +218,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   real :: &
        del_sh        , & ! shear strain measure
-       rdg_conv = 0.0, & ! normalized energy dissipation from convergence (1/s)
-       rdg_shear= 0.0    ! normalized energy dissipation from shear (1/s)
+       rdg_conv = 0.0, & ! normalized energy dissipation from convergence [s-1]
+       rdg_shear= 0.0    ! normalized energy dissipation from shear [s-1]
 
   real, dimension(IG%CatIce) :: &
        aicen, & ! concentration of ice
@@ -209,18 +229,23 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   ! ice tracers; ntr*(NkIce+NkSnow) guaranteed to be enough for all (intensive)
   real, dimension(4+2*IG%NkIce+IG%NkSnow,IG%CatIce) :: trcrn
 
-  real :: aice0          ! concentration of open water
+  real :: &
+       aice,    & ! sea ice concentration
+       aice0      ! concentration of open water
 
   integer, dimension(4+2*IG%NkIce+IG%NkSnow) :: &
        trcr_depend, & ! = 0 for aicen tracers, 1 for vicen, 2 for vsnon (weighting to use)
        n_trcr_strata  ! number of underlying tracer layers
 
   real, dimension(4+2*IG%NkIce+IG%NkSnow,3) :: &
-       trcr_base      ! = 0 or 1 depending on tracer dependency
+       trcr_base    ! = 0 or 1 depending on tracer dependency
                     ! argument 2:  (1) aice, (2) vice, (3) vsno
 
   integer, dimension(4+2*IG%NkIce+IG%NkSnow,IG%CatIce) :: &
-       nt_strata      ! indices of underlying tracer layers
+       nt_strata    ! indices of underlying tracer layers
+
+  logical, dimension(IG%CatIce) :: &
+       first_ice    ! true until ice forms
 
   type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL() ! SIS2 tracers
   real, dimension(:,:,:,:),       pointer    :: Tr_ice_enth_ptr=>NULL()  !< A pointer to the named tracer
@@ -229,13 +254,17 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   real, dimension(:,:,:),         pointer    :: Tr_ice_alvl_ptr=>NULL()  !< A pointer to the named tracer
   real, dimension(:,:,:),         pointer    :: Tr_ice_mlvl_ptr=>NULL()  !< A pointer to the named tracer
 
-  real :: rho_ice, rho_snow ! Density of ice and snow [R ~> kg m-3]
+  real :: rho_ice, rho_snow, rho_water ! Density of ice, snow and water [R ~> kg m-3]
+  real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
+  real :: Tf          ! The freezing temperature of sea water [C ~> degC]
   real :: divu_adv
+  real :: asum        ! Sum of ice concentrations
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
   integer :: nL_ice, nL_snow ! number of tracer levels
   integer :: ncat_out, ntrcr_out, nilyr_out, nslyr_out ! array sizes returned from Icepack query
   character(len=1256) :: mesg
+  real, parameter :: big = 1.0e+8  ! Thicker than the thickest ridges. [m]
 
   nSlyr = IG%NkSnow
   nIlyr = IG%NkIce
@@ -244,6 +273,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   call get_SIS2_thermo_coefs(IST%ITV, rho_snow=rho_snow)
+  call get_SIS2_thermo_coefs(IST%ITV, rho_water=rho_water)
+  call get_SIS2_thermo_coefs(IST%ITV, Cp_Water=Cp_water)
   dt_sec = dt*US%T_to_s
 
   call icepack_query_tracer_sizes(ncat_out=ncat_out,ntrcr_out=ntrcr_out, nilyr_out=nilyr_out, nslyr_out=nslyr_out)
@@ -265,15 +296,15 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
          G%dyBu(I,J)*G%IdxBu(I,J)*(IST%v_ice_C(i+1,J)*G%IdyCv(i+1,J) - IST%v_ice_C(i,J)*G%IdyCv(i,J)))
   enddo; enddo
 
-  if (CS%new_rdg_partic) krdg_partic = 1
-  if (CS%new_rdg_redist) krdg_redist = 1
-
   ! set category limits; Icepack has a max on the largest, unlimited, category (why?)
 
   hin_max(0)=0.0
   do k=1,nCat
     hin_max(k) = US%Z_to_m * IG%mH_cat_bound(k) / Rho_ice
   end do
+  ! Set hin_max(ncat) to a big value to ensure that all ridged ice
+  ! is thinner than hin_max(ncat).
+  hin_max(nCat) = big
 
   trcr_base = 0.0; n_trcr_strata = 0; nt_strata = 0; ! init some tracer vars
   ! When would we use icepack tracer "strata"?
@@ -292,231 +323,240 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 
   if (present(rdg_rate)) rdg_rate(:,:)=0.0
   do j=jsc,jec; do i=isc,iec
-  if ((G%mask2dT(i,j) .gt. 0.0) .and. (sum(IST%part_size(i,j,1:nCat)) .gt. 0.0)) then
-  ! feed locations to Icepack's ridge_ice
+    if ((G%mask2dT(i,j) .gt. 0.0) .and. (sum(IST%part_size(i,j,1:nCat)) .gt. 0.0)) then
+    ! feed locations to Icepack's ridge_ice
 
-    ! start like we're putting ALL the snow and pond in the ocean
-    IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + sum(mca_snow(i,j,:))
-    IST%enth_snow_to_ocn(i,j) = IST%enth_snow_to_ocn(i,j) + sum(mca_snow(i,j,:)*TrReg%Tr_snow(1)%t(i,j,:,1))
-    IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) + sum(mca_pond(i,j,:))
-    aicen(1:nCat) = IST%part_size(i,j,1:nCat)
+      ! start like we're putting ALL the snow and pond in the ocean
+      IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) + sum(mca_snow(i,j,:))
+      IST%enth_snow_to_ocn(i,j) = IST%enth_snow_to_ocn(i,j) + sum(mca_snow(i,j,:)*TrReg%Tr_snow(1)%t(i,j,:,1))
+      IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) + sum(mca_pond(i,j,:))
+      aicen(1:nCat) = IST%part_size(i,j,1:nCat)
 
-
-    if (sum(aicen) .eq. 0.0) then ! no ice -> no ridging
-      IST%part_size(i,j,0) = 1.0;
-    else
-      ! set up ice and snow volumes
-      vicen(1:nCat) = mca_ice(i,j,1:nCat) /Rho_ice * US%Z_to_m  ! volume per unit area of ice (m)
-      vsnon(1:nCat) = mca_snow(i,j,1:nCat)/Rho_snow * US%Z_to_m ! volume per unit area of snow (m)
-
-      sh_Dt = (G%dyT(i,j)*G%IdxT(i,j)*(G%IdyCu(I,j) * IST%u_ice_C(I,j) - &
-                                       G%IdyCu(I-1,j)*IST%u_ice_C(I-1,j)) - &
-               G%dxT(i,j)*G%IdyT(i,j)*(G%IdxCv(i,J) * IST%v_ice_C(i,J) - &
-                                       G%IdxCv(i,J-1)*IST%v_ice_C(i,J-1)))
-      sh_Dd = (G%IareaT(i,j)*(G%dyCu(I,j) * IST%u_ice_C(I,j) - &
-                              G%dyCu(I-1,j)*IST%u_ice_C(I-1,j)) + &
-               G%IareaT(i,j)*(G%dxCv(i,J) * IST%v_ice_C(i,J) - &
-                              G%dxCv(i,J-1)*IST%v_ice_C(i,J-1)))
-
-      del_sh = sqrt(sh_Dd**2 + 0.25 * (sh_Dt**2 + &
-                   (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
-                            (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) )*US%s_to_T ! H&D eqn 9
-      rdg_conv  = -min(sh_Dd,0.0)*US%s_to_T              ! energy dissipated by convergence ...
-      rdg_shear = 0.5*(del_sh-abs(sh_Dd))*US%s_to_T      ! ... and by shear
-
-      aice0 = IST%part_size(i,j,0)
-      if (aice0<0.) then
-         call SIS_error(WARNING,'aice0<0. before call to ridge ice.')
-         aice0=0.
-      endif
-
-      ntrcr = 0
-!      Tr_ptr=>NULL()
-      if (TrReg%ntr>0) then ! load tracer array
-        ntrcr=ntrcr+1
-        do k=1,ncat
-          trcrn(ntrcr,k) = Tr_ice_enth_ptr(i,j,1,1) ! surface temperature taken from the ice-free category
-                                                    ! copying across all categories.
-        enddo
-        trcr_depend(ntrcr) = 0; ! ice/snow surface temperature
-        trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
-        do k=1,nL_ice
-          ntrcr=ntrcr+1
-          trcrn(ntrcr,1:ncat) = Tr_ice_enth_ptr(i,j,1:nCat,k)
-          trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
-          trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
-        enddo
-        do k=1,nL_snow
-          ntrcr=ntrcr+1
-          trcrn(ntrcr,1:nCat) = Tr_snow_enth_ptr(i,j,1:nCat,k)
-          trcr_depend(ntrcr) = 2; ! 2 means snow-based tracer
-          trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,3) = 1.0; ! 3rd index for snow
-        enddo
-        do k=1,nL_ice
-          ntrcr=ntrcr+1
-          trcrn(ntrcr,1:nCat) = Tr_ice_salin_ptr(i,j,1:nCat,k)
-          trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
-          trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
-        enddo
-!       ntrcr=ntrcr+1
-!       trcrn(ntrcr,1:nCat) = Tr_ice_alvl_ptr(i,j,1:nCat,1)
-!       trcr_depend(ntrcr) = 0; ! 1 means area-based tracer
-!       trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
-!       ntrcr=ntrcr+1
-!       trcrn(ntrcr,1:nCat) = Tr_ice_mlvl_ptr(i,j,1:nCat,1)
-!       trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
-!       trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
-      endif ! have tracers to load
-
-      ! load pond on top of stack
-      ntrcr = ntrcr + 1
-      trcrn(ntrcr,1:nCat) = IST%mH_pond(i,j,1:nCat)
-      trcr_depend(ntrcr) = 0; ! 0 means ice area-based tracer
-      trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for ice area
-
-      if (ntrcr .ne. ntrcr_out ) call SIS_error(FATAL,'ntrcr mismatch with Icepack')
-
-      tr_brine = .false.
-      dardg1dt = 0.0
-      dardg2dt = 0.0
-      opening = 0.0
-      fpond = 0.0
-      fresh = 0.0
-      fhocn = 0.0
-      faero_ocn(:) = 0.0
-      fiso_ocn = 0.0
-      aparticn = 0.0
-      krdgn(:) = rdg_height(i,j,:)*US%Z_to_m
-      aredistn(:) = 0.0
-      vredistn(:) = 0.0
-      dardg1ndt(:) = 0.0
-      dardg2ndt(:) = 0.0
-      dvirdgndt(:) = 0.0
-      araftn(:) = 0.0
-      vraftn(:) = 0.0
-      closing_flag = .false.
-
-      ! call Icepack routine; how are ponds treated?
-      call ridge_ice (dt_sec,       ndtd,           &
-                      ncat,         n_aero,         &
-                      nilyr,        nslyr,          &
-                      ntrcr,        hin_max,        &
-                      rdg_conv,     rdg_shear,      &
-                      aicen,                        &
-                      trcrn,                        &
-                      vicen,        vsnon,          &
-                      aice0,                        &
-                      trcr_depend,                  &
-                      trcr_base,                    &
-                      n_trcr_strata,                &
-                      nt_strata,                    &
-                      krdg_partic,  krdg_redist,    &
-                      CS%mu_rdg,    tr_brine,       &
-                      dardg1dt=dardg1dt,     dardg2dt=dardg2dt,       &
-                      dvirdgdt=dvirdgdt,     opening=opening,        &
-                      fpond=fpond,                        &
-                      fresh=fresh,        fhocn=fhocn,          &
-                      faero_ocn=faero_ocn,   fiso_ocn=fiso_ocn,   &
-                      aparticn=aparticn,       &
-                      krdgn=krdgn,             &
-                      aredistn=aredistn,       &
-                      vredistn=vredistn,       &
-                      dardg1ndt=dardg1ndt,     &
-                      dardg2ndt=dardg2ndt,     &
-                      dvirdgndt=dvirdgndt,     &
-                      araftn=araftn,           &
-                      vraftn=vraftn,           &
-                      closing_flag=closing_flag ,closing=closing)
-
-      if (present(rdg_rate)) rdg_rate(i,j) = (dardg1dt - dardg2dt)*US%T_to_s
-      if (present(rdg_height)) rdg_height(i,j,:) = krdgn(:)*US%m_to_Z
-
-      if ( icepack_warnings_aborted() ) then
-        call icepack_warnings_flush(0);
-        call icepack_warnings_setabort(.false.)
-        call SIS_error(WARNING,'icepack ridge_ice error');
-      endif
-
-      ! pop pond off top of stack
-      tr_tmp(1:nCat)=trcrn(ntrcr,1:nCat)
-
-      do k=1,nCat
-        IST%mH_pond(i,j,k) = tr_tmp(k)
-        mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
-      enddo
-      if (any(vicen < 0)) then
-!       print *, "Negative ice volume after ridging: ", i+G%idg_offset, j+G%jdg_offset, vicen
-!       print *, "Before ridging: ", mca_ice(i,j,1:nCat) /Rho_ice
-!       print *, "Ice concentration before/after ridging: ", IST%part_size(i,j,1:nCat), aicen
+      if (sum(aicen) .eq. 0.0) then ! no ice -> no ridging
+        IST%part_size(i,j,0) = 1.0;
+      else
+        ! first_ice gets set to true when ice disappears to clear the tracer memory of it
         do k=1,nCat
-          if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
-            write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
-                          i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
-            call SIS_error(WARNING, mesg, all_print=.true.)
+          if (IST%part_size(i,j,k) .gt. 0.0) then
+            first_ice(k) = .false.
+          else
+            first_ice(k) = .true.
           endif
-          vicen(k) = max(vicen(k),0.0)
-        enddo
-!       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
-!                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
-!       call SIS_error(WARNING, mesg, all_print=.true.)
-      endif
+        end do
 
-      if (TrReg%ntr>0) then
-        ! unload tracer array reversing order of load -- stack-like fashion
+        ! set up ice and snow volumes
+        vicen(1:nCat) = mca_ice(i,j,1:nCat) /Rho_ice * US%Z_to_m  ! volume per unit area of ice (m)
+        vsnon(1:nCat) = mca_snow(i,j,1:nCat)/Rho_snow * US%Z_to_m ! volume per unit area of snow (m)
 
-!        tr_tmp(1:nCat)=trcrn(ntrcr-1,1:nCat)
-!        Tr_ice_mlvl_ptr(i,j,1:nCat,1) = tr_tmp(1:nCat)
-!        tr_tmp(1:nCat)=trcrn(ntrcr-2,1:nCat)
-!        Tr_ice_alvl_ptr(i,j,1:nCat,1) = tr_tmp(1:nCat)
+        sh_Dt = (G%dyT(i,j)*G%IdxT(i,j)*(G%IdyCu(I,j) * IST%u_ice_C(I,j) - &
+                                         G%IdyCu(I-1,j)*IST%u_ice_C(I-1,j)) - &
+                 G%dxT(i,j)*G%IdyT(i,j)*(G%IdxCv(i,J) * IST%v_ice_C(i,J) - &
+                                         G%IdxCv(i,J-1)*IST%v_ice_C(i,J-1)))
+        sh_Dd = (G%IareaT(i,j)*(G%dyCu(I,j) * IST%u_ice_C(I,j) - &
+                                G%dyCu(I-1,j)*IST%u_ice_C(I-1,j)) + &
+                 G%IareaT(i,j)*(G%dxCv(i,J) * IST%v_ice_C(i,J) - &
+                                G%dxCv(i,J-1)*IST%v_ice_C(i,J-1)))
 
-         do k=1,nL_ice
-           tr_tmp(1:nCat)=trcrn(1+k,1:nCat)
-           Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat)
-         enddo
+        del_sh = sqrt(sh_Dd**2 + 0.25 * (sh_Dt**2 + &
+                     (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
+                              (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) )*US%s_to_T ! H&D eqn 9
+        rdg_conv  = -min(sh_Dd,0.0)*US%s_to_T              ! energy dissipated by convergence ...
+        rdg_shear = 0.5*(del_sh-abs(sh_Dd))*US%s_to_T      ! ... and by shear
 
-         do k=1,nL_snow
-           tr_tmp(1:nCat)=trcrn(1+nl_ice+k,1:ncat)
-           Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat)
-         enddo
-
-         do k=1,nL_ice
-           tr_tmp(1:nCat)=trcrn(1+k+nl_ice+nl_snow,1:nCat)
-           Tr_ice_salin_ptr(i,j,1:nCat,k) =  tr_tmp(1:nCat)
-         enddo
-
-      endif ! have tracers to unload
-
-      ! ! output: snow/ice masses/thicknesses
-      do k=1,nCat
-        if (aicen(k) < CS%area_underflow) then
-           aicen(k)=0.0
-           vicen(k)=0.0
+        aice0 = IST%part_size(i,j,0)
+        if (aice0<0.) then
+           aice0=0.
         endif
-        if (aicen(k) > 0.0) then
-          IST%part_size(i,j,k)  = aicen(k)
-          mca_ice(i,j,k)  = vicen(k)*Rho_ice * US%m_to_Z
-          IST%mH_ice(i,j,k)   = vicen(k)*Rho_ice/aicen(k) * US%m_to_Z
-          mca_snow(i,j,k) = vsnon(k)*Rho_snow * US%m_to_Z
-          IST%mH_snow(i,j,k)  = vsnon(k)*Rho_snow/aicen(k) * US%m_to_Z
-        else
-          IST%part_size(i,j,k) = 0.0
-          mca_ice(i,j,k)  = 0.0
-          IST%mH_ice(i,j,k) = 0.0
-          mca_snow(i,j,k) = 0.0
-          IST%mH_snow(i,j,k) = 0.0
-       endif
+        aice = 1.0 - aice0
 
-     enddo
+        ! This was being done in ridge_prep within Icepack
+        asum = aice0 + sum(aicen)
+        divu_adv = (1.0 - asum) / dt_sec
+        closing = CS%Cs_frac * rdg_shear + rdg_conv
+        if (divu_adv < 0.0) closing = max(closing, -divu_adv)
+        opening = closing + divu_adv
 
-     IST%part_size(i,j,0) = 1.0 - sum(IST%part_size(i,j,1:nCat))
+        ntrcr = 0
+  !      Tr_ptr=>NULL()
+        if (TrReg%ntr>0) then ! load tracer array
+          ntrcr=ntrcr+1
+          do k=1,ncat
+            trcrn(ntrcr,k) = Cp_water * OSS%SST_C(i,j) * rho_water ! surface ocean enthalpy
+                                                       ! copying across all categories.
+          enddo
+          trcr_depend(ntrcr) = 0; ! ice/snow surface temperature
+          trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
+          do k=1,nL_ice
+            ntrcr=ntrcr+1
+            trcrn(ntrcr,1:ncat) = Tr_ice_enth_ptr(i,j,1:nCat,k) * rho_ice
+            trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
+            trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
+          enddo
+          do k=1,nL_snow
+            ntrcr=ntrcr+1
+            trcrn(ntrcr,1:nCat) = Tr_snow_enth_ptr(i,j,1:nCat,k) * rho_snow
+            trcr_depend(ntrcr) = 2; ! 2 means snow-based tracer
+            trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,3) = 1.0; ! 3rd index for snow
+          enddo
+          do k=1,nL_ice
+            ntrcr=ntrcr+1
+            trcrn(ntrcr,1:nCat) = Tr_ice_salin_ptr(i,j,1:nCat,k)
+            trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
+            trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
+          enddo
+  !       ntrcr=ntrcr+1
+  !       trcrn(ntrcr,1:nCat) = Tr_ice_alvl_ptr(i,j,1:nCat,1)
+  !       trcr_depend(ntrcr) = 0; ! 1 means area-based tracer
+  !       trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for area
+  !       ntrcr=ntrcr+1
+  !       trcrn(ntrcr,1:nCat) = Tr_ice_mlvl_ptr(i,j,1:nCat,1)
+  !       trcr_depend(ntrcr) = 1; ! 1 means ice-based tracer
+  !       trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,2) = 1.0; ! 2nd index for ice
+        endif ! have tracers to load
 
-    endif
-    ! subtract new snow/pond mass and energy on ice to sum net fluxes to ocean
-    IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) - sum(mca_snow(i,j,:));
-    IST%enth_snow_to_ocn(i,j) = IST%enth_snow_to_ocn(i,j) - sum(mca_snow(i,j,:)*TrReg%Tr_snow(1)%t(i,j,:,1));
-    IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) - sum(mca_pond(i,j,:));
+        ! load pond on top of stack
+        ntrcr = ntrcr + 1
+        trcrn(ntrcr,1:nCat) = IST%mH_pond(i,j,1:nCat)
+        trcr_depend(ntrcr) = 0; ! 0 means ice area-based tracer
+        trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for ice area
 
-  endif; enddo; enddo ! part_sz, j, i
+        if (ntrcr .ne. ntrcr_out ) call SIS_error(FATAL,'ntrcr mismatch with Icepack')
+
+        dardg1dt = 0.0
+        dardg2dt = 0.0
+        fpond = 0.0
+        fresh = 0.0
+        fhocn = 0.0
+        fsalt = 0.0
+        fzsal = 0.0
+        faero_ocn(:) = 0.0
+        flux_bio(:) = 0.0
+        fiso_ocn = 0.0
+        aparticn = 0.0
+        krdgn(:) = rdg_height(i,j,:)*US%Z_to_m
+        aredistn(:) = 0.0
+        vredistn(:) = 0.0
+        dardg1ndt(:) = 0.0
+        dardg2ndt(:) = 0.0
+        dvirdgndt(:) = 0.0
+        araftn(:) = 0.0
+        vraftn(:) = 0.0
+        Tf = T_freeze(OSS%s_surf(i,j), IST%ITV)
+
+        ! call Icepack routine; how are ponds treated?
+        call icepack_step_ridge (dt_sec,       ndtd,          &
+                                 hin_max,                     &
+                                 rdg_conv,     rdg_shear,     &
+                                 aicen,                       &
+                                 trcrn,                       &
+                                 vicen,        vsnon,         &
+                                 aice0,        trcr_depend,   &
+                                 trcr_base,    n_trcr_strata, &
+                                 nt_strata,                   &
+                                 dardg1dt,     dardg2dt,      &
+                                 dvirdgdt,     opening,       &
+                                 fpond,                       &
+                                 fresh,        fhocn,         &
+                                 faero_ocn,    fiso_ocn,      &
+                                 aparticn,     krdgn,         &
+                                 aredistn,     vredistn,      &
+                                 dardg1ndt,    dardg2ndt,     &
+                                 dvirdgndt,                   &
+                                 araftn,       vraftn,        &
+                                 aice,         fsalt,         &
+                                 first_ice,    fzsal,         &
+                                 flux_bio,     closing,       &
+                                 Tf, docleanup=CS%do_cleanup, &
+                                 dorebin=CS%do_rebin)
+
+        if (present(rdg_rate)) rdg_rate(i,j) = (dardg1dt - dardg2dt)*US%T_to_s
+        if (present(rdg_height)) rdg_height(i,j,:) = krdgn(:)*US%m_to_Z
+
+        if ( icepack_warnings_aborted() ) then
+          call icepack_warnings_flush(0);
+          call icepack_warnings_setabort(.false.)
+          call SIS_error(WARNING,'icepack_step_ridge error');
+        endif
+
+        ! pop pond off top of stack
+        tr_tmp(1:nCat)=trcrn(ntrcr,1:nCat)
+
+        do k=1,nCat
+          IST%mH_pond(i,j,k) = tr_tmp(k)
+          mca_pond(i,j,k) = IST%mH_pond(i,j,k)*aicen(k)
+        enddo
+
+        if (any(vicen < 0)) then
+          do k=1,nCat
+            if (vicen(k) < 0.0 .and. aicen(k) > 0.0) then
+              write(mesg,'("Negative ice volume after ridging: ", i6, i6, 2x, 1pe12.4, 1pe12.4)')  &
+                            i+G%idg_offset, j+G%jdg_offset, aicen(k), vicen(k)
+              call SIS_error(WARNING, mesg, all_print=.true.)
+            endif
+            vicen(k) = max(vicen(k),0.0)
+          enddo
+  !       write(mesg,'("Negative ice volume after ridging: ", 2i6, 2x, (1pe12.4))') &
+  !                     i+G%jdg_offset, j+G%jdg_offset, aicen, vicen
+  !       call SIS_error(WARNING, mesg, all_print=.true.)
+        endif
+
+        if (TrReg%ntr>0) then
+          ! unload tracer array reversing order of load -- stack-like fashion
+
+  !        tr_tmp(1:nCat)=trcrn(ntrcr-1,1:nCat)
+  !        Tr_ice_mlvl_ptr(i,j,1:nCat,1) = tr_tmp(1:nCat)
+  !        tr_tmp(1:nCat)=trcrn(ntrcr-2,1:nCat)
+  !        Tr_ice_alvl_ptr(i,j,1:nCat,1) = tr_tmp(1:nCat)
+
+           do k=1,nL_ice
+             tr_tmp(1:nCat)=trcrn(1+k,1:nCat)
+             Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_ice
+           enddo
+
+           do k=1,nL_snow
+             tr_tmp(1:nCat)=trcrn(1+nl_ice+k,1:ncat)
+             Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_snow
+           enddo
+
+           do k=1,nL_ice
+             tr_tmp(1:nCat)=trcrn(1+k+nl_ice+nl_snow,1:nCat)
+             Tr_ice_salin_ptr(i,j,1:nCat,k) =  tr_tmp(1:nCat)
+           enddo
+
+        endif ! have tracers to unload
+
+        ! ! output: snow/ice masses/thicknesses
+        do k=1,nCat
+          if (aicen(k) < CS%area_underflow) then
+             aicen(k)=0.0
+             vicen(k)=0.0
+          endif
+          if (aicen(k) > 0.0) then
+            IST%part_size(i,j,k)  = aicen(k)
+            mca_ice(i,j,k)  = vicen(k)*Rho_ice * US%m_to_Z
+            IST%mH_ice(i,j,k)   = vicen(k)*Rho_ice/aicen(k) * US%m_to_Z
+            mca_snow(i,j,k) = vsnon(k)*Rho_snow * US%m_to_Z
+            IST%mH_snow(i,j,k)  = vsnon(k)*Rho_snow/aicen(k) * US%m_to_Z
+          else
+            IST%part_size(i,j,k) = 0.0
+            mca_ice(i,j,k)  = 0.0
+            IST%mH_ice(i,j,k) = 0.0
+            mca_snow(i,j,k) = 0.0
+            IST%mH_snow(i,j,k) = 0.0
+          endif
+
+        enddo
+
+        IST%part_size(i,j,0) = 1.0 - sum(IST%part_size(i,j,1:nCat))
+
+      endif
+      ! subtract new snow/pond mass and energy on ice to sum net fluxes to ocean
+      IST%snow_to_ocn(i,j) = IST%snow_to_ocn(i,j) - sum(mca_snow(i,j,:));
+      IST%enth_snow_to_ocn(i,j) = IST%enth_snow_to_ocn(i,j) - sum(mca_snow(i,j,:)*TrReg%Tr_snow(1)%t(i,j,:,1));
+      IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) - sum(mca_pond(i,j,:));
+
+    endif ! part_sz
+  enddo; enddo ! j, i
 
 !  call IST_chksum('after ice ridging ',IST,G,US,IG)
 
@@ -528,6 +568,5 @@ end subroutine ice_ridging
 subroutine ice_ridging_end()
 
 end subroutine ice_ridging_end
-
 
 end module ice_ridging_mod

@@ -391,8 +391,8 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   if (do_ridging) then
     IDs%id_rdgf = register_diag_field('ice_model', 'RDG_FRAC', diag%axesTc, Time, &
                    'ridged ice fraction', '0-1', missing_value=missing)
-    IDs%id_rdg_h = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
-                   'ridged ice fraction', '0-1', missing_value=missing)
+!   IDs%id_rdg_h = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
+!                  'ice ridge height', 'm', conversion=US%m_to_Z, missing_value=missing)
   endif
 end subroutine register_ice_state_diagnostics
 
