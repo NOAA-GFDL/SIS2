@@ -435,15 +435,15 @@ subroutine unpack_ocean_ice_boundary_calved_shelf_bergs(Ice, OIB)
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
 
-  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
-      "The pointer to Ice%fCS must be associated in unpack_ocean_ice_boundary_calved_shelf_bergs.")
-  if (.not.associated(Ice%fCS%FIA)) call SIS_error(FATAL, &
-      "The pointer to Ice%fCS%FIA must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
-  if (.not.associated(Ice%fCS%G)) call SIS_error(FATAL, &
-      "The pointer to Ice%fCS%G must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
+  if (.not.associated(Ice%sCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS must be associated in unpack_ocean_ice_boundary_calved_shelf_bergs.")
+  if (.not.associated(Ice%sCS%FIA)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS%FIA must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
+  if (.not.associated(Ice%sCS%G)) call SIS_error(FATAL, &
+      "The pointer to Ice%sCS%G must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
 
-  FIA => Ice%fCS%FIA ; G => Ice%fCS%G
-  US => Ice%fCS%US
+  FIA => Ice%sCS%FIA ; G => Ice%sCS%G
+  US => Ice%sCS%US
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -460,8 +460,8 @@ subroutine unpack_ocean_ice_boundary_calved_shelf_bergs(Ice, OIB)
     endif
   endif ; enddo ; enddo
 
-  if (Ice%fCS%debug) then
-    call FIA_chksum("End of unpack_ocean_ice_boundary_calved_shelf_berg", FIA, G, Ice%fCS%US)
+  if (Ice%sCS%debug) then
+    call FIA_chksum("End of unpack_ocean_ice_boundary_calved_shelf_berg", FIA, G, Ice%sCS%US)
   endif
 
 end subroutine unpack_ocean_ice_boundary_calved_shelf_bergs
