@@ -1,15 +1,14 @@
-      module icepack_mechred
+module icepack_mechred
 
-      use icepack_kinds
-      use icepack_tracers, only : n_iso, n_aero
+  use icepack_kinds, only : int_kind, dbl_kind, log_kind
+  use icepack_tracers, only : n_iso, n_aero
 
-      implicit none
+  implicit none
 
       private
       public :: icepack_step_ridge
       contains
 
-!-----------------------------------------------------------------------
 !> Interface for updating the sea-ice state due to ice ridging processes
 !! using Icepack.
 
@@ -44,7 +43,7 @@
       integer (kind=int_kind), intent(in) :: &
          ndtd      !< The number of dynamics subcycles
 
-      real (kind=dbl_kind), dimension(0:ncat), intent(inout) :: &
+      real (kind=dbl_kind), dimension(0:), intent(inout) :: &
          hin_max   !< category limits [m]
 
       integer (kind=int_kind), dimension (:), intent(in) :: &
@@ -104,7 +103,7 @@
          first_ice    !< True until ice forms
       real (kind=dbl_kind), intent(in) :: &
          Tf           !< freezing temperature
-      logical (kind=log_kind), dimension(:), intent(in), optional :: &
+      logical (kind=log_kind), intent(in), optional :: &
          docleanup, & !< True to call cleanup_itd in Icepack
          dorebin      !< True to call rebin in Icepack
 
