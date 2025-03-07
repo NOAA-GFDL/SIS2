@@ -10,20 +10,18 @@ module icepack_meltpond_topo
   contains
 
 !> Interface for updating the melt ponds using Icepack.
-  subroutine compute_ponds_topo(dt, ncat, nilyr,        &
-                                    ktherm,             &
-                                    aice,  aicen,       &
-                                    vice,  vicen,       &
-                                    vsno,  vsnon,       &
-                                    meltt,              &
-                                    fsurf, fpond,       &
-                                    Tsfcn, Tf,          &
-                                    qicen, sicen,       &
-                                    apnd,  hpnd, ipnd   )
+  subroutine compute_ponds_topo(dt,                 &
+                                ktherm,             &
+                                aice,  aicen,       &
+                                vice,  vicen,       &
+                                vsno,  vsnon,       &
+                                meltt,       &
+                                fsurf, fpond,       &
+                                Tsfcn, Tf,          &
+                                qicen, sicen,       &
+                                apnd,  hpnd, ipnd   )
 
     integer (kind=int_kind), intent(in) :: &
-         ncat , &   !< number of thickness categories
-         nilyr, &   !< number of ice layers
          ktherm     !< type of thermodynamics (0 0-layer, 1 BL99, 2 mushy)
 
     real (kind=dbl_kind), intent(in) :: &

@@ -10,32 +10,20 @@ module icepack_meltpond_lvl
   contains
 
 !> Interface for updating the melt ponds using Icepack.
-  subroutine compute_ponds_lvl(dt,     nilyr,        &
-                                   ktherm,               &
-                                   hi_min, dpscale,      &
-                                   frzpnd,               &
-                                   rfrac,  meltt, melts, &
-                                   frain,  Tair,  fsurfn,&
-                                   dhs,    ffrac,        &
-                                   aicen,  vicen, vsnon, &
-                                   qicen,  sicen,        &
-                                   Tsfcn,  alvl,         &
-                                   apnd,   hpnd,  ipnd,  &
-                                   meltsliqn)
+  subroutine compute_ponds_lvl(dt,                   &
+                               rfrac,  meltt, melts, &
+                               frain,  Tair,  fsurfn,&
+                               dhs,    ffrac,        &
+                               aicen,  vicen, vsnon, &
+                               qicen,  sicen,        &
+                               Tsfcn,  alvl,         &
+                               apnd,   hpnd,  ipnd,  &
+                               meltsliqn)
 
-    integer (kind=int_kind), intent(in) :: &
-         nilyr, &    !< number of ice layers
-         ktherm      !< type of thermodynamics (-1 none, 1 BL99, 2 mushy)
+  real (kind=dbl_kind), intent(in) :: &
+         dt          !< time step (s)
 
-    real (kind=dbl_kind), intent(in) :: &
-         dt,       & !< time step (s)
-         hi_min,   & !< minimum ice thickness allowed for thermo (m)
-         dpscale     !< alter e-folding time scale for flushing
-
-    character (len=char_len), intent(in) :: &
-         frzpnd      !< pond refreezing parameterization
-
-    real (kind=dbl_kind), intent(in) :: &
+  real (kind=dbl_kind), intent(in) :: &
          Tsfcn, &    !< surface temperature (C)
          alvl,  &    !< fraction of level ice
          rfrac, &    !< water fraction retained for melt ponds
