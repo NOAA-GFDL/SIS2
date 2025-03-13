@@ -59,6 +59,8 @@ use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_e
 use SIS2_ice_thm,      only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, calculate_T_freeze
+use SIS_sponge,        only : initialize_icerelax_file, set_up_isponge_field, apply_isponge, isponge_CS
+use SIS_sponge,        only : global_to_local_ij
 
 implicit none ; private
 
@@ -293,7 +295,7 @@ end subroutine post_flux_diagnostics
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> slow_thermodynamics takes care of slow ice thermodynamics and mass changes
-subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
+subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, ispCS)
 
   type(ice_state_type),       intent(inout) :: IST !< A type describing the state of the sea ice
   real,                       intent(in)    :: dt_slow !< The thermodynamic step [T ~> s].
@@ -310,6 +312,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
   type(SIS_hor_grid_type),    intent(inout) :: G   !< The horizontal grid type
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
+  type(isponge_CS),           pointer       :: ispCS !< A control structure for ice relaxation fields
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -423,6 +426,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG)
     IOF%Enth_Mass_in_atm(i,j) = 0.0 ; IOF%Enth_Mass_out_atm(i,j) = 0.0
     IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
   enddo ; enddo
+
+  if (ispCS%use_isponge) &
+    call apply_isponge(dt_slow, ispCS, G, IG, IST, US, OSS, CS%Time)
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
@@ -1383,7 +1389,8 @@ end subroutine SIS2_thermodynamics
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_slow_thermo_init - initializes the parameters and diagnostics associated
 !!    with the SIS_slow_thermo module.
-subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_flow_CSp)
+subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_flow_CSp, &
+                                ispCS, sIST)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid structure
@@ -1396,11 +1403,14 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   type(SIS_tracer_flow_control_CS), &
                                pointer       :: tracer_flow_CSp !< A structure that is used to
                                                      !! orchestrate the calling ice tracer packages
+  type(isponge_CS),            pointer       :: ispCS !< A pointer to the structure for ice sponge/relax fields
+  type(ice_state_type),        pointer       :: sIST  !< A pointer to sea ice state fields
 
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_slow_thermo" ! This module's name.
   logical           :: debug
+  logical           :: use_isponge
   real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate.
   character(len=64)  :: transmute_var   ! Transmutation rate variable name in file
   character(len=200) :: filename, transmute_file, inputdir ! Strings for file/path
@@ -1545,6 +1555,18 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
+  call get_param(param_file, mdl, "SIS_SPONGE", use_isponge, &
+                 "If true, SIS sponges may be applied anywhere in the domain. "//&
+                 "The exact location and properties of those sponges are "//&
+                 "specified via SIS_SPONGE_CONFIG.", default=.false.)
+  if (use_isponge) then                              
+    call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: True")
+    call SIS_mesg("SIS_slow_thermo: calling initialize_icerelax_file")
+    call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time)
+  else
+    call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: False")
+  endif
+
 
   CS%id_lsrc = register_diag_field('ice_model','LSRC', diag%axesT1, Time, &
                'frozen water local source', 'kg/(m^2*yr)', missing_value=missing)
