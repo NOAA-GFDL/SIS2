@@ -21,13 +21,13 @@ use MOM_io,            only : file_exists, MOM_read_data, slasher
 use MOM_io,            only : axis_info
 use MOM_interpolate,   only : init_external_field, get_external_field_info, time_interp_external_init
 use MOM_interpolate,   only : time_interp_external
-use MOM_interpolate,   only : external_field     
-                            
+use MOM_interpolate,   only : external_field
+
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_hor_grid,      only : SIS_hor_grid_type
 use SIS_sum_output,    only : SIS_sum_out_CS, write_ice_statistics! , SIS_sum_output_init
-use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check, total_sfc_flux_type         
+use SIS_types,         only : ice_state_type, IST_chksum, IST_bounds_check, total_sfc_flux_type
 use SIS_types,         only : ocean_sfc_state_type, ice_ocean_flux_type, fast_ice_avg_type
 use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
@@ -40,7 +40,7 @@ implicit none; private
 #include <SIS2_memory.h>
 
 public initialize_icerelax_file, apply_isponge, set_up_isponge_field, SIS_sponge_end
-public global_to_local_ij, print_ice_thkn_conc
+public global_to_local_ij
 
 !> A structure for creating arrays of pointers to 3D arrays
 type, public :: p3d; private
@@ -110,6 +110,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   type(ice_state_type),    intent(in) :: IST        !< A type describing the state of the sea ice
   type(time_type),         intent(in) :: Time       !< The sea-ice model's clock,
 
+  ! Local variables
   real, dimension(SZI_(G),SZJ_(G))  :: Irelax !< The inverse of the restoring time [T-1 ~> s-1].
   real, allocatable, dimension(:,:) :: rlx_H  !< A temporary array for reading relax target ice thickness
                                               !! mean grid cell value  kg/m [R Z L ~> kg m-1]
@@ -118,7 +119,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   integer :: i, j, k, is, ie, js, je, ncat
   integer :: isd, ied, jsd, jed
   integer :: isc, iec, jsc, jec
-  integer :: itestG, jtestG, itest, jtest
+  integer :: itestG, jtestG, itest, jtest  ! Test point indices global and local
   integer :: year     !< The current model year
   integer :: day      !< The current model year-day
   integer :: second   !< The second of the day
@@ -145,11 +146,11 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
                  fail_if_missing=.true.)
   call get_param(param_file, mdl, "ISPONGE_STATE_FILE", state_file, &
                  "The name of the file with the state to relax toward.", &
-                 fail_if_missing=.true.)                
-  call get_param(param_file, mdl, "ISPONGE_ITHCK_VAR", ithck_var, & 
+                 fail_if_missing=.true.)
+  call get_param(param_file, mdl, "ISPONGE_ITHCK_VAR", ithck_var, &
                  "The name of the ice thickness variable in "//&
                  "ISPONGE_STATE_FILE.", default="ithkn")
-  call get_param(param_file, mdl, "ISPONGE_IAREA_VAR", iarea_var, & 
+  call get_param(param_file, mdl, "ISPONGE_IAREA_VAR", iarea_var, &
                  "The name of the ice partial area/concentration variable in "//&
                  "ISPONGE_STATE_FILE.", default="ithkn")
   call get_param(param_file, mdl, "ISPONGE_RLXRATE_VAR", rlxrate_var, &
@@ -166,7 +167,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   if (.not.file_exists(filename, G%Domain)) &
     call SIS_error(FATAL, " initialize_icerelax_file: Unable to open "//trim(filename))
 
-  call MOM_read_data(filename, rlxrate_var, Irelax(:,:), G%Domain, scale=US%s_to_T) 
+  call MOM_read_data(filename, rlxrate_var, Irelax(:,:), G%Domain, scale=US%s_to_T)
   max_rlxrate =  maxval(Irelax*US%T_to_s)
   call max_across_PEs(max_rlxrate)
   call get_date(Time, year, mon, day, hr, minute, second, itick)
@@ -178,7 +179,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   if (itestG.gt.0 .and. jtestG.gt.0) &
     call global_to_local_ij(G, itestG, jtestG, itest, jtest)
 
-  call SIS_mesg('initialize_icerelax_file: Calling initialize_isponge') 
+  call SIS_mesg('initialize_icerelax_file: Calling initialize_isponge')
   if (itest.gt.0 .and. jtest.gt.0) then
     call initialize_isponge(param_file, Irelax, G, IG, CS, itest=itest, jtest=jtest)
   else
@@ -191,7 +192,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   if (.not.file_exists(filename, G%Domain)) &
     call SIS_error(FATAL, " initialize_icerelax_files: Unable to open "//trim(filename))
 !
-  
+
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: mH_ice') 
   call set_up_isponge_field(filename, ithck_var, Time, 1, IG%CatIce, G, IG, US, IST%mH_ice, CS, &
@@ -219,6 +220,7 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
 
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
+  ! Local variables
   character(len=40)  :: mdl = "initialize_isponge"  ! This module's name.
   character(len=256) :: mesg
   logical :: use_isponge
@@ -261,8 +263,9 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
     CS%itest = itest
     CS%jtest = jtest
   else
-    CS%itest = -999
-    CS%jtest = -999
+    ! No test point specified in SIS_input
+    CS%itest = -1
+    CS%jtest = -1
   endif
 
   CS%num_col = 0 ; CS%fldno = 0
@@ -290,16 +293,15 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
 
   write(mesg,'(A,": total isponge cols=",i8)') trim(mdl), total_isponge_cols
   call SIS_mesg(mesg)
-  
   call log_param(param_file, mdl, "!Total isponge columns", total_isponge_cols, &
                  "The total number of ice columns where relaxation is applied.")
 
 end subroutine initialize_isponge
 
-!> This subroutine stores the reference profile for the SIS variable whose
+!> This subroutine stores the reference (target) profile for the SIS variable whose
 !! address is given by f_ptr. Reference profile = values towards which the
 !! SIS field is being relaxed to. 
-!! Current version assumes 2D fields only (+ 1D for categories) such as Hice
+!! Current version assumes 2D input fields.
 subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, f_ptr, CS, &
                                 rlxfld_name, rlx_long_name, rlx_unit, scale)
   character(len=*),        intent(in) :: filename   !< The name of the file with the
@@ -381,7 +383,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
     case default
       write(mesg,'(A," Unknown relaxation field: ",A," setting default pointer dimensions =",2(i5,1x))') &
            trim(mdl),trim(rlxfld_name),CS%num_col,CatIce
-      call SIS_error(WARNING,"print_ice_thkn_conc: "//mesg)
+      call SIS_error(WARNING,trim(mesg))
       allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,CatIce), source=0.0)
   end select
   allocate(CS%Old_val(CS%fldno)%fld(CS%num_col,CatIce), source=0.0)
@@ -396,14 +398,14 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
 
 end subroutine set_up_isponge_field
 
-!> This subroutine applies relaxation ("damping") to ice thickness (by categories) and ice concentration
+!> This subroutine applies relaxation (nudging) to ice thickness (by categories) and ice concentration
 !! tracers for every column where the relaxation time scale > 0.
 subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   real,                      intent(in)  :: dt_slow   !< The amount of time covered by this call [T ~> s].
   type(isponge_CS),          pointer     :: CS     !< A pointer that is set to point to the ice sponge control
                                                    !! structure for this module
   type(ice_grid_type),       intent(in)  :: IG     !< The sea-ice specific grid type
-  type(SIS_hor_grid_type),   intent(in)  :: G          !< The horizontal grid type
+  type(SIS_hor_grid_type),   intent(in)  :: G      !< The horizontal grid type
   type(ice_state_type),   intent(inout)  :: IST    !< A type describing the state of the sea ice
   type(unit_scale_type),     intent(in)  :: US     !< A structure with unit conversion factors
   type(ocean_sfc_state_type), intent(in) :: OSS    !< A structure containing the arrays that describe
@@ -411,35 +413,28 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   type(time_type),           intent(in)  :: Time   !< The current model date
 
   ! Local variables
-!  real :: H_rescale_ice, H_rescale_snow
   real :: damp         !< The timestep times the local damping coefficient [nondim].
   real :: I1pdamp      !< I1pdamp is 1/(1 + damp). [nondim]
   real :: p_old        !< debugging  
   real :: dt           !< time step in s
   real :: s_ice_bulk   !< ice bulk S for filling S values in the newly ceated ice 
   real, allocatable :: sice(:), tfi(:)
-  real :: enth_ice, Tfrz, coeff, enth_Tfrz
+  real :: enth_ice, Tfrz, coeff, enth_Tfrz 
   character(len=40)  :: mdl = "apply_isponge"  ! This subroutine's name.
   character(len=256) :: mesg
   character(len=15)  :: fld_name
   real    :: Idt_slow    !< The inverse of the thermodynamic step [T-1 ~> s-1].
-  real    :: iconc_old, ithk_old, iconc_new, ithk_new
-  real    :: iconc_tot, iconc_tot_old
-  real    :: ithk_tot_new, ithk_tot_old
-  real    :: dlt_iconc, dlt_ithk, enthalpy_ocn, enthalpy_ocn_tfrz
-  real    :: dlt_salt, dlt_heat, dlt_water, dlt_snow
+  real    :: iconc_old, ithk_old, iconc_new, ithk_new !< old and updated ice thkn and conc
+  real    :: iconc_tot, iconc_tot_old   !< aggregated old and updated ice conc
+  real    :: ithk_tot_new, ithk_tot_old !< aggregated old and updated ice thickness
   real    :: dlt_ice           !< total change of ice due to conc and thickness relaxation
   real    :: ice_salin         !< average ice column S gSalt kg-1 
-  real    :: water_ice_ocn, heat_ice_ocn, salt_ice_ocn
-  real    :: enthalpy_ocn0
-  real    :: dlt_enth
-  logical :: f_debug
-!
+
   real, dimension(:,:), allocatable :: data_in  !< A buffer for storing the full 2-d time-interpolated array
   real, dimension(:,:), allocatable :: mask_in  !< A 2-d mask for extended input grid [nondim]
 
   real    :: I_Nk
-  real    :: part_water
+  real    :: part_water           !< partial area of open water
   integer :: id, jd, kd, jdp      !< Input dataset data sizes
   type(axis_info), dimension(4) :: axes_data
   integer :: i, j, k, l, m, col
@@ -460,7 +455,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   isdG = G%isd_global; iedG = isdG + nid
   jsdG = G%jsd_global; jedG = jsdG + njd
 !
-  f_debug = .true.
   CatIce = IG%CatIce
   NkIce  = IG%NkIce
   I_Nk  = 1. / NkIce
@@ -469,23 +463,25 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   !dgr2rad = atan(1.0)/45.  
 
   if (CS%num_col == 0) return
-  
+
 ! First get relax fields and interp. in time:
-  allocate(data_in(isd:ied,jsd:jed))  
+  allocate(data_in(isd:ied,jsd:jed))
   allocate(sice(NkIce), tfi(NkIce), source=-999.)
   do m=1,CS%fldno
     call time_interp_external(CS%Ref_val(m)%field, Time, data_in, verbose=.true.)
     CS%Ref_orig(m)%fld(:,:) = data_in(:,:)
-    ! Debug
-    do col=1,CS%num_col
-      i = CS%col_i(col) ; j = CS%col_j(col)
-      if (CS%itest.eq.i .and. CS%jtest.eq.j) then
-        iiG = isdG + (i-1)  ; jjG = jsdG + (j-1)
-        write(mesg,'("apply_isponge: test i/j=",2(i5,1x)," time_iterp data_in=",f8.4)') &
-        iiG, jjG, data_in(i,j)
-        write(*,'(A)') trim(mesg)
-      endif
-    enddo
+    ! Information about the test point:
+    if (CS%itest.gt.0 .and. CS%jtest.gt.0) then
+      do col=1,CS%num_col
+        i = CS%col_i(col) ; j = CS%col_j(col)
+        if (CS%itest.eq.i .and. CS%jtest.eq.j) then
+          iiG = isdG + (i-1)  ; jjG = jsdG + (j-1)
+          write(mesg,'("apply_isponge: test i/j=",2(i5,1x)," time_iterp data_in=",f8.4)') &
+          iiG, jjG, data_in(i,j)
+          write(*,'(A)') trim(mesg)
+        endif
+      enddo
+    endif
   enddo
 
   ! Convert input 2D fields --> 3D ice thicknesses and concentration by categories
@@ -494,7 +490,7 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   call distribute_ice2cats(CS, IG, G)
 
   do col=1,CS%num_col
-    i = CS%col_i(col) ; j = CS%col_j(col)             
+    i = CS%col_i(col) ; j = CS%col_j(col)
     damp = dt * CS%Iresttime_col(col); I1pdamp = 1.0 / (1.0 + damp)
     do k=1,IG%CatIce
       do m=1,CS%fldno
@@ -502,14 +498,14 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
         CS%var(m)%p(i,j,k) = I1pdamp * &
            (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(col,k)*damp)
   !
-  ! Diagnostics at test point if specified in SIS_input
-        if (i==CS%itest .and. j==CS%jtest) then
+  ! Diagnostics at the test point if it is specified in SIS_input
+        if (i == CS%itest .and. j == CS%jtest) then
           select case (trim(CS%var(m)%fld_name))
             case('mH_ice')    ; coeff = US%RZ_to_kg_m2
             case('part_size') ; coeff = 1.0
             case default
               write(mesg,'("SIS_sponge: Unknown relaxation field: ",A)') trim(CS%var(m)%fld_name)
-              call SIS_error(FATAL,"apply_isponge: "//mesg)          
+              call SIS_error(FATAL,"apply_isponge: "//mesg)
           end select
           write(mesg,'(A8," k=",I2," old:=",D12.4," new=",D12.4,&
                       " tau=",D12.4," refval=",D12.4," dt=",f7.1)') &
@@ -521,15 +517,15 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
       enddo
       ! Adjust enth and S in the newly formed ice if needed:
       ! Note ice enthalpy < 0
-      do l=1,NkIce  
+      do l=1,NkIce
         if (IST%sal_ice(i,j,k,l) < s_ice_bulk) &
           IST%sal_ice(i,j,k,l) = s_ice_bulk
         sice(l) = IST%sal_ice(i,j,k,l)
       enddo
 
-! Enth should be at least enth(T_freez)
-! Make ice T below T frz and/or keep at ocean SST if it is < ice Tfrz
-! to prevent rapid ice melt in the relaxation zone
+      ! Enth should be at least enth(T_freez)
+      ! Make ice T below T frz and/or keep at ocean SST if it is < ice Tfrz
+      ! to prevent rapid ice melt in the relaxation zone
       call calculate_T_Freeze(sice, tfi, IST%ITV)
       tfi = min(tfi-0.1*US%degC_to_C, OSS%SST_C(i,j)*US%degC_to_C)
 
@@ -537,15 +533,13 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
         enth_ice = IST%enth_ice(i,j,k,l)
         enth_Tfrz = enth_from_TS(tfi(l), sice(l), IST%ITV)
 
-        dlt_enth = 0.0
         if (enth_ice > enth_Tfrz) then
-!          dlt_enth = enth_Tfrz - IST%enth_ice(i,j,k,l)
           IST%enth_ice(i,j,k,l) = enth_Tfrz
         endif
       enddo
     enddo  ! CatIce
 
-! Adjust open water partial area:
+    ! Adjust open water partial area:
     do m=1,CS%fldno
       if (CS%var(m)%fld_name(1:9)=='part_size') then
         part_water = 1.0 - sum(CS%var(m)%p(i,j,1:CatIce))
@@ -555,15 +549,15 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
       endif
     enddo
 
-! Remove all snow if ice conc or thickness = 0
+    ! Remove all snow if ice conc or thickness = 0
     do k=1,IG%CatIce
       do m=1,CS%fldno
         if (CS%var(m)%p(i,j,k).lt.1.e-10) IST%mH_snow(i,j,k)=0.0
       enddo
     enddo
-    
-! Diagnostics at test point
-    if (i.eq.CS%itest .and. j.eq.CS%jtest) then  
+
+    ! Diagnostics at test point
+    if (i.eq.CS%itest .and. j.eq.CS%jtest) then
       iconc_tot = 0.0 ; iconc_tot_old = 0.0 ; ithk_tot_new = 0.0 ; ithk_tot_old = 0.0
       do k=1,IG%CatIce
         do m=1,CS%fldno
@@ -587,7 +581,7 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
             iconc_tot_old, iconc_tot, ithk_tot_old, ithk_tot_new
       write(*,'(A)') trim(mesg)
     endif
-  
+
   enddo
 
   if (allocated(sice)) deallocate(sice)
@@ -602,6 +596,7 @@ subroutine global_to_local_ij(G, itestG, jtestG, itest, jtest)
   integer, intent(in) :: itestG, jtestG
   integer, intent(out) :: itest, jtest
 
+  ! Local variables
   integer :: current_pe, nihalo, njhalo, iscG, iecG, jscG, jecG
   integer :: isdG, jsdG, iedG, jedG
   integer :: nic, njc, nid, njd
@@ -632,20 +627,20 @@ subroutine global_to_local_ij(G, itestG, jtestG, itest, jtest)
   if (iscG <= itestG .and. itestG <= iecG .and. jscG <= jtestG .and. jtestG <= jecG) then
     itest = itestG - isdG + 1; jtest = jtestG - jsdG + 1
   endif
-                 
+
   if (itest > 0 .and. jtest > 0) then
     write(mesg, '(A," PE=",i5," Test pnt Global i, j=", 2(i5,1x)," local i, j=", 2(i5,1x), &
                   "isdG/iedG=", 2(i5,1x), "jsdG/jedG=", 2(i5,1x))') &
-         trim(mdl), current_pe, itestG, jtestG, itest, jtest, isdG, iedG, jsdG, jedG 
+         trim(mdl), current_pe, itestG, jtestG, itest, jtest, isdG, iedG, jsdG, jedG
     write(*, '(A)') trim(mesg)
-  endif        
+  endif
 
 end subroutine global_to_local_ij
 
 ! Map local indices to global
 subroutine local_to_global_indx(G, i, j, iiG, jjG)
   type(SIS_hor_grid_type),   intent(in)  :: G          !< The horizontal grid type
-  integer, intent(in)                    :: i, j 
+  integer, intent(in)                    :: i, j
   integer, intent(out)                   :: iiG, jjG
 
   iiG = G%isd_global + (i-1)  ; jjG = G%jsd_global + (j-1)
@@ -663,7 +658,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   type(SIS_hor_grid_type), intent(in)  :: G        !< The horizontal grid type
   logical, optional,       intent(in)  :: scaled   !< true if input hice (m) converted to kg/m2 and scaled
                                                    !! default = .false. hice units: (m) = m3/m2 vol/m2
-  real, optional,          intent(in)  :: eps_err  !< error allowed for hice, cice after redistribution 
+  real, optional,          intent(in)  :: eps_err  !< error allowed for hice, cice after redistribution
 
   ! local variables
   integer :: isd, ied, jsd, jed      !< data domain indices
@@ -671,7 +666,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   integer :: m, i, j, k, col
   integer :: iiG, jjG
   integer :: CatIce                  !< number of sea ice categories.
-  integer :: icat0                   !< cat where to assign original hice and cice to begin distr. 
+  integer :: icat0                   !< cat where to assign original hice and cice to begin distr.
 
   real, allocatable, dimension(:,:) :: cice2d, hice2d
   real, allocatable, dimension(:) :: hLim_vals
@@ -681,11 +676,12 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   real :: scale_cf
   real :: hice, cice          !< relax total ice thkn (vol m3/m2) and conc at a grid pnt
   real :: hice_k              !< hice_cat ice thkn in a category k, i.e. scaled by cice(cat=k)
-  real :: hice_tot, cice_tot  !< total (sum over cats) ice thickn (volume, i.e. thkn*conc) and conc 
+  real :: hice_tot, cice_tot  !< total (sum over cats) ice thickn (volume, i.e. thkn*conc) and conc
   real :: eps0                !< error allowed for hice, cice after redistribution
   real :: ck_min              !< min ice conc used in the lower cats to distribute hice/cice
   real :: ccat_k, hcat_k, dch_k !< conc, ivol, ice vol change in a cat=k
-  real :: cnew 
+  real :: cnew
+  real :: rmm                 !< dummy variable
   real :: htot_min
   real :: part_water          !< partial area of open water
   character(len=40)  :: mdl = "distribute_ice2cats"  ! This module's name.
@@ -717,7 +713,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       case('mH_ice')
         hice2d = CS%Ref_orig(m)%fld
         if (scaled_hice .and. abs(1.-scale_cf).gt.1.e-10) &
-            hice2d = CS%Ref_orig(m)%fld*Iscale     !< unscale input hice to original units (m) to find ice cat 
+            hice2d = CS%Ref_orig(m)%fld*Iscale     !< unscale input hice to original units (m) to find ice cat
       case('part_size')
         cice2d = CS%Ref_orig(m)%fld                !< partial area (conc) is not scaled
     end select
@@ -740,13 +736,14 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
         end select
       enddo ; enddo
       cycle
-    endif    
+    endif
 
-    ck_min = 1.e-2    !< conc in the lower cats, some small value but >> eps0 
+    ck_min = 1.e-2    !< conc in the lower cats, some small value but >> eps0
     icat0 = 1e6
     hice_k = hice/cice   ! ice thkn (vol/part. area)  from ice volume (m3/m2) in cat=k
     icat0 = find_icat(hice_k, CatIce, hLim_vals)
-! Check for ice cat. error:
+
+    ! Check for ice cat. error:
     if (icat0<1 .or. icat0>CatIce) then
       iiG = isdG + (i-1) ; jjG = jsdG + (j-1)
       write(mesg,'(A,"ERROR: iG,jG=",2(i4,1x)," hice=",D16.4," cice=",D16.4," hice_k=",D16.4)') &
@@ -761,9 +758,10 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     endif
 
     ! Adjust min conc in cats for low partial areas
-    if (cice < ck_min*float(icat0)) ck_min=cice/(float(icat0))
+    rmm = 1./float(icat0)
+    if (cice < ck_min*float(icat0)) ck_min=cice*rmm
 
-! Check if there is enough ice for distribution:
+    ! Check if there is enough ice for distribution:
     htot_min = sum(ck_min*hLim_vals(1:icat0))
     if (hice.lt.htot_min .or. cice.lt.(ck_min*icat0) .or. (hice*cice).lt.1.e-10) then
       do m=1,CS%fldno ; do k=1,CatIce
@@ -775,9 +773,10 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
             if (k.eq.1) CS%Ref_val(m)%p(col,0) = 1.0  ! open water fraction size
         end select
       enddo ; enddo
-      cycle
+      cycle   ! not enough ice, skip the following lines
     endif
-! distribute ice thicknesses and conc by cats
+
+    ! distribute ice thicknesses and conc by cats
     hcat = 0.0 ; ccat = 0.0 ; volcat = 0.0
     hcat(icat0) = hice_k ; ccat(icat0) = cice ; volcat(icat0) = hice
     iiG = isdG + (i-1) ; jjG = jsdG + (j-1)
@@ -787,10 +786,10 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
 
     do k=1,icat0-1
       ccat_k = ck_min
-      hcat_k = hLim_vals(k) + eps0  
+      hcat_k = hLim_vals(k) + eps0
       dch_k = ccat_k*hcat_k   !< ice vol moved into this cat
-      if (dch_k.gt.volcat(icat0)) exit !< not enough ice left in the thickest cat         
-      ccat(k) = ccat_k  
+      if (dch_k.gt.volcat(icat0)) exit !< not enough ice left in the thickest cat
+      ccat(k) = ccat_k
       hcat(k) = hcat_k
       volcat(k) = dch_k
 
@@ -800,13 +799,12 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       ccat(icat0) = cnew
       volcat(icat0) = volcat(icat0)-dch_k
       hcat(icat0) = volcat(icat0)/ccat(icat0)
-
     enddo
- 
+
     call check_hcice(CatIce, hcat, ccat, hice, cice, err_hice, err_cice, &
                      hice_tot, cice_tot, iiG, jjG, str='2.', verb=.true.)
 
-! Diagnostics at the test point:
+    ! Diagnostics at the test point:
     if (i.eq.CS%itest .and. j.eq.CS%jtest) then
       write(mesg,'(A," test pnt: hice=",f7.3," cice=",f6.3," htot=",f7.3,&
                   " ctot=",f7.3)') &
@@ -814,7 +812,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       write(*,'(A)') trim(mesg)
     endif
 
-! Register fields into control structure:
+    ! Register fields into control structure:
     do m=1,CS%fldno ; do k=1,CatIce
       select case (trim(CS%var(m)%fld_name))
         case('mH_ice')
@@ -824,7 +822,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       end select
     enddo ; enddo
 
-! Partial area of open water:
+    ! Partial area of open water:
     do m=1,CS%fldno 
       select case (trim(CS%var(m)%fld_name))
         case('part_size')
@@ -836,10 +834,10 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     enddo 
 
     ! Check that the mean ice thickn and total conc. are conserved:
-    hcat = 0.0 ; ccat = 0.0  
+    hcat = 0.0 ; ccat = 0.0
     do m=1,CS%fldno
       select case (trim(CS%var(m)%fld_name))
-        case('mH_ice')               
+        case('mH_ice')
           hcat(1:CatIce) = CS%Ref_val(m)%p(col,1:CatIce)*Iscale
         case('part_size')
           ccat(1:CatIce) = CS%Ref_val(m)%p(col,1:CatIce)
@@ -885,6 +883,7 @@ subroutine check_hcice(CatIce, hcat, ccat, hice, cice, err_hice, err_cice, &
   logical,           optional, intent(in) :: verb
   character(len=*),  optional, intent(in) :: str
 
+  ! Local variables
   real :: eps_err
   integer :: iG, jG
   logical :: verbose
@@ -895,7 +894,7 @@ subroutine check_hcice(CatIce, hcat, ccat, hice, cice, err_hice, err_cice, &
   eps_err = 1.e-6      !< allow small error during distribution
   hice_tot = sum(hcat*ccat)  !< Total ice volume m3/m2
   cice_tot = sum(ccat)
- 
+
   if (abs(hice_tot-hice).gt.eps_err) err_hice=.true. 
   if (abs(cice_tot-cice).gt.eps_err) err_cice=.true.
 
@@ -904,16 +903,16 @@ subroutine check_hcice(CatIce, hcat, ccat, hice, cice, err_hice, err_cice, &
 
   if (.not.verbose) return
 
-! Error information:
+  ! Provide Error information:
   msg_info = "check hice cice "
   if (present(str)) msg_info = trim(msg_info)//str
   if (err_hice) then
     write(mesg,'(A," iG, jG=",2(i4,1x)," hice not conserved: ",f12.6," hice=",f12.6)') &
-          trim(msg_info), iG, jG, hice_tot, hice  
+          trim(msg_info), iG, jG, hice_tot, hice
     write(*,'(A)') trim(mesg)
   elseif (err_cice) then
     write(mesg,'(A," iG, jG=",2(i4,1x)," cice not conserved: ",f12.6," cice=",f12.6)') &
-          trim(msg_info), iG, jG, cice_tot, cice  
+          trim(msg_info), iG, jG, cice_tot, cice
     write(*,'(A)') trim(mesg)
   endif
 
@@ -926,7 +925,8 @@ function find_icat(hice_k, CatIce, hLim_vals) result (icat0)
                     intent(in) :: hLim_vals  !< ice thkn cats, not scaled (m)
   real, intent(in)             :: hice_k     !< ice thkn in a category (i.e. voli/cice, voli=hice*cice m3/m2
 
-  integer :: k 
+  ! Local variable
+  integer :: k
 
   icat0 = 1e6
   if (hice_k .ge. hLim_vals(CatIce)) then
@@ -950,6 +950,7 @@ subroutine partial_area_total(CatIce, cice_cat, cice_tot)
   real, dimension(CatIce), intent(in) :: cice_cat  !< 1D array of partial areas by cats.
   real, intent(inout) :: cice_tot                  !< total ice partial area of the grid cell
 
+  ! Local variable
   integer :: k
 
   cice_tot = 0.0
@@ -966,6 +967,7 @@ subroutine ice_thkn_total(CatIce, cice_cat, hice_cat, hice_tot)
   real, dimension(CatIce), intent(in) :: hice_cat  !< 1D array of ice thickn. by cats.
   real, intent(inout) :: hice_tot                  !< grid cell mean ice thickness
 
+  ! Local variables
   integer :: k
   real :: ithkn_tot, iconc_tot
 
@@ -976,93 +978,11 @@ subroutine ice_thkn_total(CatIce, cice_cat, hice_cat, hice_tot)
 
 end subroutine ice_thkn_total
 
-!
-! For debugging: print ice thkn by cats and total at 1 point
-! derive the fields from isponge CS pointer structure or 
-! Directly from the control structure IST (target for isponge CS)
-subroutine print_ice_thkn_conc(IST, CS, G, IG, US, mesg_in, use_IST)
-  type(isponge_CS),        pointer     :: CS      !< A pointer that is set to point to the ice sponge control
-                                                  !! structure for this module
-  type(SIS_hor_grid_type), intent(in)  :: G       !< The horizontal grid type
-  type(ice_grid_type),     intent(in)  :: IG      !< The sea-ice specific grid type
-  type(ice_state_type),    intent(in)  :: IST     !< A type describing the state of the sea ice
-  type(unit_scale_type),   intent(in)  :: US      !< A structure with unit conversion factors
-  character(len=*), optional, &
-                           intent(in)  :: mesg_in
-  logical, optional, intent(in) :: use_IST
-  
-  integer            :: CatIce, col, k, m, iiG, jjG, i, j
-  real               :: rho_ice, mHice_k, iconc_k, ithkn_k, ithkn_tot, iconc_tot
-  character(len=40)  :: str_in
-  character(len=256) :: mesg
-  character(len=15)  :: cs_name
-  logical :: fld_IST
-
-  fld_IST = .false.
-  if (present(use_IST)) fld_IST = use_IST
-
-  if (fld_IST) then
-    cs_name = 'IST'
-  else
-    cs_name = 'ispongeCS'
-  endif
-
-  str_in = ' '
-  if (present(mesg_in)) str_in = trim(mesg_in)
-  str_in = trim(str_in) // trim(cs_name)
-
-  CatIce = IG%CatIce
-  call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
-  !H_to_m_ice = US%Z_to_m / rho_ice  ! convert kg/m2 scaled to m of ice (unscaled)
-
-  do col=1,CS%num_col
-    i = CS%col_i(col) ; j = CS%col_j(col)
-    if (i.ne.CS%itest .or. j.ne.CS%jtest) cycle
-
-    iiG = G%isd_global + (i-1)  ; jjG = G%jsd_global + (j-1)
-    do k=1,IG%CatIce
-      do m=1,CS%fldno
-        select case (trim(CS%var(m)%fld_name))
-          case('mH_ice') 
-            if (fld_IST) then
-              mHice_k = IST%mH_ice(i,j,k) * US%RZ_to_kg_m2  ! thkn in kg/m2
-            else
-              mHice_k = CS%var(m)%p(i,j,k) * US%RZ_to_kg_m2  ! thkn in kg/m2
-            endif
-          case('part_size') 
-            if (fld_IST) then
-              iconc_k = IST%part_size(i,j,k)
-            else
-              iconc_k = CS%var(m)%p(i,j,k)  ! partial area in cat
-            endif
-          case default
-            write(mesg,'("SIS_sponge: Unknown relaxation field: ",A)') trim(CS%var(m)%fld_name)
-            call SIS_error(FATAL,"print_ice_thkn_conc: "//mesg)
-        end select
-      enddo
-      ithkn_k = mHice_k * iconc_k / rho_ice  ! vol/m2 = m3/m2 = [m], thickness
-      ithkn_tot = ithkn_tot + ithkn_k
-      iconc_tot = iconc_tot + iconc_k
-
-      write(mesg,'(A," Test iG/jG=",2(i4,1x)," k=",i2," mHice=",f12.5," thkn=",f12.5," conc=",f12.5)') &
-          trim(str_in), iiG, jjG, k, mHice_k, ithkn_k, iconc_k
-      write(*,'(A)') trim(mesg)
-    enddo
-
-    write(mesg,'(A," ====  TOTAL: thkn=",f12.5," conc=",f12.5)') trim(str_in), ithkn_tot, iconc_tot
-    write(*,'(A)') trim(mesg) 
-    exit
-
-  enddo
-
-end subroutine print_ice_thkn_conc
-
 !> Deallocate memory associated with the SIS_sponge module
 subroutine SIS_sponge_end(CS)
   type(isponge_CS), pointer :: CS !< The ice sponge control structure that is deallocated here
-  
-  deallocate(CS) 
-                 
+
+  deallocate(CS)
 end subroutine SIS_sponge_end
 
 end module SIS_sponge 
