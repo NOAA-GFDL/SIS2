@@ -1559,14 +1559,8 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "If true, SIS sponges may be applied anywhere in the domain. "//&
                  "The exact location and properties of those sponges are "//&
                  "specified via SIS_SPONGE_CONFIG.", default=.false.)
-  if (use_isponge) then                              
-    call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: True")
-    call SIS_mesg("SIS_slow_thermo: calling initialize_icerelax_file")
+  if (use_isponge) &
     call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time)
-  else
-    call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: False")
-  endif
-
 
   CS%id_lsrc = register_diag_field('ice_model','LSRC', diag%axesT1, Time, &
                'frozen water local source', 'kg/(m^2*yr)', missing_value=missing)
