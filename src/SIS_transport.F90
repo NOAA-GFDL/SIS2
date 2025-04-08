@@ -219,7 +219,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
       write(mesg,'(i4)') n
       call check_SIS_tracer_bounds(TrReg, G, IG, "After advect_SIS_tracers "//trim(mesg))
     endif
-  call SIS_diag_send_complete()
+    call SIS_diag_send_complete()
   enddo
 
 end subroutine ice_cat_transport
