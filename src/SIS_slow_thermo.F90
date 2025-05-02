@@ -59,8 +59,7 @@ use SIS2_ice_thm,      only : SIS2_ice_thm_CS, SIS2_ice_thm_init, SIS2_ice_thm_e
 use SIS2_ice_thm,      only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_layers
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, calculate_T_freeze
-use SIS_sponge,        only : initialize_icerelax_file, set_up_isponge_field, apply_isponge, isponge_CS
-use SIS_sponge,        only : global_to_local_ij
+use SIS_sponge,        only : initialize_icerelax_file, apply_isponge, isponge_CS
 
 implicit none ; private
 
