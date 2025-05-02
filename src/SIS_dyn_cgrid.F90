@@ -1069,13 +1069,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 
    ! calculate viscosities - how often should we do this ?
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,del_sh,zeta,sh_Dd,sh_Dt, &
-!$OMP                                  I_EC2,sh_Ds,pres_mice,mice,del_sh_min_pr, &
-!$OMP                                  itheta)
-    if (CS%id_itheta > 0) then
-      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-        itheta(i,j) = 0.0
-      enddo ; enddo
-    endif
+!$OMP                                  I_EC2,sh_Ds,pres_mice,mice,del_sh_min_pr)
     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
       ! Averaging the squared shearing strain is larger than squaring
       ! the averaged strain.  I don't know what is better. -RWH
@@ -1083,12 +1077,6 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                    (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                             (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) ) ! H&D eqn 9
 
-      if (CS%id_itheta > 0 .and. ci(i,j) > 0.0 .and. sh_Dd(i,j) /= 0.0) then
-        itheta(i,j) = atan( 0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
-                                    (sh_Ds(I-1,J) + sh_Ds(I,J-1))) &
-                                     / abs(sh_Dd(i,j)) )
-        if (itheta(i,j) < 0.0) itheta(i,j) = itheta(i,j) + half_pi
-      endif
       if (max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j)) /= 0.) then
         zeta(i,j) = 0.5*pres_mice(i,j)*mice(i,j) / &
            max(del_sh(i,j), del_sh_min_pr(i,j)*pres_mice(i,j))
@@ -1096,6 +1084,20 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
         zeta(i,j) = 0.
       endif
     enddo ; enddo
+
+    if (CS%id_itheta > 0) then
+!$OMP parallel do default(none) shared(isc,iec,jsc,jec,itheta,sh_Dd,sh_Dt, &
+!$OMP                                  sh_Ds,ci,half_pi)
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        itheta(i,j) = 0.0
+        if (ci(i,j) > 0.0 .and. sh_Dd(i,j) /= 0.0) then
+          itheta(i,j) = atan( 0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
+                                      (sh_Ds(I-1,J) + sh_Ds(I,J-1))) &
+                                       / abs(sh_Dd(i,j)) )
+          if (itheta(i,j) < 0.0) itheta(i,j) = itheta(i,j) + half_pi
+        endif
+      enddo ; enddo
+    endif
 
     ! Step the stress component equations semi-implicitly.
     I_1pdt_T = 1.0 / (1.0 + dt_2Tdamp)
