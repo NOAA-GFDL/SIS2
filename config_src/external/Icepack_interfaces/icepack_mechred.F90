@@ -32,10 +32,10 @@ module icepack_mechred
                                     dvirdgndt,                   &
                                     araftn,       vraftn,        &
                                     aice,         fsalt,         &
-                                    first_ice,    fzsal,         &
+                                    first_ice,                   &
                                     flux_bio,     closing,       &
                                     Tf,                          &
-                                    docleanup, dorebin)
+                                    docleanup,    dorebin)
 
       real (kind=dbl_kind), intent(in) :: &
          dt        !< The time step over which ridging occurs [s]
@@ -70,9 +70,6 @@ module icepack_mechred
          fresh    , & !< fresh water flux to ocean [kg m2 s-1]
          fsalt    , & !< salt flux to ocean [kg m2 s-1]
          fhocn        !< net heat flux to ocean [W m-2]
-
-      real (kind=dbl_kind), intent(inout), optional :: &
-         fzsal        !< zsalinity flux to ocean [kg m2 s-1] (deprecated)
 
       real (kind=dbl_kind), intent(inout), optional :: &
          closing      !< rate of closing due to divergence/shear [s-1]

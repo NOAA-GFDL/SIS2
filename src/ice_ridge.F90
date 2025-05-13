@@ -190,8 +190,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
        fpond      , & ! fresh water flux to ponds [kg m-2 s-1]
        fresh      , & ! fresh water flux to ocean [kg m-2 s-1]
        fsalt      , & ! salt flux to ocean [kg m-2 s-1]
-       fhocn      , & ! net heat flux to ocean [W m-2]
-       fzsal          ! zsalinity flux to ocean [kg m-2 s-1]
+       fhocn          ! net heat flux to ocean [W m-2]
 
   real, dimension(IG%CatIce) :: &
        dardg1ndt  , & ! rate of fractional area loss by ridging ice [s-1]
@@ -428,7 +427,6 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         fresh = 0.0
         fhocn = 0.0
         fsalt = 0.0
-        fzsal = 0.0
         faero_ocn(:) = 0.0
         flux_bio(:) = 0.0
         fiso_ocn = 0.0
@@ -464,7 +462,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
                                  dvirdgndt,                   &
                                  araftn,       vraftn,        &
                                  aice,         fsalt,         &
-                                 first_ice,    fzsal,         &
+                                 first_ice,                   &
                                  flux_bio,     closing,       &
                                  Tf, docleanup=CS%do_cleanup, &
                                  dorebin=CS%do_rebin)
