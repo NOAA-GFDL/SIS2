@@ -1162,7 +1162,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 
       Cor = ((azon(I,j) * vi(i+1,J) + czon(I,j) * vi(i,J-1)) + &
              (bzon(I,j) * vi(i,J) + dzon(I,j) * vi(i+1,J-1))) ! - Cor_ref_u(I,j)
-      !  Evaluate 1/m x.Div(m strain).  This expressions include all metric terms
+      !  Evaluate 1/m x.Div(m strain).  This expression includes all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
       fxic_now = G%IdxCu(I,j) * (CS%str_d(i+1,j) - CS%str_d(i,j)) + &
@@ -1248,7 +1248,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     do J=jsc-1,jec ; do i=isc,iec
       Cor = -1.0*((amer(I-1,j) * u_tmp(I-1,j) + cmer(I,j+1) * u_tmp(I,j+1)) + &
                   (bmer(I,j) * u_tmp(I,j) + dmer(I-1,j+1) * u_tmp(I-1,j+1)))
-      !  Evaluate 1/m y.Div(m strain).  This expressions include all metric terms
+      !  Evaluate 1/m y.Div(m strain).  This expression includes all metric terms
       !  for an orthogonal grid.  The str_d term integrates out to no curl, while
       !  str_s & str_t terms impose no divergence and do not act on solid body rotation.
       fyic_now = G%IdyCv(i,J) * (CS%str_d(i,j+1)-CS%str_d(i,j)) + &
