@@ -154,8 +154,8 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
                  "The name of the ice thickness variable in "//&
                  "ISPONGE_STATE_FILE.", default="ithkn")
   call get_param(param_file, mdl, "ISPONGE_IAREA_VAR", iarea_var, &
-                 "The name of the ice partial area/concentration variable in "//&
-                 "ISPONGE_STATE_FILE.", default="ithkn")
+                 "The name of the ice partial area variable in "//&
+                 "ISPONGE_STATE_FILE.", default="iarea")
   call get_param(param_file, mdl, "ISPONGE_RLXRATE_VAR", rlxrate_var, &
                  "The name of the relaxation rate variable in "//&
                  "ISPONGE_RELAX_FILE.", default="relax_rate")
