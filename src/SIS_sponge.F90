@@ -74,7 +74,6 @@ end type f3d
 !> This control structure holds memory and parameters for the SIS_sponge module
 type, public :: isponge_CS ; private
   logical, public :: use_isponge = .false.  !< If true, ice tracer fields may be relaxed somewhere in the domain
-  integer, public :: itest, jtest    !< Test point where diagnostics are printed out for checking the relaxation
   integer         :: num_col         !< The number of relaxation points within the computational domain.
   integer, public :: fldno = 0       !< The number of fields which have already been
                                      !! registered by calls to set_up_isponge_field
@@ -119,7 +118,6 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   integer :: i, j, k, is, ie, js, je, ncat
   integer :: isd, ied, jsd, jed
   integer :: isc, iec, jsc, jec
-  integer :: itestG, jtestG, itest, jtest  ! Test point indices global and local
   integer :: year     !< The current model year
   integer :: day      !< The current model year-day
   integer :: second   !< The second of the day
@@ -131,14 +129,14 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   character(len=40) :: ithck_var, iarea_var, rlxrate_var, rlx_unit
   character(len=40) :: mdl = "initialize_icerelax_file"
   character(len=50) :: rlx_long_name
-  character(len=200) :: relaxrate_file, state_file  ! relax filenames: inverse time, target fields
-  character(len=200) :: filename, inputdir ! Strings for file/path and path.
+  character(len=200) :: relaxrate_file, state_file !< relax filenames: inverse time, target fields
+  character(len=200) :: filename, inputdir         !< Strings for file/path and path.
   character(len=256) :: mesg
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  Irelax = 0.0 ; itestG = 0 ; jtestG = 0 ; itest = 0 ; jtest = 0
+  Irelax = 0.0 
 
   verbosity = MOM_get_verbosity()
 
@@ -159,10 +157,6 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   call get_param(param_file, mdl, "ISPONGE_RLXRATE_VAR", rlxrate_var, &
                  "The name of the relaxation rate variable in "//&
                  "ISPONGE_RELAX_FILE.", default="relax_rate")
-  call get_param(param_file, mdl, "ISPONGE_ITEST", itestG, &
-                 "I index of a test point to check ice relaxation dumped to log file")
-  call get_param(param_file, mdl, "ISPONGE_JTEST", jtestG, &
-                 "J index of a test point to check ice relaxation dumped to log file")
 
   ! Read in relaxation rate, s-1, for ice thickness and partial area
   filename = trim(inputdir)//trim(relaxrate_file)
@@ -182,14 +176,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
     call SIS_mesg(mesg, verb_msg) 
   endif
 
-  if (itestG > 0 .and. jtestG > 0) &
-    call global_to_local_ij(G, itestG, jtestG, itest, jtest)
-
-  if (itest > 0 .and. jtest > 0) then
-    call initialize_isponge(param_file, Irelax, G, IG, CS, itest=itest, jtest=jtest)
-  else
-    call initialize_isponge(param_file, Irelax, G, IG, CS)
-  endif
+  call initialize_isponge(param_file, Irelax, G, IG, CS)
 
   ! Now register all of the fields which are nudged in the relaxation region.
   filename = trim(inputdir)//trim(state_file)
@@ -212,7 +199,7 @@ end subroutine initialize_icerelax_file
 !! this computational domain.  Only points that have positive values of
 !! Iresttime and which mask2dT indicates are ocean points are included as the
 !! relaxation points.  
-subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, time_var_rlx, sponge_ongrid)
+subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, time_var_rlx, sponge_ongrid)
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(ice_grid_type),     intent(in) :: IG         !< The sea-ice specific grid type
@@ -220,7 +207,6 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
                            intent(in) :: Iresttime  !< The inverse of the restoring time [T-1 ~> s-1].
   type(isponge_CS),        pointer    :: CS         !< A pointer to the SIS_isponge control structure
                                                     !! for this module
-  integer, optional, intent(in) :: itest, jtest     !< test grid indices for debugging
   logical, optional, intent(in) :: time_var_rlx, sponge_ongrid !< place-holders, currently both true
 
   ! This include declares and sets the variable "version".
@@ -242,7 +228,6 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
   endif
 
   ! Set default, read and log parameters
-  ! get_param (procedure --> get_param_logical) - checks if variable is set true in the param_file
   call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "SIS_SPONGE", use_isponge, &
                  "If true, sponges may be applied anywhere in the domain. "//&
@@ -252,22 +237,14 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, ti
   if (.not.use_isponge) return
   allocate(CS)
 
+  write(mesg,'(A,": SIS_SPONGE IS ON")') trim(mdl)
+  call SIS_mesg(trim(mesg))
   CS%time_varying_sponges = .true.  ! TODO: add option to SIS_input for not time varying rlx fields
   CS%spongeDataOngrid = .true.
   if (present(time_var_rlx)) CS%time_varying_sponges = time_var_rlx
   if (present(sponge_ongrid)) CS%spongeDataOngrid = sponge_ongrid
 
   CS%use_isponge = use_isponge
-  if (present(itest) .and. present(jtest)) then
-    write(mesg,'(A," itest/jtest =",2(i5,1x))') trim(mdl), itest, jtest
-    write(*,'(A)') trim(mesg)
-    CS%itest = itest
-    CS%jtest = jtest
-  else
-    ! No test point specified in SIS_input
-    CS%itest = -1
-    CS%jtest = -1
-  endif
 
   CS%num_col = 0 ; CS%fldno = 0
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
@@ -331,14 +308,14 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
 
   ! Local variables
   integer, parameter :: verb_msg = 9 !< verbosity level for messages
-  integer, dimension(4) :: fld_sz  !< Dimensions of the input ice target fields
-  integer :: isd, ied, jsd, jed   !< Start/end indices of the domain
-  integer :: i, j, k, col         !< Dummy indices
-  integer :: CatIce               !< The number of ice categories
-  character(len=256) :: mesg      !< String for error messages
-  character(len=256) :: long_name !< The long name of the tracer field
-  character(len=256) :: unit      !< The unit of the tracer field
-  character(len=40)  :: mdl       !< This module name
+  integer, dimension(4) :: fld_sz    !< Dimensions of the input ice target fields
+  integer :: isd, ied, jsd, jed      !< Start/end indices of the domain
+  integer :: i, j, k, col            !< Dummy indices
+  integer :: CatIce                  !< The number of ice categories
+  character(len=256) :: mesg         !< String for error messages
+  character(len=256) :: long_name    !< The long name of the tracer field
+  character(len=256) :: unit         !< The unit of the tracer field
+  character(len=40)  :: mdl          !< This module name
 
   long_name = rlxfld_name; if (present(rlx_long_name)) long_name = rlx_long_name
   unit = 'none'; if (present(rlx_unit)) unit = rlx_unit
@@ -473,18 +450,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   do m=1,CS%fldno
     call time_interp_external(CS%Ref_val(m)%field, Time, data_in, verbose=.true.)
     CS%Ref_orig(m)%fld(:,:) = data_in(:,:)
-    ! Information about the test point:
-    if (CS%itest > 0 .and. CS%jtest > 0) then
-      do col=1,CS%num_col
-        i = CS%col_i(col) ; j = CS%col_j(col)
-        if (CS%itest == i .and. CS%jtest == j) then
-          iiG = isdG + (i-1)  ; jjG = jsdG + (j-1)
-          write(mesg,'("apply_isponge: test i/j=",2(i5,1x)," time_iterp data_in=",f8.4)') &
-          iiG, jjG, data_in(i,j)
-          write(*,'(A)') trim(mesg)
-        endif
-      enddo
-    endif
   enddo
 
   ! Convert input 2D fields --> 3D ice thicknesses and concentration by categories
@@ -501,22 +466,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
         CS%Old_val(m)%fld(col,k) = CS%var(m)%p(i,j,k)  
         CS%var(m)%p(i,j,k) = I1pdamp * &
            (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(col,k)*damp)
-        ! Diagnostics at the test point if it is specified in SIS_input
-        if (i == CS%itest .and. j == CS%jtest) then
-          select case (trim(CS%var(m)%fld_name))
-            case('mH_ice')    ; coeff = US%RZ_to_kg_m2
-            case('part_size') ; coeff = 1.0
-            case default
-              write(mesg,'("SIS_sponge: Unknown relaxation field: ",A)') trim(CS%var(m)%fld_name)
-              call SIS_error(FATAL,"apply_isponge: "//mesg)
-          end select
-          write(mesg,'(A8," k=",I2," old:=",D12.4," new=",D12.4,&
-                      " tau=",D12.4," refval=",D12.4," dt=",f7.1)') &
-            CS%var(m)%fld_name(1:8), k, CS%Old_val(m)%fld(col,k)*coeff, &
-            CS%var(m)%p(i,j,k)*coeff, &
-            CS%Iresttime_col(col), CS%Ref_val(m)%p(col,k)*coeff, dt
-          write(*,'(A)') trim(mesg)
-        endif
       enddo
       ! Adjust enth and S in the newly formed ice if needed:
       ! Note ice enthalpy < 0
@@ -559,31 +508,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
       enddo
     enddo
 
-    ! Diagnostics at the test point
-    if (i == CS%itest .and. j == CS%jtest) then
-      iconc_tot = 0.0 ; iconc_tot_old = 0.0 ; ithk_tot_new = 0.0 ; ithk_tot_old = 0.0
-      do k=1,IG%CatIce
-        do m=1,CS%fldno
-          fld_name = CS%var(m)%fld_name
-          select case (trim(fld_name))
-            case('mH_ice')
-              ithk_old = CS%Old_val(m)%fld(col,k)/CS%Ref_val(m)%scale
-              ithk_new = CS%var(m)%p(i,j,k)/CS%Ref_val(m)%scale
-            case('part_size')
-              iconc_old = CS%Old_val(m)%fld(col,k)
-              iconc_new = CS%var(m)%p(i,j,k)
-          end select
-        enddo
-        iconc_tot_old = iconc_tot_old + iconc_old
-        iconc_tot    = iconc_tot + iconc_new
-        ithk_tot_old = ithk_tot_old + ithk_old*iconc_old
-        ithk_tot_new = ithk_tot_new + ithk_new*iconc_new
-      enddo
-      write(mesg, '("conc old=",f6.4," new=",f6.4," thick (m) old=",f8.4," new=",f8.4)') &
-            iconc_tot_old, iconc_tot, ithk_tot_old, ithk_tot_new
-      write(*,'(A)') trim(mesg)
-    endif
-
   enddo
 
   if (allocated(sice)) deallocate(sice)
@@ -591,53 +515,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   if (allocated(data_in)) deallocate(data_in)
 
 end subroutine apply_isponge
-
-!> Convert the global indices (itestG,jtestG) to indices on the current tile 
-subroutine global_to_local_ij(G, itestG, jtestG, itest, jtest)
-  type(SIS_hor_grid_type), intent(in) :: G  !< The horizontal grid type
-  integer, intent(in) :: itestG, jtestG     !< Global indices        
-  integer, intent(out) :: itest, jtest      !< Indices on the current tile
-
-  ! Local variables
-  integer :: current_pe, nihalo, njhalo, iscG, iecG, jscG, jecG
-  integer :: isdG, jsdG, iedG, jedG
-  integer :: nic, njc, nid, njd
-
-  character(len=50) :: mdl  
-  character(len=256) :: mesg
-
-  mdl = 'global_to_local_ij'
-  nihalo = G%Domain%nihalo
-  njhalo = G%Domain%njhalo
-
-  current_pe = PE_here()
-
-  ! Exclude halo points, computational domain:
-  nic = G%iec - G%isc + 1
-  njc = G%jec - G%jsc + 1
-  iscG = G%isd_global + nihalo; iecG = iscG + nic
-  jscG = G%jsd_global + njhalo; jecG = jscG + njc
-
-  ! Data domain:
-  nid  = G%ied - G%isd + 1
-  njd  = G%jed - G%jsd + 1
-  isdG = G%isd_global; iedG = isdG + nid
-  jsdG = G%jsd_global; jedG = jsdG + njd
-
-  ! Find test point:
-  itest = 0; jtest = 0
-  if (iscG <= itestG .and. itestG <= iecG .and. jscG <= jtestG .and. jtestG <= jecG) then
-    itest = itestG - isdG + 1; jtest = jtestG - jsdG + 1
-  endif
-
-  if (itest > 0 .and. jtest > 0) then
-    write(mesg, '(A," PE=",i5," Test pnt Global i, j=", 2(i5,1x)," local i, j=", 2(i5,1x), &
-                  "isdG/iedG=", 2(i5,1x), "jsdG/jedG=", 2(i5,1x))') &
-         trim(mdl), current_pe, itestG, jtestG, itest, jtest, isdG, iedG, jsdG, jedG
-    write(*, '(A)') trim(mesg)
-  endif
-
-end subroutine global_to_local_ij
 
 !> Map local indices to global
 subroutine local_to_global_indx(G, i, j, iiG, jjG)
@@ -755,8 +632,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       iiG = isdG + (i-1) ; jjG = jsdG + (j-1)
       write(mesg,'(A,"ERROR: iG,jG=",2(i4,1x)," hice=",D16.4," cice=",D16.4," hice_k=",D16.4)') &
              trim(mdl), iiG, jjG, hice, cice, hice_k
-      write(*,'(A)') trim(mesg)
-      print*,"hice < 1.e-10:",(hice < 1.e-10)," cice < 1.e-10:",(cice < 1.e-10)
+      call SIS_mesg(mesg, all_print=.true.)
       write(mesg,'(A," error: icat0 ",i2," hice=",f12.4," cice=",f12.4," hice_k=",f12.6)') &
             trim(mdl), hice, cice, hice_k
       call SIS_error(FATAL, trim(mesg)) 
@@ -805,16 +681,6 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       volcat(icat0) = volcat(icat0)-dch_k
       hcat(icat0) = volcat(icat0)/ccat(icat0)
     enddo
-
-    ! Diagnostics at the test point:
-    if (i == CS%itest .and. j == CS%jtest) then
-      call partial_area_total(ccat, cice_tot)
-      call ice_thkn_total(ccat, hcat, hice_tot)
-      write(mesg,'(A," test pnt: input thkn=",f7.3," conc=",f6.3,", distributed total  thkn=",f7.3,&
-                  " conc=",f7.3)') &
-            trim(mdl), hice, cice, hice_tot, cice_tot
-      write(*,'(A)') trim(mesg)
-    endif
 
     ! Register fields into control structure:
     do m=1,CS%fldno ; do k=1,CatIce
