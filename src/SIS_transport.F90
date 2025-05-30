@@ -195,9 +195,11 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
       call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, &
                       G, US, IG, CS%continuity_CSp, use_h_neg=.true.)
       call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, &
+                      use_h_neg=.true.)
       call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, &
+                      use_h_neg=.true.)
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
