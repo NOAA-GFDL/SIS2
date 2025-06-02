@@ -328,7 +328,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   call time_interp_external_init()
   isd = G%isd; ied = G%ied; jsd = G%jsd; jed = G%jed
   CS%fldno = CS%fldno + 1
-  write(mesg,'("set_up_isponge: fldno=",I)') CS%fldno
+  write(mesg,'("set_up_isponge: fldno=",I0)') CS%fldno
   call SIS_mesg(mesg, verb_msg)
   if (CS%fldno > MAX_FIELDS_RLX_) then
     write(mesg,'("Increase MAX_FIELDS_RLX_ to at least ",I3," in SIS_memory.h or decrease &
