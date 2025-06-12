@@ -492,6 +492,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
               call SIS_error(WARNING, mesg, all_print=.true.)
             endif
             vicen(k) = max(vicen(k),0.0)
+            vsnon(k) = max(vicen(k),0.0)
           enddo
         endif
 

@@ -609,9 +609,13 @@ subroutine adjust_ice_categories(mH_ice, mH_snow, mH_pond, part_sz, TrReg, G, IG
       call SIS_error(FATAL, "Input to adjust_ice_categories, negative ice mass.")
     endif
     if (mH_snow(i,j,k) > 0.0) then
+      write(mesg,'("Snow on no ice at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, mH_snow(i,j,k)
+      call SIS_error(WARNING, mesg, all_print=.true.)
       call SIS_error(FATAL, "Input to adjust_ice_categories, non-zero snow mass rests atop no ice.")
     endif
     if (mH_pond(i,j,k) > 0.0) then
+      write(mesg,'("Pond on no ice at: ", 3i6, 1pe12.4)') i+G%idg_offset, j+G%jdg_offset, k, mH_pond(i,j,k)
+      call SIS_error(WARNING, mesg, all_print=.true.)
       call SIS_error(FATAL, "Input to adjust_ice_categories, non-zero pond mass rests atop no ice.")
     endif
     if (part_sz(i,j,k) > 0.0) resum_cat(i,j) = .true.
