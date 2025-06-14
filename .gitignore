@@ -1,3 +1,5 @@
 # Ignore vim and emacs files
 *.swp
 *~
+# Ignore backup files
+*.F90*bkp*

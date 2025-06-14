@@ -29,6 +29,7 @@ use MOM_unit_scaling,  only : unit_scale_type
 
 use SIS_diag_mediator, only : post_SIS_data, SIS_diag_ctrl
 use SIS_diag_mediator, only : query_SIS_averaging_enabled, enable_SIS_averaging
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_diag_mediator, only : register_diag_field=>register_SIS_diag_field
 use SIS_debugging,     only : chksum, Bchksum, hchksum, uvchksum
 use SIS_debugging,     only : check_redundant_B, check_redundant_C
@@ -131,14 +132,14 @@ type, public :: SIS_C_dyn_CS ; private
   real :: puny                !< small number [nondim]
   real :: onemeter            !< make the units work out (hopefully) [Z ~> m]
   real :: basal_stress_cutoff !< tunable parameter for the bottom drag [nondim]
-  integer :: ncat_b           ! number of bathymetry categories
-  integer :: ncat_i           ! number of ice thickness categories (log-normal)
+  integer :: ncat_b           !< number of bathymetry categories
+  integer :: ncat_i           !< number of ice thickness categories (log-normal)
 
   real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
   real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: sigma_b=>NULL()   !< !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: sigma_b=>NULL() !< Bottom depth variance [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs
@@ -146,6 +147,7 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: id_fwx = -1, id_fwy = -1, id_sigi = -1, id_sigii = -1
   integer :: id_flfx = -1, id_flfy = -1, id_stren = -1, id_stren0 = -1
   integer :: id_ui = -1, id_vi = -1, id_Coru = -1, id_Corv = -1
+  integer :: id_ui_east = -1, id_vi_north = -1
   integer :: id_PFu = -1, id_PFv = -1, id_fpx = -1, id_fpy = -1
   integer :: id_fix_d = -1, id_fix_t = -1, id_fix_s = -1
   integer :: id_fiy_d = -1, id_fiy_t = -1, id_fiy_s = -1
@@ -356,9 +358,9 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
                    "Scale factor in ITD landfast ice.", &
                    units="nondim", default=1.9430)
     call get_param(param_file, mdl, "H2_FILE", h2_file, &
-                 "The path to the file containing the sub-grid-scale "//&
-                 "topographic roughness amplitude with ITD_LANDFAST.", &
-                 fail_if_missing=.true.)
+                   "The path to the file containing the sub-grid-scale "//&
+                   "topographic roughness amplitude with ITD_LANDFAST.", &
+                   fail_if_missing=.true.)
     call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
     filename = trim(inputdir) // "/" // trim(h2_file)
     allocate(CS%sigma_b(G%isd:G%ied,G%jsd:G%jed), source=0.0)
@@ -455,6 +457,12 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesCv1, Time,     &
             'ice velocity - y component', 'm/s', missing_value=missing,        &
+            interp_method='none', conversion=US%L_T_to_m_s)
+  CS%id_ui_east    = register_diag_field('ice_model', 'ui_east', diag%axesT1, Time,     &
+            'ice velocity - east component', 'm/s', missing_value=missing,        &
+            interp_method='none', conversion=US%L_T_to_m_s)
+  CS%id_vi_north    = register_diag_field('ice_model', 'vi_north', diag%axesT1, Time,     &
+            'ice velocity - north component', 'm/s', missing_value=missing,        &
             interp_method='none', conversion=US%L_T_to_m_s)
   CS%id_mis  = register_diag_field('ice_model', 'MIS_tot', diag%axesT1, Time,  &
             'Mass of ice and snow at t-points', 'kg m-2', conversion=US%RZ_to_kg_m2, missing_value=missing)
@@ -629,7 +637,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                 ! and varies with the grid spacing.
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points [L2 ~> m2].
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points [nondim].
-    siu, siv, sispeed  ! diagnostics on T points [L T-1 ~> m s-1].
+    siu, siv, sispeed, & ! diagnostics on T points [L T-1 ~> m s-1].
+    ui_east, & ! Surface velocity due east component [L T-1 ~> m s-1]
+    vi_north   ! Surface velocity due north component [L T-1 ~> m s-1]
+
 
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     fxic, &   ! Zonal force due to internal stresses [R Z L T-2 ~> Pa].
@@ -1362,7 +1373,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
       call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
     endif
-
+    call SIS_diag_send_complete()
   enddo ! l=1,EVP_steps
 
   if (CS%debug .or. CS%debug_redundant) &
@@ -1517,6 +1528,17 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
       call post_SIS_data(CS%id_stren0, diag_val, CS%diag)
     endif
 
+    if (CS%id_ui_east > 0 .or. CS%id_vi_north > 0) then
+      do j=jsc,jec ; do i=isc,iec
+        ui_east(i,j) = ((0.5*(ui(I-1,j) + ui(I,j))) * G%cos_rot(i,j)) + &
+                       ((0.5*(vi(i,J-1) + vi(i,J))) * G%sin_rot(i,j))
+        vi_north(i,j) = ((0.5*(vi(i,J-1) + vi(i,J))) * G%cos_rot(i,j)) - &
+                        ((0.5*(ui(I-1,j) + ui(I,j))) * G%sin_rot(i,j))
+      enddo ; enddo
+      if (CS%id_ui_east > 0 ) call post_SIS_data(CS%id_ui_east, ui_east, CS%diag)
+      if (CS%id_vi_north > 0 ) call post_SIS_data(CS%id_vi_north, vi_north, CS%diag)
+    endif
+
     if (CS%id_ui>0) call post_SIS_data(CS%id_ui, ui, CS%diag)
     if (CS%id_vi>0) call post_SIS_data(CS%id_vi, vi, CS%diag)
     if (CS%id_miu>0) call post_SIS_data(CS%id_miu, mi_u, CS%diag)
@@ -1557,6 +1579,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     endif
 
   endif
+  call SIS_diag_send_complete()
 
 end subroutine SIS_C_dynamics
 

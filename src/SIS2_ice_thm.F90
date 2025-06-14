@@ -1504,7 +1504,7 @@ end subroutine SIS2_ice_thm_end
 !  Everything above this point pertains to the updating of the ice state due to
 !  thermodyanmic forcing.  Everything after this point relates to more basic
 !  calculations of sea ice thermodynamics.  They could be separated into two
-!  modules, but by keeping them together compliers stand a better chance of
+!  modules, but by keeping them together compilers stand a better chance of
 !  inlining various small subroutines and achieving better performance.
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 
