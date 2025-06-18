@@ -866,7 +866,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
   ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
   mass_neglect = US%kg_m3_to_R*US%m_to_Z*1.0e-60
   snow_pond_mass_neglect=0.0  ! preserves original answers
-  if (.not. CS%mass_neglect_snow_pond_bug) snow_pond_mass_neglect = mass_neglect
+  if (CS%mass_neglect_snow_pond) snow_pond_mass_neglect = mass_neglect
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
@@ -1174,8 +1174,8 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
   call get_param(param_file, mdl, "NEGLECT_MASSLESS_SNOW_POND", CS%mass_neglect_snow_pond, &
-                 "If false, small roundoff level differences in snow mass are retained "//&
-                 , default=.false.)
+                 "If false, small roundoff level differences in snow mass are retained ", &
+                 default=.false.)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness "//&
                  "categories after advection.", default=.true.)
