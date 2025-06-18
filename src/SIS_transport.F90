@@ -47,7 +47,7 @@ type, public :: SIS_transport_CS ; private
                               !! Sensible values are 0 or larger than 1.
   real :: ice_cover_discard   !< A tiny fractional ice coverage which if positive causes the mass
                               !! in categories with less than this coverage to be discarded.
-
+  logical :: mass_neglect_snow_pond !< If true, massless snow and pond values are discarded
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
@@ -151,6 +151,10 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   logical :: merged_cont
   character(len=200) :: mesg
   integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
+  logical :: h_neg_fix
+
+  h_neg_fix=.false.
+  if (CS%mass_neglect_snow_pond) h_neg_fix=.true.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -194,9 +198,9 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
       call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, &
                       G, US, IG, CS%continuity_CSp, use_h_neg=.true.)
       call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, use_h_neg=h_neg_fix)
       call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, use_h_neg=h_neg_fix)
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
@@ -852,6 +856,8 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
   logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec, nCat
+  real :: snow_pond_mass_neglect
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nCat = IG%CatIce
 
@@ -859,6 +865,8 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
 
   ! 1.0e-40 kg/m2 is roughly the mass of one molecule of water divided by the surface area of the Earth.
   mass_neglect = US%kg_m3_to_R*US%m_to_Z*1.0e-60
+  snow_pond_mass_neglect=0.0  ! preserves original answers
+  if (.not. CS%mass_neglect_snow_pond_bug) snow_pond_mass_neglect = mass_neglect
 
   do_j(:) = .false.
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,do_j,G,IG,part_sz,excess_cover, &
@@ -931,13 +939,13 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
                 part_sz(i,j,k+1) = mca_ice(i,k+1) / mH_ice(i,j,k+1)
               endif
 
-              if (mca_snow(i,k) > 0.0) then
+              if (mca_snow(i,k) > snow_pond_mass_neglect) then
                 trans_snow(i,K) = mca_snow(i,k)
                 mca_snow(i,k+1) = mca_snow(i,k+1) + mca_snow(i,k)
               endif
               mH_snow(i,j,k+1) = mca_snow(i,k+1) / part_sz(i,j,k+1)
 
-              if (mca_pond(i,k) > 0.0) then
+              if (mca_pond(i,k) > snow_pond_mass_neglect) then
                 trans_pond(i,K) = mca_pond(i,k)
                 mca_pond(i,k+1) = mca_pond(i,k+1) + mca_pond(i,k)
               endif
@@ -1165,6 +1173,9 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "NEGLECT_MASSLESS_SNOW_POND", CS%mass_neglect_snow_pond, &
+                 "If false, small roundoff level differences in snow mass are retained "//&
+                 , default=.false.)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness "//&
                  "categories after advection.", default=.true.)
