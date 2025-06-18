@@ -999,10 +999,10 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
 !$OMP end parallel
 
   if (CS%debug .or. CS%debug_redundant) then
-    call uvchksum("PF[uv] in SIS_C_dynamics", PFu, PFv, G, scale=US%L_T_to_m_s*US%s_to_T)
-    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call uvchksum("[uv]i pre-steps SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
-    call uvchksum("[uv]o in SIS_C_dynamics", uo, vo, G, scale=US%L_T_to_m_s)
+    call uvchksum("PF[uv] in SIS_C_dynamics", PFu, PFv, G, unscale=US%L_T_to_m_s*US%s_to_T)
+    call uvchksum("f[xy]at in SIS_C_dynamics", fxat, fyat, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call uvchksum("[uv]i pre-steps SIS_C_dynamics", ui, vi, G, unscale=US%L_T_to_m_s)
+    call uvchksum("[uv]o in SIS_C_dynamics", uo, vo, G, unscale=US%L_T_to_m_s)
   endif
 
   dt_cumulative = 0.0
@@ -1361,23 +1361,23 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     endif
 
     if (CS%debug_EVP .and. CS%debug) then
-      call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
-      call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%str_d, "str_d in SIS_C_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%str_t, "str_t in SIS_C_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
       call Bchksum(CS%str_s, "str_s in SIS_C_dynamics", G%HI, &
-                   haloshift=0, symmetric=.true., scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                   haloshift=0, symmetric=.true., unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
     endif
     if (CS%debug_EVP .and. (CS%debug .or. CS%debug_redundant)) then
-      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call uvchksum("f[xy]lf in SIS_C_dynamics", fxlf, fylf, G, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, scale=US%L_T_to_m_s*US%s_to_T)
-      call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
+      call uvchksum("f[xy]ic in SIS_C_dynamics", fxic, fyic, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call uvchksum("f[xy]oc in SIS_C_dynamics", fxoc, fyoc, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call uvchksum("f[xy]lf in SIS_C_dynamics", fxlf, fylf, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call uvchksum("Cor_[uv] in SIS_C_dynamics", Cor_u, Cor_v, G, unscale=US%L_T_to_m_s*US%s_to_T)
+      call uvchksum("[uv]i in SIS_C_dynamics", ui, vi, G, unscale=US%L_T_to_m_s)
     endif
     call SIS_diag_send_complete()
   enddo ! l=1,EVP_steps
 
   if (CS%debug .or. CS%debug_redundant) &
-    call uvchksum("[uv]i end SIS_C_dynamics", ui, vi, G, scale=US%L_T_to_m_s)
+    call uvchksum("[uv]i end SIS_C_dynamics", ui, vi, G, unscale=US%L_T_to_m_s)
 
   ! Reset the time information in the diag type.
   if (do_hifreq_output) call enable_SIS_averaging(time_int_in, time_end_in, CS%diag)
@@ -1862,7 +1862,7 @@ subroutine basal_stress_coeff_C(G, mi, ci, sea_lev, CS)
     enddo
   enddo
 !          call uvchksum("Tb_[uv] before SIS_C_dynamics", CS%Tb_u, CS%Tb_v, G, &
-!                         halos=1, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+!                         halos=1, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
 
 end subroutine basal_stress_coeff_C
 
