@@ -214,6 +214,7 @@ type fast_ice_avg_type
     WindStr_ocn_y, & !< The meridional wind stress on open water on an A-grid [R Z L T-2 ~> Pa].
     p_atm_surf , &  !< The atmospheric pressure at the top of the ice [R Z L T-2 ~> Pa].
     runoff, &       !< Liquid runoff into the ocean [R Z T-1 ~> kg m-2 s-1].
+    runoff_carbon, & !< Carbon content of liquid runoff into the ocean [R Z T-1 ~> kg m-2 s-1].
     calving         !< Calving of ice or runoff of frozen fresh  water into the ocean [R Z T-1 ~> kg m-2 s-1].
   real, allocatable, dimension(:,:) :: runoff_hflx !< The heat flux associated with runoff, based
                     !! on the temperature difference relative to a reference temperature [Q R Z T-1 ~> W m-2]
@@ -758,6 +759,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
   allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
   allocate(FIA%runoff(isd:ied, jsd:jed), source=0.0)
+  allocate(FIA%runoff_carbon(isd:ied, jsd:jed), source=0.0)
   allocate(FIA%calving(isd:ied, jsd:jed), source=0.0)
   allocate(FIA%calving_preberg(isd:ied, jsd:jed), source=0.0) ! diag
   allocate(FIA%runoff_hflx(isd:ied, jsd:jed), source=0.0)
@@ -1403,6 +1405,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%WindStr_ocn_y(i2,j2) = FIA_in%WindStr_ocn_y(i,j)
     FIA_out%p_atm_surf(i2,j2) = FIA_in%p_atm_surf(i,j)
     FIA_out%runoff(i2,j2) = FIA_in%runoff(i,j)
+    FIA_out%runoff_carbon(i2,j2) = FIA_in%runoff_carbon(i,j)
     FIA_out%calving(i2,j2) =  FIA_in%calving(i,j)
     FIA_out%runoff_hflx(i2,j2) = FIA_in%runoff_hflx(i,j)
     FIA_out%calving_hflx(i2,j2) =  FIA_in%calving_hflx(i,j)
@@ -1515,6 +1518,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                            FIA_out%p_atm_surf, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
                            FIA_out%runoff, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
+                           FIA_out%runoff_carbon, complete=.false.)
     call redistribute_data(domain_in, FIA_in%calving, domain_out, &
                            FIA_out%calving, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff_hflx, domain_out, &
@@ -1590,6 +1595,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%runoff, complete=.false.)
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                           FIA_out%runoff_carbon, complete=.false.)
+    call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%calving, complete=.false.)
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%runoff_hflx, complete=.false.)
@@ -1663,6 +1670,8 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call redistribute_data(domain_in, FIA_in%p_atm_surf, domain_out, &
                            null_ptr2D, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
+                           null_ptr2D, complete=.false.)
+    call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
                            null_ptr2D, complete=.false.)
     call redistribute_data(domain_in, FIA_in%calving, domain_out, &
                            null_ptr2D, complete=.false.)
@@ -1968,6 +1977,8 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
                               mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call register_restart_field(Ice_restart, 'runoff', FIA%runoff, &
                               mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
+  call register_restart_field(Ice_restart, 'runoff_carbon', FIA%runoff_carbon, &
+                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'calving', FIA%calving, &
                               mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'runoff_hflx', FIA%runoff_hflx, &
@@ -2101,7 +2112,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_sh_top, FIA%evap_top, FIA%flux_lw_top)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
   deallocate(FIA%flux_sw_top)
-  deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
+  deallocate(FIA%runoff, FIA%runoff_carbon, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
   deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
   deallocate(FIA%tmelt, FIA%bmelt, FIA%frazil_left)
@@ -2287,6 +2298,7 @@ subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%runoff_carbon, trim(mesg)//" FIA%runoff_carbon", G%HI, scale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, scale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, scale=US%QRZ_T_to_W_m2)

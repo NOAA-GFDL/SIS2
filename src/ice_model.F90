@@ -403,12 +403,13 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
     FIA%calving(i,j) = US%kg_m2s_to_RZ_T*LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = US%W_m2_to_QRZ_T*LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*LIB%calving_hflx(i2,j2)
+    FIA%runoff_carbon(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff_carbon(i2,j2)
   else
     ! This is a land point from the perspective of the sea-ice.
     ! At some point it might make sense to check for non-zero fluxes, which
     ! might indicate regridding errors.  However, bad-data values are also
     ! non-zero and should not be flagged.
-    FIA%runoff(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
+    FIA%runoff(i,j)  = 0.0 ; FIA%runoff_carbon(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
     FIA%runoff_hflx(i,j)  = 0.0 ; FIA%calving_hflx(i,j) = 0.0
   endif ; enddo ; enddo
 
@@ -641,6 +642,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%fprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%lprec_ocn_top(i,j)
     Ice%runoff(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff(i,j)
+    Ice%runoff_carbon(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff_carbon(i,j)
     Ice%calving(i2,j2) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
     Ice%runoff_hflx(i2,j2)  = US%QRZ_T_to_W_m2*FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)

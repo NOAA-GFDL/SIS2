@@ -103,6 +103,7 @@ type ice_data_type !  ice_public_type
     p_surf => NULL(), &   !< The pressure at the ocean surface [Pa].  This may
                           !! or may not include atmospheric pressure.
     runoff => NULL(), &   !< Liquid runoff into the ocean [kg m-2].
+    runoff_carbon => NULL(), &   !< Carbon content of liquid runoff into the ocean [kg m-2].
     calving => NULL(), &  !< Calving of ice or runoff of frozen fresh water into
                           !! the ocean [kg m-2].
     stress_mag => NULL(), & !< The time-mean magnitude of the stress on the ocean [Pa].
@@ -200,6 +201,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   call safe_alloc_ptr(Ice%fprec, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%p_surf, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%runoff, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%runoff_carbon, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%calving, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%runoff_hflx, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%calving_hflx, isc, iec, jsc, jec)
@@ -242,6 +244,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     call register_restart_field(Ice_restart, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif)
     call register_restart_field(Ice_restart, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir)
     call register_restart_field(Ice_restart, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif)
+    call register_restart_field(Ice_restart, 'runoff_carbon',   Ice%runoff_carbon)
     if (Ice%sCS%pass_stress_mag) &
       call register_restart_field(Ice_restart, 'stress_mag', Ice%stress_mag, mandatory=.false.)
     if (Ice%sCS%pass_iceberg_area_to_ocean) then
@@ -340,6 +343,7 @@ subroutine dealloc_Ice_arrays(Ice)
   if (associated(Ice%fprec)) deallocate(Ice%fprec)
   if (associated(Ice%p_surf)) deallocate(Ice%p_surf)
   if (associated(Ice%runoff)) deallocate(Ice%runoff)
+  if (associated(Ice%runoff_carbon)) deallocate(Ice%runoff_carbon)
   if (associated(Ice%calving)) deallocate(Ice%calving)
   if (associated(Ice%runoff_hflx)) deallocate(Ice%runoff_hflx)
   if (associated(Ice%calving_hflx)) deallocate(Ice%calving_hflx)
@@ -422,6 +426,7 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow, check_rough
     call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
     call chksum(Ice%calving, trim(mesg)//" Ice%calving")
     call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
+    call chksum(Ice%runoff_carbon, trim(mesg)//" Ice%runoff_carbon")
     if (associated(Ice%sCS)) then ; if (Ice%sCS%pass_stress_mag) then
       call chksum(Ice%stress_mag, trim(mesg)//" Ice%stress_mag")
     endif ; endif
@@ -682,6 +687,7 @@ subroutine ice_data_type_chksum(mesg, timestep, Ice, init_call)
     chks = SIS_chksum(Ice%fprec           ) ; if (root) write(outunit,100) 'ice_data_type%fprec           ', chks
     chks = SIS_chksum(Ice%p_surf          ) ; if (root) write(outunit,100) 'ice_data_type%p_surf          ', chks
     chks = SIS_chksum(Ice%runoff          ) ; if (root) write(outunit,100) 'ice_data_type%runoff          ', chks
+    chks = SIS_chksum(Ice%runoff_carbon   ) ; if (root) write(outunit,100) 'ice_data_type%runoff_carbon   ', chks
     chks = SIS_chksum(Ice%calving         ) ; if (root) write(outunit,100) 'ice_data_type%calving         ', chks
     chks = SIS_chksum(Ice%flux_salt       ) ; if (root) write(outunit,100) 'ice_data_type%flux_salt       ', chks
 
