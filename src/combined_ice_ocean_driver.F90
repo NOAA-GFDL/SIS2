@@ -309,6 +309,7 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
     if (ASSOCIATED(IOB%runoff_hflx)) IOB%runoff_hflx(:,:) = Ice%runoff_hflx(:,:)
     if (ASSOCIATED(IOB%calving_hflx)) IOB%calving_hflx(:,:) = Ice%calving_hflx(:,:)
     if (ASSOCIATED(IOB%q_flux)) IOB%q_flux(:,:) = Ice%flux_q(:,:)
+    if (ASSOCIATED(IOB%excess_salt)) IOB%excess_salt(:,:) = Ice%salt_left_behind(:,:)
 
     ! Extra fluxes
     call coupler_type_copy_data(Ice%ocean_fluxes, IOB%fluxes)
@@ -332,6 +333,7 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
     call data_override('OCN', 'calving',   IOB%calving  , Time)
     call data_override('OCN', 'runoff_hflx',  IOB%runoff_hflx   , Time)
     call data_override('OCN', 'calving_hflx', IOB%calving_hflx  , Time)
+    call data_override('OCN', 'excess_salt',  IOB%excess_salt   , Time)
   endif
   call data_override('OCN', 'p',         IOB%p        , Time)
   call data_override('OCN', 'mi',        IOB%mi       , Time)

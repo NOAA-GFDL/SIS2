@@ -372,9 +372,10 @@ type ice_ocean_flux_type
                        !! salt flux added to the ocean when the ice is transmuted directly into seawater
                        !! as a form of open boundary condition [1e3 S R Z T-1 ~> kgSalt m-2 s-1].
     mass_ice_sn_p, &   !< The combined mass per unit ocean area of ice, snow and pond water [R Z ~> kg m-2].
-    pres_ocn_top       !< The hydrostatic pressure at the ocean surface due to the weight of ice,
+    pres_ocn_top, &    !< The hydrostatic pressure at the ocean surface due to the weight of ice,
                        !! snow and ponds, exclusive of atmospheric pressure [R Z L T-2 ~> Pa].
                        !### What about pressure from bergs?
+    salt_left_behind   !< THe flux of salt staying in the ocean on ice growth [1e3 S R Z T-1 ~> kgSalt m-2 s-1].
   real, allocatable, dimension(:,:,:) :: flux_sw_ocn !< The downward flux of shortwave radiation
                        !! at the ocean surface [Q R Z T-1 ~> W m-2].  The third dimension combines
                        !! angular orientation (direct or diffuse) and frequency
@@ -894,7 +895,7 @@ end subroutine alloc_ice_rad
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_ice_ocean_flux allocates and zeros out the arrays in an ice_ocean_flux_type.
-subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_transmute)
+subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_transmute, do_brine_plume)
   type(ice_ocean_flux_type), pointer    :: IOF !< A structure containing fluxes from the ice to
                                                !! the ocean that are calculated by the ice model.
   type(hor_index_type),      intent(in) :: HI  !< The horizontal index type describing the domain
@@ -905,6 +906,8 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_tr
   logical,         optional, intent(in) :: do_transmute !< If true, allocate fields related to
                                                !! transmuting ice directly into seawater as a form
                                                !! of open boundary condition
+  logical,         optional, intent(in) :: do_brine_plume !< If true, allocate fields related
+                                               !! brine plume parameterization
   integer :: CatIce
   logical :: alloc_bergs, alloc_stress_mag
 
@@ -916,6 +919,9 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_tr
   allocate(IOF%flux_salt(SZI_(HI), SZJ_(HI)), source=0.0)
   if (do_transmute) then
     allocate(IOF%transmutation_salt_flux(SZI_(HI), SZJ_(HI)), source=0.0)
+  endif
+  if (do_brine_plume) then
+    allocate(IOF%salt_left_behind(SZI_(HI), SZJ_(HI)), source=0.0)
   endif
 
   allocate(IOF%flux_sh_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
@@ -2175,6 +2181,7 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%pres_ocn_top, IOF%mass_ice_sn_p)
   if (allocated(IOF%stress_mag)) deallocate(IOF%stress_mag)
   if (allocated(IOF%transmutation_salt_flux)) deallocate(IOF%transmutation_salt_flux)
+  if (allocated(IOF%salt_left_behind)) deallocate(IOF%salt_left_behind)
 
   deallocate(IOF%Enth_Mass_in_atm, IOF%Enth_Mass_out_atm)
   deallocate(IOF%Enth_Mass_in_ocn, IOF%Enth_Mass_out_ocn)
@@ -2210,6 +2217,8 @@ subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
     call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
     if (allocated(IOF%transmutation_salt_flux)) call hchksum(IOF%transmutation_salt_flux, &
           trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
+    if (allocated(IOF%salt_left_behind)) call hchksum(IOF%salt_left_behind, &
+          trim(mesg)//" IOF%salt_left_behind", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
 
     call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
     call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)

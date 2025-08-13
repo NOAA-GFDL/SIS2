@@ -115,6 +115,8 @@ type slow_thermo_CS ; private
                             !! spatially varying rate as a form of outflow open boundary condition.
   real, allocatable, dimension(:,:) :: transmutation_rate  !< A spatially varying rate with which
                             !! sea ice and snow are converted into sea-water [T-1 ~> s-1]
+  logical :: do_brine_plume !< If true, separate some heat and salt fluxes into separate
+                            !! variables for an ocean brine plume parameterization.
 
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
   logical :: column_check   !< If true, enable the heat check column by column.
@@ -583,9 +585,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
     cool_nudge, &         ! A heat flux out of the sea ice that
                           ! acts to create sea-ice [Q R Z T-1 ~> W m-2].
-    net_melt              ! The net mass flux from the ice and snow into the
+    net_melt, &           ! The net mass flux from the ice and snow into the
                           ! ocean due to melting and freezing integrated
                           ! across all categories [R Z T-1 ~> kg m-2 s-1].
+    salt_left_in_ocean    ! The salt left in the ocean during ice growth [R Z S ~> gSalt m-2]
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: &
     heat_in, &            ! The input heat [Q R Z ~> J m-2]
     enth_prev, &          ! The previous column integrated enthalpy by category [Q R Z ~> J m-2]
@@ -830,6 +833,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   bsnk(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
+  salt_left_in_ocean(:,:) = 0.0
   !$OMP parallel default(shared) private(part_ocn)
   if (CS%ice_rel_salin <= 0.0) then
     !$OMP do
@@ -885,7 +889,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,US,IST,S_col0,NkIce,S_col,dt_slow, &
 !$OMP                                  snow_to_ice,heat_in,I_NK,enth_prev,enth_mass_in_col,bsnk, &
 !$OMP                                  Idt_slow,salt_change,net_melt,LatHtFus,LatHtVap,IG,CS,OSS, &
-!$OMP                                  FIA,IOF,npassive,nb) &
+!$OMP                                  FIA,IOF,npassive,nb,salt_left_in_ocean) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
 !$OMP                                  evap_from_ocn,salt_to_ice,bablt,enth_evap,   &
@@ -950,6 +954,10 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           do m=1,NkIce ; IST%sal_ice(i,j,k,m) = Salin(m) ; enddo
         endif
         salt_change(i,j) = salt_change(i,j) + IST%part_size(i,j,k) * salt_to_ice
+      endif
+      if (CS%do_brine_plume .and. h2o_ocn_to_ice > 0.0) then
+        salt_left_in_ocean(i,j) = salt_left_in_ocean(i,j) + (OSS%s_surf(i,j) * h2o_ocn_to_ice - &
+                                  salt_to_ice * 0.001)
       endif
 
       ! Copy back into the tracer array
@@ -1303,6 +1311,12 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       IOF%flux_salt(i,j) = salt_change(i,j) * (0.001*Idt_slow)
     enddo
   enddo
+  if (CS%do_brine_plume) then
+    do j=jsc,jec ; do i=isc,iec
+      ! Note the conversion here from g m-2 to kg m-2 s-1.
+      IOF%salt_left_behind(i,j) = salt_left_in_ocean(i,j) * Idt_slow
+    enddo ; enddo
+  endif
 
   ! Optionally cause the ice to be converted into sea-water with the ocean properties at a
   ! spatially varying rate by reduction of the part size.  The thicknesses do not change.
@@ -1538,6 +1552,9 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
 
   endif
 
+  call get_param(param_file, mdl, "DO_BRINE_PLUME", CS%do_brine_plume, &
+                 "If true, split heat and salt fluxes to the ocean into brine "//&
+                 "plumes and other.", default=.false.)
   call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", &
                  default=.false., debuggingParam=.true.)
