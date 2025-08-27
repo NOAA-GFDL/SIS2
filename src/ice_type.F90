@@ -97,9 +97,10 @@ type ice_data_type !  ice_public_type
     flux_sw_vis_dif => NULL(), & !< The diffuse visible shortwave heat flux into the ocean [W m-2].
     flux_sw_nir_dir => NULL(), & !< The direct near-infrared heat flux into the ocean [W m-2].
     flux_sw_nir_dif => NULL(), & !< The diffuse near-infrared heat flux into the ocean [W m-2].
-    flux_lh => NULL(), &  !< The latent heat flux out of the ocean [W m-2].
-    lprec => NULL(), &    !< The liquid precipitation flux into the ocean [kg m-2].
-    fprec => NULL(), &    !< The frozen precipitation flux into the ocean [kg m-2].
+    flux_lh => NULL(), &     !< The latent heat flux out of the ocean [W m-2].
+    lprec => NULL(), &       !< The liquid precipitation flux into the ocean [kg m-2].
+    fprec => NULL(), &       !< The frozen precipitation flux into the ocean [kg m-2].
+    seaice_melt => NULL(), & !< The sea ice meltwater flux into the ocean [kg m-2].
     p_surf => NULL(), &   !< The pressure at the ocean surface [Pa].  This may
                           !! or may not include atmospheric pressure.
     runoff => NULL(), &   !< Liquid runoff into the ocean [kg m-2].
@@ -198,6 +199,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   call safe_alloc_ptr(Ice%flux_lh, isc, iec, jsc, jec)  !NI
   call safe_alloc_ptr(Ice%lprec, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%fprec, isc, iec, jsc, jec)
+  call safe_alloc_ptr(Ice%seaice_melt, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%p_surf, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%runoff, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%calving, isc, iec, jsc, jec)
@@ -233,6 +235,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     call register_restart_field(Ice_restart, 'flux_lw',     Ice%flux_lw)
     call register_restart_field(Ice_restart, 'lprec',       Ice%lprec)
     call register_restart_field(Ice_restart, 'fprec',       Ice%fprec)
+    call register_restart_field(Ice_restart, 'seaice_melt', Ice%seaice_melt)
     call register_restart_field(Ice_restart, 'runoff',      Ice%runoff)
     call register_restart_field(Ice_restart, 'calving',     Ice%calving)
     call register_restart_field(Ice_restart, 'runoff_hflx', Ice%runoff_hflx, mandatory=.false.)
@@ -338,6 +341,7 @@ subroutine dealloc_Ice_arrays(Ice)
   if (associated(Ice%flux_lh)) deallocate(Ice%flux_lh)
   if (associated(Ice%lprec)) deallocate(Ice%lprec)
   if (associated(Ice%fprec)) deallocate(Ice%fprec)
+  if (associated(Ice%seaice_melt)) deallocate(Ice%seaice_melt)
   if (associated(Ice%p_surf)) deallocate(Ice%p_surf)
   if (associated(Ice%runoff)) deallocate(Ice%runoff)
   if (associated(Ice%calving)) deallocate(Ice%calving)
@@ -419,6 +423,7 @@ subroutine Ice_public_type_chksum(mesg, Ice, check_fast, check_slow, check_rough
     call chksum(Ice%flux_lh, trim(mesg)//" Ice%flux_lh")
     call chksum(Ice%lprec, trim(mesg)//" Ice%lprec")
     call chksum(Ice%fprec, trim(mesg)//" Ice%fprec")
+    call chksum(Ice%seaice_melt, trim(mesg)//" Ice%seaice_melt")
     call chksum(Ice%p_surf, trim(mesg)//" Ice%p_surf")
     call chksum(Ice%calving, trim(mesg)//" Ice%calving")
     call chksum(Ice%runoff, trim(mesg)//" Ice%runoff")
@@ -680,6 +685,7 @@ subroutine ice_data_type_chksum(mesg, timestep, Ice, init_call)
     chks = SIS_chksum(Ice%flux_lh         ) ; if (root) write(outunit,100) 'ice_data_type%flux_lh         ', chks
     chks = SIS_chksum(Ice%lprec           ) ; if (root) write(outunit,100) 'ice_data_type%lprec           ', chks
     chks = SIS_chksum(Ice%fprec           ) ; if (root) write(outunit,100) 'ice_data_type%fprec           ', chks
+    chks = SIS_chksum(Ice%seaice_melt     ) ; if (root) write(outunit,100) 'ice_data_type%seaice_melt     ', chks
     chks = SIS_chksum(Ice%p_surf          ) ; if (root) write(outunit,100) 'ice_data_type%p_surf          ', chks
     chks = SIS_chksum(Ice%runoff          ) ; if (root) write(outunit,100) 'ice_data_type%runoff          ', chks
     chks = SIS_chksum(Ice%calving         ) ; if (root) write(outunit,100) 'ice_data_type%calving         ', chks

@@ -759,7 +759,8 @@ subroutine accumulate_bottom_input(IST, OSS, FIA, IOF, dt, G, US, IG, CS)
   do j=jsc,jec ; do i=isc,iec
     CS%water_in_col(i,j) = CS%water_in_col(i,j) - dt * &
            ( ((FIA%runoff(i,j) + FIA%calving(i,j)) + &
-              (IOF%lprec_ocn_top(i,j) + IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
+              ((IOF%lprec_ocn_top(i,j) + IOF%seaice_melt(i,j)) + &
+              IOF%fprec_ocn_top(i,j))) - IOF%evap_ocn_top(i,j) )
 
     Flux_SW = 0.0
     do b=2,nb,2 ! This sum combines direct and diffuse fluxes to preserve answers.

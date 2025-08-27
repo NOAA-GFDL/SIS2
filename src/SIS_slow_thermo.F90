@@ -581,11 +581,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 yr-1]
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
-    cool_nudge, &         ! A heat flux out of the sea ice that
+    cool_nudge            ! A heat flux out of the sea ice that
                           ! acts to create sea-ice [Q R Z T-1 ~> W m-2].
-    net_melt              ! The net mass flux from the ice and snow into the
-                          ! ocean due to melting and freezing integrated
-                          ! across all categories [R Z T-1 ~> kg m-2 s-1].
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: &
     heat_in, &            ! The input heat [Q R Z ~> J m-2]
     enth_prev, &          ! The previous column integrated enthalpy by category [Q R Z ~> J m-2]
@@ -826,7 +823,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   call cpu_clock_begin(iceClock5)
 
-  snow_to_ice(:,:,:) = 0.0 ; net_melt(:,:) = 0.0
+  snow_to_ice(:,:,:) = 0.0 ;
   bsnk(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
@@ -865,6 +862,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + IST%part_size(i,j,k) * FIA%lprec_top(i,j,k)
   enddo ; enddo ; enddo
 
+  ! Reset sea ice melt rate to zero
+  IOF%seaice_melt(:,:) = 0.
+
   ! Add fluxes of snow and other properties to the ocean due to recent ridging or drifting events.
   if (allocated(IST%snow_to_ocn)) then
     !$OMP do
@@ -884,7 +884,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,US,IST,S_col0,NkIce,S_col,dt_slow, &
 !$OMP                                  snow_to_ice,heat_in,I_NK,enth_prev,enth_mass_in_col,bsnk, &
-!$OMP                                  Idt_slow,salt_change,net_melt,LatHtFus,LatHtVap,IG,CS,OSS, &
+!$OMP                                  Idt_slow,salt_change,LatHtFus,LatHtVap,IG,CS,OSS, &
 !$OMP                                  FIA,IOF,npassive,nb) &
 !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,     &
 !$OMP                                  heat_to_ocn,h2o_ice_to_ocn,h2o_ocn_to_ice,   &
@@ -1018,7 +1018,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       enddo
       IOF%flux_sw_ocn(i,j,VIS_DIF) = IOF%flux_sw_ocn(i,j,VIS_DIF) + IST%part_size(i,j,k) * &
                                      (sw_tot * FIA%sw_abs_ocn(i,j,k))
-      net_melt(i,j) = net_melt(i,j) + IST%part_size(i,j,k) * &
+      IOF%seaice_melt(i,j) = IOF%seaice_melt(i,j) + IST%part_size(i,j,k) * &
               ((h2o_ice_to_ocn-h2o_ocn_to_ice)*Idt_slow)
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt*Idt_slow ! bot. melt. ablation
 
@@ -1027,7 +1027,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,npassive,G,US,IG,IST,S_col0,NkIce,  &
   !$OMP                                  S_col,dt_slow,snow_to_ice,heat_in,I_NK,enth_mass_in_col, &
-  !$OMP                                  enth_prev,Idt_slow,bsnk,salt_change,net_melt,LatHtFus,   &
+  !$OMP                                  enth_prev,Idt_slow,bsnk,salt_change,LatHtFus,   &
   !$OMP                                  FIA,CS,OSS,IOF) &
   !$OMP                          private(mass_prev,enthalpy,enthalpy_ocean,Salin,heat_to_ocn,     &
   !$OMP                                  h2o_ice_to_ocn,h2o_ocn_to_ice,evap_from_ocn,salt_to_ice, &
@@ -1164,7 +1164,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 !          IST%part_size(i,j,k) * enth_ocn_to_ice
       IOF%Enth_Mass_in_ocn(i,j) = IOF%Enth_Mass_in_ocn(i,j) + &
           IST%part_size(i,j,k) * (h2o_ocn_to_ice * enthalpy_ocean)
-      net_melt(i,j) = net_melt(i,j) - &
+      IOF%seaice_melt(i,j) = IOF%seaice_melt(i,j) - &
              (h2o_ocn_to_ice * IST%part_size(i,j,k)) * Idt_slow
 
       if (CS%column_check) then
@@ -1230,7 +1230,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           IST%mH_ice(i,j,k) = frac_keep*IST%mH_ice(i,j,k)
           IST%mH_snow(i,j,k) = frac_keep*IST%mH_snow(i,j,k)
         enddo
-        net_melt(i,j) = net_melt(i,j) + h2o_ice_to_ocn * Idt_slow
+        IOF%seaice_melt(i,j) = IOF%seaice_melt(i,j) + h2o_ice_to_ocn * Idt_slow
         qflx_lim_ice(i,j) = enth_to_melt * Idt_slow
         IOF%Enth_Mass_out_ocn(i,j) = IOF%Enth_Mass_out_ocn(i,j) - enth_ice_to_ocn
         if (CS%ice_rel_salin > 0.0) then
@@ -1330,7 +1330,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
       ! With transmuted ice, the ice is non-conservatively changed to match the ocean properties.
       IOF%flux_salt(i,j) = IOF%flux_salt(i,j) + salt_to_ocn * (0.001*Idt_slow)
-      net_melt(i,j) = net_melt(i,j) + water_to_ocn * Idt_slow  ! This goes to IOF%lprec_ocn_top.
+      IOF%seaice_melt(i,j) = IOF%seaice_melt(i,j) + water_to_ocn * Idt_slow
       IOF%Enth_mass_out_ocn(i,j) = IOF%Enth_mass_out_ocn(i,j) + heat_to_ocn
 
       ! With transmuted ice, the imbalances are stored to close the heat and salt budgets.
@@ -1369,20 +1369,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                                     scale=US%RZ_T_to_kg_m2s*Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)
   if (CS%id_qfres>0) call post_data(CS%id_qfres, qflx_res_ice, CS%diag)
-  if (CS%id_net_melt>0) call post_data(CS%id_net_melt, net_melt, CS%diag)
-  if (CS%id_CMOR_melt>0) call post_data(CS%id_CMOR_melt, net_melt, CS%diag)
+  if (CS%id_net_melt>0) call post_data(CS%id_net_melt, IOF%seaice_melt, CS%diag)
+  if (CS%id_CMOR_melt>0) call post_data(CS%id_CMOR_melt, IOF%seaice_melt, CS%diag)
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_send_data(IOF%tr_flux_ocn_top, CS%Time)
 
   call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
-
-  ! Combine the liquid precipitation with the net melt of ice and snow for
-  ! passing to the ocean. These may later be kept separate.
-  do j=jsc,jec ; do i=isc,iec
-    IOF%lprec_ocn_top(i,j) = IOF%lprec_ocn_top(i,j) + net_melt(i,j)
-  enddo ; enddo
 
   ! Make sure TrLay is no longer allocated
   if(allocated(TrLay)) deallocate(TrLay)
@@ -1585,7 +1579,6 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   CS%id_CMOR_melt = register_diag_field('ice_model','fsitherm' ,diag%axesT1, Time, &
                'water_flux_into_sea_water_due_to_sea_ice_thermodynamics', &
                'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-
   if (CS%do_ice_restore) then
     CS%id_qfres = register_diag_field('ice_model', 'QFLX_RESTORE_ICE', diag%axesT1, Time, &
                  'Ice Restoring heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)

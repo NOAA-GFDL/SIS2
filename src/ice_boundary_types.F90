@@ -37,9 +37,9 @@ type ocean_ice_boundary_type
     frazil => NULL(), &  !< The frazil heat rejected by the ocean [J m-2].
     sea_level => NULL(), & !< The sea level after adjustment for any surface
                            !! pressure that the ocean allows to be expressed [m].
-    calving => NULL(), &   !< The mass flux per unit area of the ice shelf to convert to
-                           !!bergs [RZ_T ~> kg m-2 s-1].
-    calving_hflx => NULL() !< Calving heat flux [Q R Z T-1 ~> W m-2].
+    calving => NULL(), &     !< The mass flux per unit area of the ice shelf to convert to
+                             !!bergs [RZ_T ~> kg m-2 s-1].
+    calving_hflx => NULL()   !< Calving heat flux [Q R Z T-1 ~> W m-2].
   real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to

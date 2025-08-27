@@ -627,6 +627,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   Ice%flux_sw_vis_dir(:,:) = 0.0 ; Ice%flux_sw_vis_dif(:,:) = 0.0
   Ice%flux_lw(:,:) = 0.0 ; Ice%flux_lh(:,:) = 0.0
   Ice%fprec(:,:) = 0.0 ; Ice%lprec(:,:) = 0.0
+  Ice%seaice_melt(:,:) = 0.0
   call coupler_type_rescale_data(Ice%ocean_fluxes, 0.0)
 
   i_off = LBOUND(Ice%flux_t,1) - G%isc ; j_off = LBOUND(Ice%flux_t,2) - G%jsc
@@ -644,6 +645,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%flux_lh(i2,j2) = US%QRZ_T_to_W_m2*IOF%flux_lh_ocn_top(i,j)
     Ice%fprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%lprec_ocn_top(i,j)
+    Ice%seaice_melt(i2,j2) = US%RZ_T_to_kg_m2s*IOF%seaice_melt(i,j)
     Ice%runoff(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff(i,j)
     Ice%calving(i2,j2) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
     Ice%runoff_hflx(i2,j2)  = US%QRZ_T_to_W_m2*FIA%runoff_hflx(i,j)
@@ -663,7 +665,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-      Ice%lprec(i2,j2) = Ice%lprec(i2,j2) + US%RZ_T_to_kg_m2s*IOF%melt_nudge(i,j)
+      Ice%seaice_melt(i2,j2) = Ice%seaice_melt(i2,j2) + US%RZ_T_to_kg_m2s*IOF%melt_nudge(i,j)
     enddo ; enddo
   endif
 

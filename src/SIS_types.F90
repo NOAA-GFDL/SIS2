@@ -358,6 +358,7 @@ type ice_ocean_flux_type
     flux_lh_ocn_top, & !< The upward flux of latent heat at the ocean surface [Q R Z T-1 ~> W m-2].
     lprec_ocn_top, &   !< The downward flux of liquid precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
     fprec_ocn_top, &   !< The downward flux of frozen precipitation at the ocean surface [R Z T-1 ~> kg m-2 s-1].
+    seaice_melt, &     !< The downward freshwater flux into the ocean due to sea ice melt [R Z T-1 ~> kg m-2 s-1].
     flux_u_ocn, &      !< The flux of x-momentum into the ocean at locations given by
                        !! flux_uv_stagger [R Z L T-2 ~> Pa].
                        !! Note that regardless of the staggering, flux_u_ocn is allocated as though on an A-grid.
@@ -925,6 +926,7 @@ subroutine alloc_ice_ocean_flux(IOF, HI, do_stress_mag, do_iceberg_fields, do_tr
   allocate(IOF%flux_sw_ocn(SZI_(HI), SZJ_(HI), NBANDS), source=0.0)
   allocate(IOF%lprec_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
   allocate(IOF%fprec_ocn_top(SZI_(HI), SZJ_(HI)), source=0.0)
+  allocate(IOF%seaice_melt(SZI_(HI), SZJ_(HI)), source=0.0)
   allocate(IOF%flux_u_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
   allocate(IOF%flux_v_ocn(SZI_(HI), SZJ_(HI)), source=0.0)
   if (alloc_stress_mag) then
@@ -2171,7 +2173,7 @@ subroutine dealloc_ice_ocean_flux(IOF)
   deallocate(IOF%flux_sh_ocn_top, IOF%evap_ocn_top)
   deallocate(IOF%flux_lw_ocn_top, IOF%flux_lh_ocn_top)
   deallocate(IOF%flux_sw_ocn)
-  deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top, IOF%flux_salt)
+  deallocate(IOF%lprec_ocn_top, IOF%fprec_ocn_top, IOF%seaice_melt, IOF%flux_salt)
   deallocate(IOF%flux_u_ocn, IOF%flux_v_ocn, IOF%pres_ocn_top, IOF%mass_ice_sn_p)
   if (allocated(IOF%stress_mag)) deallocate(IOF%stress_mag)
   if (allocated(IOF%transmutation_salt_flux)) deallocate(IOF%transmutation_salt_flux)
@@ -2218,6 +2220,7 @@ subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
     call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, scale=US%RZ_T_to_kg_m2s)
     call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
     call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%seaice_melt,     trim(mesg)//" IOF%seaice_melt",   G%HI, scale=US%RZ_T_to_kg_m2s)
   endif
   if (do_mech) then
     call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
