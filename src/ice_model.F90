@@ -63,6 +63,7 @@ use SIS_debugging,     only : chksum, uvchksum, Bchksum, SIS_debugging_init
 use SIS_diag_mediator, only : set_SIS_axes_info, SIS_diag_mediator_init, SIS_diag_mediator_end
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
+use SIS_diag_mediator, only : SIS_diag_send_complete
 use SIS_dyn_trans,     only : SIS_dynamics_trans, SIS_multi_dyn_trans, update_icebergs
 use SIS_dyn_trans,     only : slab_ice_dyn_trans
 use SIS_dyn_trans,     only : SIS_dyn_trans_register_restarts, SIS_dyn_trans_init, SIS_dyn_trans_end
@@ -114,6 +115,7 @@ use SIS2_ice_thm,      only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,      only : ice_thermo_init, ice_thermo_end, T_freeze, ice_thermo_type
 use specified_ice,     only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
 use specified_ice,     only : specified_ice_end, specified_ice_sum_output_CS
+use SIS_sponge,        only : isponge_CS, SIS_sponge_end
 
 implicit none ; private
 
@@ -127,6 +129,7 @@ public :: ocn_ice_bnd_type_chksum, atm_ice_bnd_type_chksum
 public :: lnd_ice_bnd_type_chksum, ice_data_type_chksum
 public :: update_ice_atm_deposition_flux
 public :: unpack_ocean_ice_boundary, unpack_ocn_ice_bdry, exchange_slow_to_fast_ice, set_ice_surface_fields
+public :: unpack_ocean_ice_boundary_calved_shelf_bergs
 public :: ice_model_fast_cleanup, unpack_land_ice_boundary
 public :: exchange_fast_to_slow_ice, update_ice_model_slow
 public :: update_ice_slow_thermo, update_ice_dynamics_trans
@@ -243,7 +246,9 @@ subroutine update_ice_slow_thermo(Ice)
   endif
 
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
-                           Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
+                           Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG, &
+                           Ice%sCS%isponge_CSp)
+
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG, US, thermo_fluxes=.true.)
@@ -416,6 +421,49 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
   endif
 
 end subroutine unpack_land_ice_boundary
+
+!> unpack_ocean_ice_boundary_calved_shelf_bergs converts the calving information in a publicly visible
+!! ocean_ice_boundary_type into an internally visible fast_ice_avg_type variable.
+subroutine unpack_ocean_ice_boundary_calved_shelf_bergs(Ice, OIB)
+  type(ice_data_type),          intent(inout) :: Ice !< The publicly visible ice data type.
+  type(ocean_ice_boundary_type), intent(in)    :: OIB !< The ocean ice boundary type that is being unpacked.
+
+  type(fast_ice_avg_type), pointer :: FIA => NULL()
+  type(SIS_hor_grid_type), pointer :: G => NULL()
+  type(unit_scale_type),   pointer :: US => NULL()
+
+  integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off
+
+  if (.not.associated(Ice%fCS)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS must be associated in unpack_ocean_ice_boundary_calved_shelf_bergs.")
+  if (.not.associated(Ice%fCS%FIA)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS%FIA must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
+  if (.not.associated(Ice%fCS%G)) call SIS_error(FATAL, &
+      "The pointer to Ice%fCS%G must be associated in unpack_ocean_ice_boundary_calved_shelf_berg.")
+
+  FIA => Ice%fCS%FIA ; G => Ice%fCS%G
+  US => Ice%fCS%US
+
+  isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
+
+  ! Store calving flux from ice shelves to the sea ice or ocean.
+  i_off = LBOUND(OIB%calving,1) - G%isc ; j_off = LBOUND(OIB%calving,2) - G%jsc
+  !$OMP parallel do default(none) shared(isc,iec,jsc,jec,FIA,OIB,i_off,j_off,G,US) &
+  !$OMP                          private(i2,j2)
+  do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+    i2 = i+i_off ; j2 = j+j_off
+    if (OIB%calving(i2,j2)>0.0) then
+      if (FIA%calving(i,j)>0.0) call SIS_error(FATAL,"Overlap in calving from snow discharge and ice shelf!")
+      FIA%calving(i,j) = US%kg_m2s_to_RZ_T*OIB%calving(i2,j2)
+      FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*OIB%calving_hflx(i2,j2)
+    endif
+  endif ; enddo ; enddo
+
+  if (Ice%fCS%debug) then
+    call FIA_chksum("End of unpack_ocean_ice_boundary_calved_shelf_berg", FIA, G, Ice%fCS%US)
+  endif
+
+end subroutine unpack_ocean_ice_boundary_calved_shelf_bergs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> This subroutine copies information (mostly fluxes and the updated temperatures)
@@ -1129,9 +1177,9 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
     call chksum(G%mask2dT(isc:iec,jsc:jec), "Intermed G%mask2dT")
 !   if (allocated(OSS%u_ocn_C) .and. allocated(OSS%v_ocn_C)) &
 !     call uvchksum(OSS%u_ocn_C, "OSS%u_ocn_C", &
-!                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1, scale=US%L_T_to_m_s)
+!                   OSS%v_ocn_C, "OSS%v_ocn_C", G%HI, haloshift=1, unscale=US%L_T_to_m_s)
 !   if (allocated(OSS%u_ocn_B)) &
-!     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1, scale=US%L_T_to_m_s)
+!     call Bchksum(OSS%u_ocn_B, "OSS%u_ocn_B", G%HI, haloshift=1, unscale=US%L_T_to_m_s)
 !   if (allocated(OSS%v_ocn_B)) &
 !     call Bchksum(OSS%v_ocn_B, "OSS%v_ocn_B", G%HI, haloshift=1)
     call chksum(G%sin_rot(isc:iec,jsc:jec), "G%sin_rot")
@@ -1504,6 +1552,7 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
 
   if (Rad%id_coszen>0) call post_data(Rad%id_coszen, Rad%coszen_nextrad, CS%diag)
 
+  call SIS_diag_send_complete()
   call disable_SIS_averaging(CS%diag)
 
 end subroutine fast_radiation_diagnostics
@@ -2373,7 +2422,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%Time_step_slow = Time_step_slow
 
     call SIS_slow_thermo_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
-                              Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
+                              Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp, &
+                              Ice%sCS%isponge_CSp, Ice%sCS%IST)
 
     if (specified_ice) then
       recategorize_ice = .false.
@@ -2742,6 +2792,9 @@ subroutine ice_model_end(Ice)
     call SIS_slow_thermo_end(Ice%sCS%slow_thermo_CSp)
 
     call ice_thermo_end(Ice%sCS%IST%ITV)
+
+    if (associated(Ice%sCS%isponge_CSp)) &
+      call SIS_sponge_end(Ice%sCS%isponge_CSp)
 
     ! End icebergs
     if (Ice%sCS%do_icebergs) call icebergs_end(Ice%icebergs)

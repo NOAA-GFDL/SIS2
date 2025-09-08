@@ -24,6 +24,7 @@ use SIS_types,         only : ice_state_type, ice_ocean_flux_type, ocean_sfc_sta
 use SIS_types,         only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use SIS_types,         only : total_sfc_flux_type
 use specified_ice,     only : specified_ice_CS
+use SIS_sponge,        only : isponge_CS
 
 implicit none ; private
 
@@ -160,6 +161,8 @@ type SIS_slow_CS
   type(total_sfc_flux_type), pointer :: XSF => NULL()  !< A structure of the excess
                             !! fluxes between the atmosphere and the ice or ocean
                             !! relative to those stored in TSF.
+  type(isponge_CS), pointer :: isponge_CSp => NULL() !< A pointer to the control structure containing 
+                                                     ! ice relaxation (sponge) arrays, variables
 
 end type SIS_slow_CS
 
