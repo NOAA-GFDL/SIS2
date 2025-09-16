@@ -161,7 +161,7 @@ type SIS_slow_CS
   type(total_sfc_flux_type), pointer :: XSF => NULL()  !< A structure of the excess
                             !! fluxes between the atmosphere and the ice or ocean
                             !! relative to those stored in TSF.
-  type(isponge_CS), pointer :: isponge_CSp => NULL() !< A pointer to the control structure containing 
+  type(isponge_CS), pointer :: isponge_CSp => NULL() !< A pointer to the control structure containing
                                                      ! ice relaxation (sponge) arrays, variables
 
 end type SIS_slow_CS

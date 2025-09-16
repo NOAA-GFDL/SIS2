@@ -497,7 +497,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           endif
           call cpu_clock_end(iceClocka)
 
-          if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, unscale=US%L_T_to_m_s)
+          if (CS%debug) call uvchksum("After ice_dynamics [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, &
+                                      G, unscale=US%L_T_to_m_s)
 
           call cpu_clock_begin(iceClockb)
           call pass_vector(IST%u_ice_C, IST%v_ice_C, G%Domain, stagger=CGRID_NE)
@@ -558,7 +559,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
           endif
           call cpu_clock_end(iceClocka)
 
-          if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, unscale=US%L_T_to_m_s)
+          if (CS%debug) call Bchksum_pair("After dynamics [uv]_ice_B", IST%u_ice_B, IST%v_ice_B, &
+                                          G, unscale=US%L_T_to_m_s)
 
           call cpu_clock_begin(iceClockb)
           call pass_vector(IST%u_ice_B, IST%v_ice_B, G%Domain, stagger=BGRID_NE)
@@ -616,7 +618,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
       ! Do ice mass transport and related tracer transport.  This updates the category-decomposed ice state.
       call cpu_clock_begin(iceClock8)
       ! The code timed by iceClock8 is the non-merged_cont equivalent to complete_IST_transport.
-      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, unscale=US%L_T_to_m_s)
+      if (CS%debug) call uvchksum("Before ice_transport [uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, &
+                                  unscale=US%L_T_to_m_s)
       call enable_SIS_averaging(dt_slow_dyn_sec, Time_cycle_start + real_to_time(nds*dt_slow_dyn_sec), CS%diag)
 
       call ice_cat_transport(CS%CAS, IST%TrReg, dt_slow_dyn, CS%adv_substeps, G, US, IG, CS%SIS_transport_CSp, &
