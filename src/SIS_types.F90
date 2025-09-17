@@ -2207,35 +2207,35 @@ subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
   if (present(thermo_fluxes)) then ; do_thermo = thermo_fluxes ; endif
 
   if (do_thermo) then
-    call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%flux_salt, trim(mesg)//" IOF%flux_salt", G%HI, unscale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
     if (allocated(IOF%transmutation_salt_flux)) call hchksum(IOF%transmutation_salt_flux, &
-          trim(mesg)//" IOF%transmutation_salt_flux", G%HI, scale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
+          trim(mesg)//" IOF%transmutation_salt_flux", G%HI, unscale=US%S_to_ppt*US%RZ_T_to_kg_m2s)
 
-    call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(IOF%flux_sw_ocn,     trim(mesg)//" IOF%flux_sw_ocn",     G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%flux_sh_ocn_top, trim(mesg)//" IOF%flux_sh_ocn_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_lw_ocn_top, trim(mesg)//" IOF%flux_lw_ocn_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_lh_ocn_top, trim(mesg)//" IOF%flux_lh_ocn_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%flux_sw_ocn,     trim(mesg)//" IOF%flux_sw_ocn",     G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(IOF%evap_ocn_top,    trim(mesg)//" IOF%evap_ocn_top",  G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%lprec_ocn_top,   trim(mesg)//" IOF%lprec_ocn_top", G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(IOF%fprec_ocn_top,   trim(mesg)//" IOF%fprec_ocn_top", G%HI, unscale=US%RZ_T_to_kg_m2s)
   endif
   if (do_mech) then
-    call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, scale=US%RZ_to_kg_m2)
+    call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, unscale=US%RZ_to_kg_m2)
     if (allocated(IOF%stress_mag)) &
-      call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
   endif
 
   if (do_thermo) then
-    call hchksum(IOF%Enth_Mass_in_atm,  trim(mesg)//" IOF%Enth_Mass_in_atm",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-    call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-    call hchksum(IOF%Enth_Mass_in_ocn,  trim(mesg)//" IOF%Enth_Mass_in_ocn",  G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-    call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_in_atm,  trim(mesg)//" IOF%Enth_Mass_in_atm",  G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_out_atm, trim(mesg)//" IOF%Enth_Mass_out_atm", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_in_ocn,  trim(mesg)//" IOF%Enth_Mass_in_ocn",  G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
+    call hchksum(IOF%Enth_Mass_out_ocn, trim(mesg)//" IOF%Enth_Mass_out_ocn", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
 
     if (allocated(IOF%transmutation_enth)) call hchksum(IOF%transmutation_enth, &
-          trim(mesg)//" IOF%transmutation_enth", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+          trim(mesg)//" IOF%transmutation_enth", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
   endif
 end subroutine IOF_chksum
 
@@ -2251,48 +2251,48 @@ subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   character(len=8) :: nstr
   integer :: b
 
-  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%flux_sh_top(:,:,1:), trim(mesg)//" FIA%flux_sh_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%evap_top(:,:,1:), trim(mesg)//" FIA%evap_top", G%HI, unscale=US%RZ_T_to_kg_m2s)
   do b=1,size(FIA%flux_sw_top,4)
     write(nstr, '(I4)') b ; nstr = adjustl(nstr)
     call hchksum(FIA%flux_sw_top(:,:,1:,b), &
-                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, unscale=US%QRZ_T_to_W_m2)
   enddo
-  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI, scale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%flux_lw_top(:,:,1:), trim(mesg)//" FIA%flux_lw_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%flux_lh_top(:,:,1:), trim(mesg)//" FIA%flux_lh_top", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%lprec_top(:,:,1:), trim(mesg)//" FIA%lprec_top", G%HI, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%fprec_top(:,:,1:), trim(mesg)//" FIA%fprec_top", G%HI, unscale=US%RZ_T_to_kg_m2s)
 
   if (present(check_ocean)) then ; if (check_ocean) then
-    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(FIA%flux_sh_top(:,:,0), trim(mesg)//" FIA%flux_sh_top0", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%evap_top(:,:,0), trim(mesg)//" FIA%evap_top0", G%HI, unscale=US%RZ_T_to_kg_m2s)
     do b=1,size(FIA%flux_sw_top,4)
       write(nstr, '(I4)') b ; nstr = adjustl(nstr)
       call hchksum(FIA%flux_sw_top(:,:,0,b), &
-                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
+                   trim(mesg)//" FIA%flux_sw_top0("//trim(nstr)//")", G%HI, unscale=US%QRZ_T_to_W_m2)
     enddo
-    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI, scale=US%RZ_T_to_kg_m2s)
+    call hchksum(FIA%flux_lw_top(:,:,0), trim(mesg)//" FIA%flux_lw_top0", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%flux_lh_top(:,:,0), trim(mesg)//" FIA%flux_lh_top0", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(FIA%lprec_top(:,:,0), trim(mesg)//" FIA%lprec_top0", G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(FIA%fprec_top(:,:,0), trim(mesg)//" FIA%fprec_top0", G%HI, unscale=US%RZ_T_to_kg_m2s)
   endif ; endif
 
-  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
-  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(FIA%tmelt, trim(mesg)//" FIA%tmelt", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, unscale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%ice_free, trim(mesg)//" FIA%ice_free", G%HI)
   call hchksum(FIA%ice_cover, trim(mesg)//" FIA%ice_cover", G%HI)
-  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%flux_sw_dn, trim(mesg)//" FIA%flux_sw_dn", G%HI, unscale=US%QRZ_T_to_W_m2)
 
 end subroutine FIA_chksum
 
@@ -2315,19 +2315,19 @@ subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
   ! and js...je as their extent.
   hs=0 ; if (present(haloshift)) hs=haloshift
 
-  call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs, scale=US%S_to_ppt)
-  call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs, scale=US%C_to_degC)
-  call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs, scale=US%C_to_degC)
-  call hchksum(OSS%sea_lev, trim(mesg)//" OSS%sea_lev", G%HI, haloshift=hs, scale=US%Z_to_m)
-  call hchksum(OSS%bheat, trim(mesg)//" OSS%bheat", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
-  call hchksum(OSS%frazil, trim(mesg)//" OSS%frazil", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2*US%T_to_s)
+  call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs, unscale=US%S_to_ppt)
+  call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs, unscale=US%C_to_degC)
+  call hchksum(OSS%T_fr_ocn, trim(mesg)//" OSS%T_fr_ocn", G%HI, haloshift=hs, unscale=US%C_to_degC)
+  call hchksum(OSS%sea_lev, trim(mesg)//" OSS%sea_lev", G%HI, haloshift=hs, unscale=US%Z_to_m)
+  call hchksum(OSS%bheat, trim(mesg)//" OSS%bheat", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(OSS%frazil, trim(mesg)//" OSS%frazil", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
 
   if (OSS%Cgrid_dyn) then
-    call uvchksum(mesg//" OSS%[uv]_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=hs, scale=US%L_T_to_m_s)
-    call check_redundant_C(mesg//" OSS%u/v_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G)
+    call uvchksum(mesg//" OSS%[uv]_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G, halos=hs, unscale=US%L_T_to_m_s)
+    call check_redundant_C(mesg//" OSS%u/v_ocn_C", OSS%u_ocn_C, OSS%v_ocn_C, G, unscale=US%L_T_to_m_s)
   else
-    call Bchksum_pair(mesg//" OSS%[uv]_ocn_B", OSS%u_ocn_B, OSS%v_ocn_B, G, halos=hs, scale=US%L_T_to_m_s)
-    call check_redundant_B(mesg//" OSS%u/v_ocn", OSS%u_ocn_B, OSS%v_ocn_B, G)
+    call Bchksum_pair(mesg//" OSS%[uv]_ocn_B", OSS%u_ocn_B, OSS%v_ocn_B, G, halos=hs, unscale=US%L_T_to_m_s)
+    call check_redundant_B(mesg//" OSS%u/v_ocn", OSS%u_ocn_B, OSS%v_ocn_B, G, unscale=US%L_T_to_m_s)
   endif
 
 end subroutine OSS_chksum
@@ -2351,14 +2351,14 @@ subroutine TSF_chksum(mesg, TSF, G, US, haloshift)
   ! and js...je as their extent.
   hs=0 ; if (present(haloshift)) hs=haloshift
 
-  call hchksum(TSF%flux_sh, trim(mesg)//" TSF%flux_sh", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
-  ! call hchksum(TSF%flux_sw, trim(mesg)//" TSF%flux_sw", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
-  call hchksum(TSF%flux_lw, trim(mesg)//" TSF%flux_lw", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
-  call hchksum(TSF%flux_lh, trim(mesg)//" TSF%flux_lh", G%HI, haloshift=hs, scale=US%QRZ_T_to_W_m2)
-  call hchksum(TSF%evap, trim(mesg)//" TSF%evap", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(TSF%lprec, trim(mesg)//" TSF%lprec", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(TSF%fprec, trim(mesg)//" TSF%fprec", G%HI, haloshift=hs, scale=US%RZ_T_to_kg_m2s)
-  call uvchksum(mesg//" TSF%flux_[uv]", TSF%flux_u, TSF%flux_v, G, halos=hs, scale=US%L_T_to_m_s)
+  call hchksum(TSF%flux_sh, trim(mesg)//" TSF%flux_sh", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
+  ! call hchksum(TSF%flux_sw, trim(mesg)//" TSF%flux_sw", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%flux_lw, trim(mesg)//" TSF%flux_lw", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%flux_lh, trim(mesg)//" TSF%flux_lh", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(TSF%evap, trim(mesg)//" TSF%evap", G%HI, haloshift=hs, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(TSF%lprec, trim(mesg)//" TSF%lprec", G%HI, haloshift=hs, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(TSF%fprec, trim(mesg)//" TSF%fprec", G%HI, haloshift=hs, unscale=US%RZ_T_to_kg_m2s)
+  call uvchksum(mesg//" TSF%flux_[uv]", TSF%flux_u, TSF%flux_v, G, halos=hs, unscale=US%L_T_to_m_s)
 
 end subroutine TSF_chksum
 
@@ -2384,25 +2384,25 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
 
   call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
-  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
+  call hchksum(IST%mH_ice, trim(mesg)//" IST%mH_ice", G%HI, haloshift=hs, unscale=US%RZ_to_kg_m2)
   do k=1,IG%NkIce
     write(k_str1,'(I8)') k ;  k_str = "("//trim(adjustl(k_str1))//")"
     call hchksum(IST%enth_ice(:,:,:,k), trim(mesg)//" IST%enth_ice("//trim(k_str), G%HI, &
-                 haloshift=hs, scale=US%Q_to_J_kg)
+                 haloshift=hs, unscale=US%Q_to_J_kg)
     call hchksum(IST%sal_ice(:,:,:,k), trim(mesg)//" IST%sal_ice("//trim(k_str), G%HI, &
-                 haloshift=hs, scale=US%S_to_ppt)
+                 haloshift=hs, unscale=US%S_to_ppt)
   enddo
-  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
-  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs, scale=US%Q_to_J_kg)
-  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, scale=US%RZ_to_kg_m2)
+  call hchksum(IST%mH_snow, trim(mesg)//" IST%mH_snow", G%HI, haloshift=hs, unscale=US%RZ_to_kg_m2)
+  call hchksum(IST%enth_snow(:,:,:,1), trim(mesg)//" IST%enth_snow", G%HI, haloshift=hs, unscale=US%Q_to_J_kg)
+  call hchksum(IST%mH_pond, trim(mesg)//" IST%mH_pond", G%HI, haloshift=hs, unscale=US%RZ_to_kg_m2)
 
   if (allocated(IST%u_ice_B) .and. allocated(IST%v_ice_B)) then
-    call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, scale=US%L_T_to_m_s)
-    call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G)
+    call Bchksum_pair(mesg//" IST%[uv]_ice_B", IST%u_ice_B, IST%v_ice_B, G, halos=hs, unscale=US%L_T_to_m_s)
+    call check_redundant_B(mesg//" IST%u/v_ice", IST%u_ice_B, IST%v_ice_B, G, unscale=US%L_T_to_m_s)
   endif
   if (allocated(IST%u_ice_C) .and. allocated(IST%v_ice_C)) then
-    call uvchksum(mesg//" IST%[uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, halos=hs, scale=US%L_T_to_m_s)
-    call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G)
+    call uvchksum(mesg//" IST%[uv]_ice_C", IST%u_ice_C, IST%v_ice_C, G, halos=hs, unscale=US%L_T_to_m_s)
+    call check_redundant_C(mesg//" IST%u/v_ice_C", IST%u_ice_C, IST%v_ice_C, G, unscale=US%L_T_to_m_s)
   endif
 
 end subroutine IST_chksum

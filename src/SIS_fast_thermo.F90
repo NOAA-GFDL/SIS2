@@ -685,20 +685,20 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   enddo
 
   if (CS%debug_fast) then
-    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI, scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI, scale=US%QRZ_T_to_W_m2)
-    call hchksum(evap(:,:,1:), "Mid do_fast evap", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI, unscale=US%QRZ_T_to_W_m2)
+    call hchksum(evap(:,:,1:), "Mid do_fast evap", G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI, unscale=US%QRZ_T_to_W_m2)
     do b=1,size(flux_sw,4)
       write(nstr, '(I4)') b ; nstr = adjustl(nstr)
-      call hchksum(flux_sw(:,:,1:,b), "Mid do_fast flux_sw("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
+      call hchksum(flux_sw(:,:,1:,b), "Mid do_fast flux_sw("//trim(nstr)//")", G%HI, unscale=US%QRZ_T_to_W_m2)
     enddo
-    call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI, scale=US%RZ_T_to_kg_m2s)
-    call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
-    call hchksum(devapdt(:,:,1:), "Mid do_fast devapdt", G%HI, scale=US%degC_to_C*US%RZ_T_to_kg_m2s)
-    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
+    call hchksum(lprec(:,:,1:), "Mid do_fast lprec", G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(fprec(:,:,1:), "Mid do_fast fprec", G%HI, unscale=US%RZ_T_to_kg_m2s)
+    call hchksum(dshdt(:,:,1:), "Mid do_fast dshdt", G%HI, unscale=US%degC_to_C*US%QRZ_T_to_W_m2)
+    call hchksum(devapdt(:,:,1:), "Mid do_fast devapdt", G%HI, unscale=US%degC_to_C*US%RZ_T_to_kg_m2s)
+    call hchksum(dlwdt(:,:,1:), "Mid do_fast dlwdt", G%HI, unscale=US%degC_to_C*US%QRZ_T_to_W_m2)
   endif
 
   call get_SIS2_thermo_coefs(IST%ITV, ice_salinity=S_col, Latent_vapor=LatHtVap)
@@ -967,8 +967,8 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
 
   if (CS%debug_slow) then
     call hchksum(Rad%coszen_lastrad, "Redo optics coszen_lastrad", G%HI)
-    call hchksum(Rad%Tskin_rad, "Redo optics Tskin_rad", G%HI, scale=US%C_to_degC)
-    call hchksum(FIA%flux_sw_dn, "Redo optics FIA%flux_sw_dn", G%HI, scale=US%QRZ_T_to_W_m2)
+    call hchksum(Rad%Tskin_rad, "Redo optics Tskin_rad", G%HI, unscale=US%C_to_degC)
+    call hchksum(FIA%flux_sw_dn, "Redo optics FIA%flux_sw_dn", G%HI, unscale=US%QRZ_T_to_W_m2)
   endif
 
   !$OMP parallel do default(none) &
@@ -1196,16 +1196,16 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, US, IG)
       if (IST%part_size(i,j,k) > 0.0) tmp_diag(i,j,k) = FIA%flux_sw_top(i,j,k,b)
     enddo ; enddo ; enddo
     call hchksum(tmp_diag, & ! similar to FIA%flux_sw_top(:,:,1:,b), &
-                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
+                 trim(mesg)//" FIA%flux_sw_top("//trim(nstr)//")", G%HI, unscale=US%QRZ_T_to_W_m2)
     call hchksum(TSF%flux_sw(:,:,b), &
-                 trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI, scale=US%QRZ_T_to_W_m2)
+                 trim(mesg)//" TSF%flux_sw("//trim(nstr)//")", G%HI, unscale=US%QRZ_T_to_W_m2)
   enddo
-  call hchksum(FIA%flux_sh0(:,:,1:), trim(mesg)//" FIA%flux_sh0", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
-  call hchksum(FIA%flux_lw0(:,:,1:), trim(mesg)//" FIA%flux_lw0", G%HI, scale=US%QRZ_T_to_W_m2)
-  call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI, scale=US%degC_to_C*US%QRZ_T_to_W_m2)
-  call hchksum(FIA%evap0(:,:,1:), trim(mesg)//" FIA%evap0", G%HI, scale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI, scale=US%degC_to_C*US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%flux_sh0(:,:,1:), trim(mesg)//" FIA%flux_sh0", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%dshdt(:,:,1:), trim(mesg)//" FIA%dshdt", G%HI, unscale=US%degC_to_C*US%QRZ_T_to_W_m2)
+  call hchksum(FIA%flux_lw0(:,:,1:), trim(mesg)//" FIA%flux_lw0", G%HI, unscale=US%QRZ_T_to_W_m2)
+  call hchksum(FIA%dlwdt(:,:,1:), trim(mesg)//" FIA%dlwdt", G%HI, unscale=US%degC_to_C*US%QRZ_T_to_W_m2)
+  call hchksum(FIA%evap0(:,:,1:), trim(mesg)//" FIA%evap0", G%HI, unscale=US%RZ_T_to_kg_m2s)
+  call hchksum(FIA%devapdt(:,:,1:), trim(mesg)//" FIA%devapdt", G%HI, unscale=US%degC_to_C*US%RZ_T_to_kg_m2s)
   do m=1,size(Rad%sw_abs_ice,4)
     write(nstr, '(I4)') m ; nstr = adjustl(nstr)
     tmp_diag(:,:,:) = 0.0
