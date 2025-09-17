@@ -303,10 +303,10 @@ subroutine ice_grid_chksum(G, US, haloshift)
   call hchksum(G%geoLatT, "G%geoLatT", G%HI, haloshift=hs)
   call hchksum(G%geoLonT, "G%geoLonT", G%HI, haloshift=hs)
 
-  call hchksum_pair("G%d[xy]T", G%dxT, G%dyT, G, halos=hs, scale=US%L_to_m)
-  call hchksum_pair("G%Id[xy]T", G%IdxT, G%IdyT, G, halos=hs, scale=US%m_to_L)
-  call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs, scale=US%L_to_m**2)
-  call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs, scale=US%m_to_L**2)
+  call hchksum_pair("G%d[xy]T", G%dxT, G%dyT, G, halos=hs, unscale=US%L_to_m)
+  call hchksum_pair("G%Id[xy]T", G%IdxT, G%IdyT, G, halos=hs, unscale=US%m_to_L)
+  call hchksum(G%areaT, "G%areaT", G%HI, haloshift=hs, unscale=US%L_to_m**2)
+  call hchksum(G%IareaT, "G%IareaT", G%HI, haloshift=hs, unscale=US%m_to_L**2)
   call hchksum(G%mask2dT, "G%mask2dT", G%HI, haloshift=hs)
   call hchksum(G%cos_rot, "G%cos_rot", G%HI)
   call hchksum(G%sin_rot, "G%sin_rot", G%HI)
@@ -316,31 +316,31 @@ subroutine ice_grid_chksum(G, US, haloshift)
   call Bchksum(G%geoLatBu, "G%geoLatBu", G%HI, haloshift=hs)
   call Bchksum(G%geoLonBu, "G%geoLonBu", G%HI, haloshift=hs)
 
-  call Bchksum_pair("G%d[xy]Bu", G%dxBu, G%dyBu, G, halos=hs, scalars=.true., scale=US%L_to_m)
-  call Bchksum_pair("G%Id[xy]Bu", G%IdxBu, G%IdyBu, G, halos=hs, scalars=.true., scale=US%m_to_L)
+  call Bchksum_pair("G%d[xy]Bu", G%dxBu, G%dyBu, G, halos=hs, scalars=.true., unscale=US%L_to_m)
+  call Bchksum_pair("G%Id[xy]Bu", G%IdxBu, G%IdyBu, G, halos=hs, scalars=.true., unscale=US%m_to_L)
 
-  call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs, scale=US%L_to_m**2)
-  call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs, scale=US%m_to_L**2)
+  call Bchksum(G%areaBu, "G%areaBu", G%HI, haloshift=hs, unscale=US%L_to_m**2)
+  call Bchksum(G%IareaBu, "G%IareaBu", G%HI, haloshift=hs, unscale=US%m_to_L**2)
 
-  call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1)
-  call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1)
+  call check_redundant_B("G%areaBu", G%areaBu, G, isc-1, iec+1, jsc-1, jec+1, unscale=US%L_to_m**2)
+  call check_redundant_B("G%IareaBu", G%IareaBu, G, isc-1, iec+1, jsc-1, jec+1, unscale=US%m_to_L**2)
 
   call uvchksum("G%mask2dC[uv]", G%mask2dCu, G%mask2dCv, G, halos=hs)
 
   call uvchksum("G%geoLatC[uv]", G%geoLatCu, G%geoLatCv, G, halos=hs)
   call uvchksum("G%geolonC[uv]", G%geoLonCu, G%geoLonCv, G, halos=hs)
 
-  call uvchksum("G%d[xy]C[uv]", G%dxCu, G%dyCv, G, halos=hs, scalars=.true., scale=US%L_to_m)
-  call uvchksum("G%d[yx]C[uv]", G%dyCu, G%dxCv, G, halos=hs, scalars=.true., scale=US%L_to_m)
-  call uvchksum("G%Id[xy]C[uv]", G%IdxCu, G%IdyCv, G, halos=hs, scalars=.true., scale=US%m_to_L)
-  call uvchksum("G%Id[yx]C[uv]", G%IdyCu, G%IdxCv, G, halos=hs, scalars=.true., scale=US%m_to_L)
+  call uvchksum("G%d[xy]C[uv]", G%dxCu, G%dyCv, G, halos=hs, scalars=.true., unscale=US%L_to_m)
+  call uvchksum("G%d[yx]C[uv]", G%dyCu, G%dxCv, G, halos=hs, scalars=.true., unscale=US%L_to_m)
+  call uvchksum("G%Id[xy]C[uv]", G%IdxCu, G%IdyCv, G, halos=hs, scalars=.true., unscale=US%m_to_L)
+  call uvchksum("G%Id[yx]C[uv]", G%IdyCu, G%IdxCv, G, halos=hs, scalars=.true., unscale=US%m_to_L)
 
-  call uvchksum("G%areaC[uv]", G%areaCu, G%areaCv, G, halos=hs, scale=US%L_to_m**2)
-  call uvchksum("G%IareaC[uv]", G%IareaCu, G%IareaCv, G, halos=hs, scale=US%m_to_L**2)
+  call uvchksum("G%areaC[uv]", G%areaCu, G%areaCv, G, halos=hs, unscale=US%L_to_m**2)
+  call uvchksum("G%IareaC[uv]", G%IareaCu, G%IareaCv, G, halos=hs, unscale=US%m_to_L**2)
 
-  call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs, scale=US%Z_to_m)
-  call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs, scale=US%s_to_T)
-  call hchksum_pair("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs, scale=US%s_to_T*US%m_to_L)
+  call hchksum(G%bathyT, "G%bathyT", G%HI, haloshift=hs, unscale=US%Z_to_m)
+  call Bchksum(G%CoriolisBu, "G%CoriolisBu", G%HI, haloshift=hs, unscale=US%s_to_T)
+  call hchksum_pair("G%dF_d[xy]", G%dF_dx, G%dF_dy, G, halos=hs, unscale=US%s_to_T*US%m_to_L)
 
 end subroutine ice_grid_chksum
 

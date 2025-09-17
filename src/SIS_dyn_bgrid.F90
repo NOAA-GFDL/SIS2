@@ -430,16 +430,16 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   enddo ; enddo
 
   if (CS%debug .or. CS%debug_redundant) then
-    call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true., unscale=US%L_T_to_m_s)
     call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true., &
-                      scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true., scale=US%L_T_to_m_s)
-    call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true., scale=US%L_T_to_m_s)
-    call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true., scale=US%L_to_m)
+                      unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true., unscale=US%L_T_to_m_s)
+    call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true., unscale=US%L_T_to_m_s)
+    call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true., unscale=US%L_to_m)
   endif
   if (CS%debug_redundant) then
     call check_redundant_B("civ in SIS_B_dynamics", civ, G)
-    call check_redundant_B("miv in SIS_B_dynamics", miv, G)
+    call check_redundant_B("miv in SIS_B_dynamics", miv, G, unscale=US%RZ_to_kg_m2)
   endif
 
   do l=1,EVP_steps
@@ -594,34 +594,34 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
     if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
-      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
-      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, scale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
 
-      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
-      call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
+      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
+      call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
     endif
     if (CS%debug_redundant) then
-      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G)
-      call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G)
-      call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G)
-      call check_redundant_B("ui/vi in SIS_B_dynamics steps", ui, vi, G)
+      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call check_redundant_B("ui/vi in SIS_B_dynamics steps", ui, vi, G, unscale=US%L_T_to_m_s)
     endif
 
   enddo ! l=1,EVP_steps
 
   if (CS%debug) then
-    call Bchksum(ui, "ui end SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
-    call Bchksum(vi, "vi end SIS_B_dynamics", G%HI, symmetric=.true., scale=US%L_T_to_m_s)
+    call Bchksum(ui, "ui end SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
+    call Bchksum(vi, "vi end SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
   endif
   if (CS%debug_redundant) &
-    call check_redundant_B("ui/vi end SIS_B_dynamics", ui, vi, G)
+    call check_redundant_B("ui/vi end SIS_B_dynamics", ui, vi, G, unscale=US%L_T_to_m_s)
 
   ! make averages
   I_sub_steps = 1.0/EVP_steps

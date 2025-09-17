@@ -1,11 +1,13 @@
 stages:
+  - setup
   - builds
   - run
   - tests
   - cleanup
 
 variables:
-  CACHE_DIR: "/gpfs/f5/scratch/oar.gfdl.ogrp-account/gfdl_o/runner/cache/"
+  JOB_DIR: "/gpfs/f5/gfdl_o/scratch/oar.gfdl.mom6-account/runner/builds/$CI_PIPELINE_ID"
+  CACHE_DIR: "/gpfs/f5/scratch/oar.gfdl.mom6-account/gfdl_o/runner/cache/"
 
 
 # Merges SIS2 with dev/gfdl. Changes directory to test directory, if it exists.
@@ -14,162 +16,195 @@ variables:
 # - set working directory to MOM6-examples
 # - pull down latest of dev/gfdl (MOM6-examples might be ahead of Gaea-stats)
 before_script:
-  - echo Cache directory set to $CACHE_DIR
-  - echo -e "\e[0Ksection_start:`date +%s`:before[collapsed=true]\r\e[0KPre-script"
-  - git clone https://gitlab.gfdl.noaa.gov/ogrp/Gaea-stats-MOM6-examples.git tests
-  - cd tests && git submodule init && git submodule update
-  - cd MOM6-examples && git checkout dev/gfdl && git pull
-  - mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
-  - test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
-  - test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
-  - git submodule update --init --recursive
-  - git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
-  - (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
-  - echo -e "\e[0Ksection_end:`date +%s`:before\r\e[0K"
+  - echo Job directory set to $JOB_DIR
+
+clone:
+  stage: setup
+  tags:
+    - mom6-ci-c5
+  script:
+    # Set up the job-wide source directory
+    - mkdir -p $JOB_DIR
+    - cd $JOB_DIR
+    - git clone https://gitlab.gfdl.noaa.gov/ogrp/mom6ci/Gaea-stats-MOM6-examples.git tests
+    - cd tests && git submodule init && git submodule update
+    - cd MOM6-examples && git checkout dev/gfdl && git pull
+    - git submodule update --init --recursive
+    # Pre-checkout AM3 and LM2 (to prevent conflict across builds)
+    - make -f tools/MRS/Makefile.clone clone_gfdl
+    # Point MOM6-Examples SIS2 to the repo SIS2
+    - git submodule set-url src/SIS2 $CI_PROJECT_DIR/.git
+    - (cd src/SIS2 && git fetch origin $CI_COMMIT_SHA && git checkout $CI_COMMIT_SHA)
+    # Redirect build/ to $HOME
+    - mkdir -p $HOME/ci/sis2/$CI_PIPELINE_ID/build
+    - test ! -L build && ln -s $HOME/ci/sis2/$CI_PIPELINE_ID/build build
+    # Now create a src/ link in $HOME to redirect local -I paths back to src/
+    - test ! -L $HOME/ci/sis2/$CI_PIPELINE_ID/src && ln -s "$(pwd)"/src $HOME/ci/sis2/$CI_PIPELINE_ID/src
 
 # Tests that merge with dev/gfdl works.
 merge:
-  stage: builds
+  stage: setup
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
     - cd $CI_PROJECT_DIR
     - git pull --no-edit https://github.com/NOAA-GFDL/SIS2.git dev/gfdl
 
 # Compiles
+gnu:debug:
+  stage: builds
+  tags:
+    - mom6-ci-c5
+  needs: ["clone"]
+  script:
+    - cd $JOB_DIR/tests/MOM6-examples
+    - time make -f tools/MRS/Makefile pipeline-build-debug-gnu -s -j
+
 gnu:repro:
   stage: builds
   tags:
-    - ncrc5
+    - mom6-ci-c5
+  needs: ["clone"]
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-gnu -s -j
-
-#gnu:ice-ocean-nolibs:
-#  stage: builds
-#  tags:
-#    - ncrc5
-#  script:
-#    - make -f tools/MRS/Makefile pipeline-build-gnu-iceocean-nolibs
 
 intel:repro:
   stage: builds
   tags:
-    - ncrc5
+    - mom6-ci-c5
+  needs: ["clone"]
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-intel -s -j
 
 pgi:repro:
   stage: builds
   tags:
-    - ncrc5
+    - mom6-ci-c5
+  needs: ["clone"]
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - time make -f tools/MRS/Makefile pipeline-build-repro-pgi -s -j
 
-gnu:debug:
-  stage: builds
-  tags:
-    - ncrc5
-  script:
-    - time make -f tools/MRS/Makefile pipeline-build-debug-gnu -s -j
+#gnu:ice-ocean-nolibs:
+#  stage: builds
+#  tags:
+#    - mom6-ci-c5
+#  script:
+#    - make -f tools/MRS/Makefile pipeline-build-gnu-iceocean-nolibs
 
 # Runs
 run:
   stage: run
   tags:
-    - ncrc5
+    - mom6-ci-c5
+  needs: ["gnu:debug", "gnu:repro", "intel:repro", "pgi:repro"]
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-run
 
 # Tests
 gnu:non-symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_non_symmetric
 
 gnu:symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_symmetric
 
 gnu:memory:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_memory
 
 #gnu:static:
 #  stage: tests
 #  tags:
-#    - ncrc5
+#    - mom6-ci-c5
 #  script:
 #    - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_static
 
 gnu:restart:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-gnu_restarts
 
 gnu:params:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-params_gnu_symmetric
   allow_failure: true
 
 intel:symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_symmetric
 
 intel:non-symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_non_symmetric
 
 intel:memory:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-intel_memory
 
 pgi:symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_symmetric
 
 pgi:non-symmetric:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_non_symmetric
 
 pgi:memory:
   stage: tests
   tags:
-    - ncrc5
+    - mom6-ci-c5
   script:
+    - cd $JOB_DIR/tests/MOM6-examples
     - make -f tools/MRS/Makefile sis2-pipeline-test-pgi_memory
 
 cleanup:
   stage: cleanup
   tags:
-    - ncrc5
+    - mom6-ci-c5
   before_script:
     - echo Skipping submodule update
   script:
