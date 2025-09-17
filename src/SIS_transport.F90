@@ -46,7 +46,7 @@ type, public :: SIS_transport_CS ; private
                               !! Sensible values are 0 or larger than 1.
   real :: ice_cover_discard   !< A tiny fractional ice coverage which if positive causes the mass
                               !! in categories with less than this coverage to be discarded.
-
+  logical :: mass_neglect_ice_snow_pond !< If true, massless snow and pond values are discarded
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
   logical :: check_conservation !< If true, write out verbose diagnostics of conservation.
@@ -150,6 +150,9 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   logical :: merged_cont
   character(len=200) :: mesg
   integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
+  logical :: h_neg_fix
+  h_neg_fix=.false.
+  if (CS%mass_neglect_ice_snow_pond) h_neg_fix=.true.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -191,11 +194,11 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
       call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, use_h_neg=.true.)
+                      G, US, IG, CS%continuity_CSp, use_h_neg=h_neg_fix)
       call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, use_h_neg=h_neg_fix)
       call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice)
+                      G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, use_h_neg=h_neg_fix)
     endif
 
     call advect_scalar(CAS%mH_ice, mca0_ice, CAS%m_ice, uh_ice, vh_ice, &
@@ -850,6 +853,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
   logical :: do_any, do_j(SZJ_(G))
   character(len=200) :: mesg
   integer :: i, j, k, m, isc, iec, jsc, jec, nCat
+
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nCat = IG%CatIce
 
@@ -1163,6 +1167,12 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version)
+  call get_param(param_file, mdl, "NEGLECT_MASSLESS_ICE_SNOW_POND", CS%mass_neglect_ice_snow_pond, &
+                 "If True, category ice, snow or pond mass per ocean cell area less than "//&
+                 "CONTINUITY_H_NEGLECT are not transported out of a cell. The default "//&
+                 "value is set to retain previous answers, but new experiments should set "//&
+                 "to True with a suitably small value of CONTINUITY_H_NEGLECT. "//&
+                 , default=.false.)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness "//&
                  "categories after advection.", default=.true.)
