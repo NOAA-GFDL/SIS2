@@ -196,7 +196,7 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
                                     h3=CAS%m_pond, uh3=uh_pond, vh3=vh_pond)
     else
       call continuity(uc, vc, mca0_ice, CAS%m_ice, uh_ice, vh_ice, dt_adv, &
-                      G, US, IG, CS%continuity_CSp, use_h_neg=h_neg_fix)
+                      G, US, IG, CS%continuity_CSp, use_h_neg=.true.)  ! this is hard-coded here to preserve previous answers
       call continuity(uc, vc, mca0_snow, CAS%m_snow, uh_snow, vh_snow, dt_adv, &
                       G, US, IG, CS%continuity_CSp, masking_uh=uh_ice, masking_vh=vh_ice, use_h_neg=h_neg_fix)
       call continuity(uc, vc, mca0_pond, CAS%m_pond, uh_pond, vh_pond, dt_adv, &
@@ -1182,8 +1182,8 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                  "If True, category ice, snow or pond mass per ocean cell area less than "//&
                  "CONTINUITY_H_NEGLECT are not transported out of a cell. The default "//&
                  "value is set to retain previous answers, but new experiments should set "//&
-                 "to True with a suitably small value of CONTINUITY_H_NEGLECT. "//&
-                 , default=.false.)
+                 "to True with a suitably small value of CONTINUITY_H_NEGLECT. ", &
+                 default=.false.)
   call get_param(param_file, mdl, "RECATEGORIZE_ICE", CS%readjust_categories, &
                  "If true, readjust the distribution into ice thickness "//&
                  "categories after advection.", default=.true.)
