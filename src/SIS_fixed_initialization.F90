@@ -83,7 +83,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
 
   if (debug) then
     call hchksum(G%bathyT, 'SIS_initialize_fixed: depth ', G%HI, &
-                 haloshift=min(1, G%ied-G%iec, G%jed-G%jec), scale=US%Z_to_m)
+                 haloshift=min(1, G%ied-G%iec, G%jed-G%jec), unscale=US%Z_to_m)
     call hchksum(G%mask2dT, 'SIS_initialize_fixed: mask2dT ', G%HI)
     call uvchksum('SIS_initialize_fixed: mask2dC[uv] ', &
                   G%mask2dCu, G%mask2dCv, G)
@@ -118,9 +118,9 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   !  Calculate the components of grad f (beta) [T-1 L-1 ~> s-1 m-1]
   call MOM_calculate_grad_Coriolis(G%dF_dx, G%dF_dy, G, US)
   if (debug) then
-    call Bchksum(G%CoriolisBu, "SIS_initialize_fixed: f ", G%HI, scale=US%s_to_T)
-    call hchksum(G%dF_dx, "SIS_initialize_fixed: dF_dx ", G%HI, scale=US%m_to_L*US%s_to_T)
-    call hchksum(G%dF_dy, "SIS_initialize_fixed: dF_dy ", G%HI, scale=US%m_to_L*US%s_to_T)
+    call Bchksum(G%CoriolisBu, "SIS_initialize_fixed: f ", G%HI, unscale=US%s_to_T)
+    call hchksum(G%dF_dx, "SIS_initialize_fixed: dF_dx ", G%HI, unscale=US%m_to_L*US%s_to_T)
+    call hchksum(G%dF_dy, "SIS_initialize_fixed: dF_dy ", G%HI, unscale=US%m_to_L*US%s_to_T)
   endif
 
   call initialize_grid_rotation_angle(G, PF)

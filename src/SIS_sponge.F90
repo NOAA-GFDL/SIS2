@@ -1,11 +1,11 @@
 !> Implements relaxation regions in SIS2 model
 !> for sea ice concentration (partial area) and thickness by categories
-!> The algorithm can be used to impose open boundary conditions 
-!> for sea ice thickness and partial area in regional SIS2 applications, 
+!> The algorithm can be used to impose open boundary conditions
+!> for sea ice thickness and partial area in regional SIS2 applications,
 !> or for correcting the fields within the domain.
 !>
 !> Dmitry Dukhovskoy NOAA OAR PSL 2025
-!> 
+!>
 module SIS_sponge
 
 !! Module to read in Time of the ice fields, ice concentration, ice thickness, relaxation time scale
@@ -70,7 +70,7 @@ end type f2d
 type, public :: f3d
   real, allocatable, dimension(:,:,:) :: fld3
 end type f3d
- 
+
 !> This control structure holds memory and parameters for the SIS_sponge module
 type, public :: isponge_CS ; private
   logical, public :: use_isponge = .false.  !< If true, ice tracer fields may be relaxed somewhere in the domain
@@ -83,7 +83,7 @@ type, public :: isponge_CS ; private
   real, pointer    :: Iresttime_col(:) => NULL() !< The inverse restoring time of each column [T-1 ~> s-1].
 
   type(p3d) :: var(MAX_FIELDS_RLX_)     !< Pointers to the fields that will be relaxed
-  type(p2d) :: Ref_val(MAX_FIELDS_RLX_) !< Relaxation values - The values to which the fields are 
+  type(p2d) :: Ref_val(MAX_FIELDS_RLX_) !< Relaxation values - The values to which the fields are
                                         ! relaxed distributed by ice cats (linear_index, ice_cat)
   type(f2d) :: Old_val(MAX_FIELDS_RLX_) !< Keep old values of relaxed fields prior to relaxation
                                         !! debug only, will need to get rid off later
@@ -97,7 +97,7 @@ contains
 
 !> This subroutine sets the inverse restoration time (Idamp) for sea ice fields and
 !! the values towards which an arbitrary
-!! number of tracers should be restored within the relaxation zone. 
+!! number of tracers should be restored within the relaxation zone.
 subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
@@ -114,14 +114,14 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
                                               !! mean grid cell value  kg/m [R Z L ~> kg m-1]
   real, allocatable, dimension(:,:) :: rlx_C  !< A temporary array for reading relax target ice partial area
 
-  integer, parameter :: verb_msg = 9 !< verbosity level for messages
+  integer, parameter :: verb_msg = 8 !< verbosity level for messages
   integer :: i, j, k, is, ie, js, je, ncat
   integer :: isd, ied, jsd, jed
   integer :: isc, iec, jsc, jec
   integer :: year     !< The current model year
   integer :: day      !< The current model year-day
   integer :: second   !< The second of the day
-  integer :: mon, hr, minute, itick  !< Time variables 
+  integer :: mon, hr, minute, itick  !< Time variables
   integer :: verbosity   !< MOM verbosity level
   real    :: max_rlxrate !< The strongest relaxation over the domain [T ~> s]
   real    :: rho_ice     !< The nominal density of sea ice [R ~> kg m-3]
@@ -129,14 +129,14 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   character(len=40) :: ithck_var, iarea_var, rlxrate_var, rlx_unit
   character(len=40) :: mdl = "initialize_icerelax_file"
   character(len=50) :: rlx_long_name
-  character(len=200) :: relaxrate_file, state_file !< relax filenames: inverse time, target fields
-  character(len=200) :: filename, inputdir         !< Strings for file/path and path.
+  character(len=200) :: relaxrate_file, state_file  !< relax filenames: inverse time, target fields
+  character(len=200) :: filename, inputdir          !< Strings for file/path and path.
   character(len=256) :: mesg
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  Irelax = 0.0 
+  Irelax = 0.0
 
   verbosity = MOM_get_verbosity()
 
@@ -167,13 +167,13 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   call MOM_read_data(filename, rlxrate_var, Irelax(:,:), G%Domain, scale=US%s_to_T)
 
   ! Check overall ice relax. rate only if verbosity allows printing the diagnostics
-  if (verb_msg > verbosity) then
+  if (verbosity > verb_msg) then
     max_rlxrate =  maxval(Irelax*US%T_to_s)
     call max_across_PEs(max_rlxrate)
     call get_date(Time, year, mon, day, hr, minute, second, itick)
     write(mesg,'("SIS Time:",i6,2("/",i2.2),1x,3(":",i2.2),"; max(Irelax)=",D13.4," s-1")') &
         year, mon, day, hr, minute, second, max_rlxrate
-    call SIS_mesg(mesg, verb_msg) 
+    call SIS_mesg(mesg, verb_msg)
   endif
 
   call initialize_isponge(param_file, Irelax, G, IG, CS)
@@ -186,10 +186,10 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
 !
 
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
-  call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: mH_ice', verb_msg) 
+  call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: mH_ice', verb_msg)
   call set_up_isponge_field(filename, ithck_var, Time, 1, IG%CatIce, G, IG, US, IST%mH_ice, CS, &
        'mH_ice', rlx_long_name='ice_thickness', rlx_unit='kg m-2', scale=US%m_to_Z * rho_ice)
-  call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: part_size', verb_msg) 
+  call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: part_size', verb_msg)
   call set_up_isponge_field(filename, iarea_var, Time, 0, IG%CatIce, G, IG, US, IST%part_size, CS, &
          'part_size', rlx_long_name='partial_area', rlx_unit='none')
 
@@ -198,7 +198,7 @@ end subroutine initialize_icerelax_file
 !> This subroutine determines the number of points which are within ice relaxation region in
 !! this computational domain.  Only points that have positive values of
 !! Iresttime and which mask2dT indicates are ocean points are included as the
-!! relaxation points.  
+!! relaxation points.
 subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, time_var_rlx, sponge_ongrid)
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -212,7 +212,7 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, time_var_rlx, sp
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   ! Local variables
-  integer, parameter :: verb_msg = 9 !< verbosity level for messages
+  integer, parameter :: verb_msg = 8 !< verbosity level for messages
   character(len=40)  :: mdl = "initialize_isponge"  ! This module's name.
   character(len=256) :: mesg
   logical :: use_isponge
@@ -278,7 +278,7 @@ end subroutine initialize_isponge
 
 !> This subroutine stores the reference (target) profile for the SIS variable whose
 !! address is given by f_ptr. Reference profile = values towards which the
-!! SIS field is being relaxed to. 
+!! SIS field is being relaxed to.
 !! Current version assumes 2D input fields.
 subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, f_ptr, CS, &
                                 rlxfld_name, rlx_long_name, rlx_unit, scale)
@@ -293,21 +293,21 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   type(unit_scale_type),   intent(in) :: US         !< A structure with unit conversion factors
   real, dimension(SZI_(G), SZJ_(G), kdS:kdE), &
                    target, intent(in) :: f_ptr      !< a pointer to the field which will be relaxed [various]
-                                                    !! note: IST%part_size(isd:ied, jsd:jed, 0:CatIce) 
+                                                    !! note: IST%part_size(isd:ied, jsd:jed, 0:CatIce)
   type(isponge_CS),     pointer       :: CS         !< A pointer to the control structure for this module that
                                                     !! is set by a previous call to initialize_sponge.
   character(*),            intent(in) :: rlxfld_name   !< Name of the relaxed field
   character(len=*),        optional,  &
                            intent(in) :: rlx_long_name !< The long name of the tracer field
                                                        !! if not given, use the sp_name
-  character(len=*),        optional,  &        
+  character(len=*),        optional,  &
                            intent(in) :: rlx_unit      !< The unit of the tracer field
                                                        !! if not given, use 'none'
   real,          optional, intent(in) :: scale !< A factor by which to rescale the input data, including any
                                                !! contributions due to dimensional rescaling [various ~> 1].
 
   ! Local variables
-  integer, parameter :: verb_msg = 9 !< verbosity level for messages
+  integer, parameter :: verb_msg = 8 !< verbosity level for messages
   integer, dimension(4) :: fld_sz    !< Dimensions of the input ice target fields
   integer :: isd, ied, jsd, jed      !< Start/end indices of the domain
   integer :: i, j, k, col            !< Dummy indices
@@ -396,12 +396,12 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   real :: damp         !< The timestep times the local damping coefficient [nondim].
   real :: I1pdamp      !< I1pdamp is 1/(1 + damp). [nondim]
   real :: dt           !< time step [s]
-  real :: s_ice_bulk   !< ice bulk S for filling S values in the newly created ice 
+  real :: s_ice_bulk   !< ice bulk S for filling S values in the newly created ice
   real, allocatable :: sice(:), tfi(:)  ! Arrays for ice salinity and freezing temperature
   real :: enth_ice     !< The enthalpy of ice [Q ~> J kg-1]
-  real :: Tfrz         !< The freezeing temperature of sea water [C ~> degC] 
+  real :: Tfrz         !< The freezeing temperature of sea water [C ~> degC]
   real :: coeff        !< conversion coefficient from unscaled to scaled units
-  real :: enth_Tfrz    !< Ice enthalpy at the freezing temperature for a given ice salinity  
+  real :: enth_Tfrz    !< Ice enthalpy at the freezing temperature for a given ice salinity
   character(len=40)  :: mdl = "apply_isponge"  ! This subroutine's name.
   character(len=256) :: mesg
   character(len=15)  :: fld_name
@@ -410,18 +410,18 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   real    :: iconc_tot, iconc_tot_old   !< aggregated old and updated ice conc
   real    :: ithk_tot_new, ithk_tot_old !< aggregated old and updated ice thickness
   real    :: ice_salin                  !< average ice column S [gSalt kg-1]
-
   real, dimension(:,:), allocatable :: data_in  !< A buffer for storing the full 2-d time-interpolated array
   real, dimension(:,:), allocatable :: mask_in  !< A 2-d mask for extended input grid [nondim]
-
   real    :: I_Nk                 !< The inverse of the number of vertical ice layers
   real    :: part_water           !< partial area of open water
   integer :: id, jd, kd, jdp      !< Input dataset data sizes
   type(axis_info), dimension(4) :: axes_data
+  integer, parameter :: verb_msg = 8 !< verbosity level for messages
   integer :: i, j, k, l, m, col
   integer :: ii, jj, iiG, jjG
   integer :: CatIce             !< The number of sea ice categories.
   integer :: NkIce              !< The number of vertical layers within the sea ice.
+  integer :: verbosity   !< MOM verbosity level
   integer :: is, ie, js, je     !< compute domain indices
   integer :: isg, ieg, jsg, jeg !< global extent
   integer :: isd, ied, jsd, jed !< data domain indices
@@ -436,6 +436,8 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   isdG = G%isd_global; iedG = isdG + nid
   jsdG = G%jsd_global; jedG = jsdG + njd
 
+  verbosity = MOM_get_verbosity()
+
   CatIce = IG%CatIce
   NkIce  = IG%NkIce
   I_Nk  = 1. / NkIce
@@ -448,13 +450,17 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   allocate(data_in(isd:ied,jsd:jed))
   allocate(sice(NkIce), tfi(NkIce), source=-999.)
   do m=1,CS%fldno
-    call time_interp_external(CS%Ref_val(m)%field, Time, data_in, verbose=.true.)
+    if (verbosity > verb_msg) then
+      call time_interp_external(CS%Ref_val(m)%field, Time, data_in, verbose=.true.)
+    else
+      call time_interp_external(CS%Ref_val(m)%field, Time, data_in, verbose=.false.)
+    endif
     CS%Ref_orig(m)%fld(:,:) = data_in(:,:)
   enddo
 
   ! Convert input 2D fields --> 3D ice thicknesses and concentration by categories
   ! Input hice is aggregated ice volume per m2, i.e. hice=voli=sum(hice(k)*cice(k))
-  ! In each category: 
+  ! In each category:
   ! scale ice thickness m --> kg m-2 and unscale US%m_to_Z
   call distribute_ice2cats(CS, IG, G)
 
@@ -463,7 +469,7 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
     damp = dt * CS%Iresttime_col(col); I1pdamp = 1.0 / (1.0 + damp)
     do k=1,IG%CatIce
       do m=1,CS%fldno
-        CS%Old_val(m)%fld(col,k) = CS%var(m)%p(i,j,k)  
+        CS%Old_val(m)%fld(col,k) = CS%var(m)%p(i,j,k)
         CS%var(m)%p(i,j,k) = I1pdamp * &
            (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(col,k)*damp)
       enddo
@@ -507,7 +513,6 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
         if (CS%var(m)%p(i,j,k) < 1.e-10) IST%mH_snow(i,j,k)=0.0
       enddo
     enddo
-
   enddo
 
   if (allocated(sice)) deallocate(sice)
@@ -527,10 +532,14 @@ subroutine local_to_global_indx(G, i, j, iiG, jjG)
 end subroutine local_to_global_indx
 
 !> Redistribute input target 2D hice and iconc into ice thickness categories
-!! place all ice into 1 category based on original ice thickness (hice)
-!! Fill the lower cats with some ice to avoid 0s ice concentration and volume allowing better convergence
-!! of the Icepack ITD iteration algorithm
-!! The total ice volume and concentration are conserved
+!! Thick-to-thin algorithm:
+!! Assign all ice initially to the thickest ice category
+!! based on original ice thickness (hice).
+!! Redistribute a small volume of ice from the thickest
+!! category into the thinner categories.
+!! This avoids 0s ice concentration and thickness.
+!! Check that the total ice volume and concentration are conserved
+!! during the distribution.
 subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   type(isponge_CS),        pointer     :: CS       !< A pointer that is set to point to the ice sponge control
                                                    !! structure for this module
@@ -546,31 +555,31 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   integer :: m, i, j, k, col         !< Dummy indices
   integer :: iiG, jjG                !< Global indices
   integer :: CatIce                  !< The number of sea ice categories.
-  integer :: icat0                   !< Ice thickness category where to assign original 
-                                     !! hice and cice to begin distrbution 
+  integer :: icat0                   !< Ice thickness category where to assign original
+                                     !! hice and cice to begin distrbution
 
-  real, allocatable, dimension(:,:) :: cice2d, hice2d !< 2D arrays for input target ice area 
+  real, allocatable, dimension(:,:) :: cice2d, hice2d !< 2D arrays for input target ice area
                                                       !! and volume per unit area [m3*m-2]
   real, allocatable, dimension(:) :: hLim_vals    !< Ice thickness categories [m]
   real, allocatable, dimension(:) :: hcat, ccat   !< 1D arrays for thkn and conc in each ice category
   real, allocatable, dimension(:) :: volcat       !< Ice volume per unit area in each category [m3*m-2]
   real :: scale_cf            !< Scaling factor applied to the input ice target relaxation fields
   real :: Iscale              !< Inverse scale to "unscale" the data
-  real :: hice, cice          !< Target relax. aggregated ice volume/area [m3*m-2] and partial area 
+  real :: hice, cice          !< Target relax. aggregated ice volume/area [m3*m-2] and partial area
   real :: hice_k              !< Ice thkn in category k [m]
   real :: hice_tot, cice_tot  !< Aggregated ice volume per unit area and partial area
   real :: eps0                !< Error allowed for hice, cice after redistribution
-  real :: ck_min              !< The minimum ice concentration used in the 
+  real :: ck_min              !< The minimum ice concentration used in the
                               !! lower categories (wrt icat0) to distribute hice/cice
   real :: ccat_k, hcat_k, dch_k !< Ice concentration, volume, volume change in category k
-  real :: cnew                !< Updated partial area in the thickest category 
+  real :: cnew                !< Updated partial area in the thickest category
   real :: rmm                 !< Dummy variable
-  real :: htot_min            !< The minimum ice volume [m3*m-2]  required 
+  real :: htot_min            !< The minimum ice volume [m3*m-2]  required
                               !! to distribute over the ice cats (1,icat0)
   real :: part_water          !< Partial area of open water
   character(len=40)  :: mdl = "distribute_ice2cats"  ! This module's name`
   character(len=256) :: mesg
-  logical :: scaled_hice         !< Flag indicating if the variable has been scaled
+  logical :: scaled_hice         !< Flag indicating if the target variable has been scaled
   logical :: err_hice, err_cice  !< Checks for conserved total ice thkn and conc
 
   scaled_hice = .false.
@@ -597,23 +606,22 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       case('mH_ice')
         hice2d = CS%Ref_orig(m)%fld
         if (scaled_hice .and. abs(1.-scale_cf) > 1.e-10) &
-            hice2d = CS%Ref_orig(m)%fld*Iscale     !< unscale input hice to original units (m) to find ice cat
+            hice2d = CS%Ref_orig(m)%fld*Iscale  !< unscale input hice to original units (m) to find ice cat
       case('part_size')
-        cice2d = CS%Ref_orig(m)%fld                !< partial area (conc) is not scaled
+        cice2d = CS%Ref_orig(m)%fld             !< partial area (conc) is not scaled
     end select
   enddo
 
   do col=1,CS%num_col
     i = CS%col_i(col) ; j = CS%col_j(col)
-    hice = hice2d(i,j)      !< in input units [m3*m-2], note this is "volume/m2", i.e. (ice thkn)*(ice conc)
-    cice = cice2d(i,j)      !< total partial area (conc)
-    if (hice < 1.e-10 .or. cice < 1e-10) then
+    hice = hice2d(i,j)    !< in input units [m3*m-2], also equivallent to cell-mean ice thickness
+    cice = cice2d(i,j)    !< total partial area (conc)
+    if (hice < 1.e-10 .or. cice < 1.e-10) then
       hice = 0.0 ; cice = 0.0
       do m=1,CS%fldno ; do k=1,CatIce
         select case (trim(CS%var(m)%fld_name))
           case('mH_ice')
-            CS%Ref_val(m)%p(col,k) = IG%mH_cat_bound(k+1) !< The lower mass/unit area limits 
-                                                          !! for ice cat [R Z ~> kg m-2].
+            CS%Ref_val(m)%p(col,k) = 0.0
           case('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
             if (k == 1) CS%Ref_val(m)%p(col,0) = 1.0     !< open water partial area
@@ -623,7 +631,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     endif
 
     ck_min = 1.e-2    !< conc in the lower cats, some small value but >> eps0
-    icat0 = 1.e6
+    icat0 = 1000
     hice_k = hice/cice   ! ice thickness in category k from ice volume (m3/m2)
     icat0 = find_icat(hice_k, hLim_vals)
 
@@ -635,7 +643,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       call SIS_mesg(mesg, all_print=.true.)
       write(mesg,'(A," error: icat0 ",i2," hice=",f12.4," cice=",f12.4," hice_k=",f12.6)') &
             trim(mdl), hice, cice, hice_k
-      call SIS_error(FATAL, trim(mesg)) 
+      call SIS_error(FATAL, trim(mesg))
     endif
 
     ! Adjust min conc in cats for low partial areas
@@ -648,7 +656,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       do m=1,CS%fldno ; do k=1,CatIce
         select case (trim(CS%var(m)%fld_name))
           case('mH_ice')
-            CS%Ref_val(m)%p(col,k) = 0.0 
+            CS%Ref_val(m)%p(col,k) = 0.0
           case('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
             if (k == 1) CS%Ref_val(m)%p(col,0) = 1.0  ! open water fraction size
@@ -657,13 +665,15 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       cycle   ! not enough ice, skip the following lines
     endif
 
-    ! distribute ice thicknesses and conc by cats
+    ! Distribute ice thicknesses and conc by cats
+    ! initial step: place all ice in icat0
     hcat = 0.0 ; ccat = 0.0 ; volcat = 0.0
     hcat(icat0) = hice_k ; ccat(icat0) = cice ; volcat(icat0) = hice
     iiG = isdG + (i-1) ; jjG = jsdG + (j-1)
 
-    ! Sanity check that the initial distribution preserves ice volume and concentration
-    call check_hcice(hcat, ccat, hice, cice, iiG, jjG, str='Before ice distr. ')
+    ! Sanity check: Ensure that the initial sea ice distribution conserves
+    ! total ice volume and concentration.
+    call check_hcice(hcat, ccat, hice, cice, iiG, jjG, str=' Initial ice distr. :')
 
     do k=1,icat0-1
       ccat_k = ck_min
@@ -673,8 +683,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       ccat(k) = ccat_k
       hcat(k) = hcat_k
       volcat(k) = dch_k
-
-      ! Update thickest cat with initial ice:
+      ! Update initial ice conc & vol in the thickest cat:
       cnew = ccat(icat0)-ccat(k)
       cnew = max(cnew, ck_min)
       ccat(icat0) = cnew
@@ -693,7 +702,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     enddo ; enddo
 
     ! Partial area of open water:
-    do m=1,CS%fldno 
+    do m=1,CS%fldno
       select case (trim(CS%var(m)%fld_name))
         case('part_size')
           part_water = 1.0 - sum(CS%Ref_val(m)%p(col,1:CatIce))
@@ -701,20 +710,26 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
           part_water = min(1.0, part_water)
           CS%Ref_val(m)%p(col,0) = part_water
       end select
-    enddo 
+    enddo
 
     ! Check that the mean ice thickn and total conc. are conserved:
     hcat = 0.0 ; ccat = 0.0
-    do m=1,CS%fldno
+    do m=1,CS%fldno ; do k=1,CatIce
       select case (trim(CS%var(m)%fld_name))
         case('mH_ice')
-          hcat(1:CatIce) = CS%Ref_val(m)%p(col,1:CatIce)*Iscale
+          if (abs(1.-CS%Ref_val(m)%scale) > 1.e-10 .and. &
+              CS%Ref_val(m)%scale > 0.) then
+            Iscale = 1./CS%Ref_val(m)%scale
+            hcat(k) = CS%Ref_val(m)%p(col,k)*Iscale
+          else
+            hcat(k) = CS%Ref_val(m)%p(col,k)
+          endif
         case('part_size')
-          ccat(1:CatIce) = CS%Ref_val(m)%p(col,1:CatIce)
+          ccat(k) = CS%Ref_val(m)%p(col,k)
       end select
-    enddo
-    
-    call check_hcice(hcat, ccat, hice, cice, iiG, jjG, str='After ice distr. ')
+    enddo ; enddo
+
+    call check_hcice(hcat, ccat, hice, cice, iiG, jjG, str=' After ice distr. :')
 
   enddo   !< do col
 
@@ -750,25 +765,25 @@ subroutine check_hcice(hcat, ccat, hice, cice, iG, jG, str)
   call partial_area_total(ccat(1:CatIce), cice_tot)
   call ice_thkn_total(ccat(1:CatIce), hcat, hice_tot)
 
-  if (abs(hice_tot-hice) > eps_err) err_hice=.true. 
+  if (abs(hice_tot-hice) > eps_err) err_hice=.true.
   if (abs(cice_tot-cice) > eps_err) err_cice=.true.
 
   ! Provide Error information
   msg_info = "check_hcice "
   if (present(str)) msg_info = trim(msg_info)//str
   if (err_hice) then
-    write(mesg,'(A," iG, jG=",2(i4,1x)," hice not conserved: ",f12.6," hice=",f12.6)') &
-          trim(msg_info), iG, jG, hice_tot, hice
+    write(mesg,'(A," iG, jG: ",2(i0,1x)," hice not conserved: ",f12.6," hice=",f12.6," cice=",f12.6)') &
+          trim(msg_info), iG, jG, hice_tot, hice, cice
     call SIS_error(WARNING, trim(mesg))
   elseif (err_cice) then
-    write(mesg,'(A," iG, jG=",2(i4,1x)," cice not conserved: ",f12.6," cice=",f12.6)') &
-          trim(msg_info), iG, jG, cice_tot, cice
+    write(mesg,'(A," iG, jG: ",2(i0,1x)," cice not conserved: ",f12.6," cice=",f12.6," hice=",f12.6)') &
+          trim(msg_info), iG, jG, cice_tot, cice, hice
     call SIS_error(WARNING, trim(mesg))
   endif
 
 end subroutine check_hcice
 
-!> Find ice thickness category for given ice thickness (m) 
+!> Find ice thickness category for given ice thickness (m)
 function find_icat(hice_k, hLim_vals) result (icat0)
   integer          :: icat0         !< The ice thkn category where hice_k belongs
   real, intent(in) :: hLim_vals(:)  !< ice thkn cats, not scaled [m]
@@ -795,7 +810,8 @@ function find_icat(hice_k, hLim_vals) result (icat0)
 
 end function find_icat
 
-!> The subroutine computes aggregated partial area given a 1D array of cice(1:CatIce) partial areas by cats.
+!> The subroutine computes aggregated partial area
+!! given a 1D array of cice(1:CatIce) partial areas by cats.
 subroutine partial_area_total(cice_cat, cice_tot)
   real, intent(in)    :: cice_cat(:)   !< 1D array of partial areas by cats.
   real, intent(inout) :: cice_tot      !< Aggregated ice partial area of the grid cell
@@ -810,7 +826,7 @@ subroutine partial_area_total(cice_cat, cice_tot)
 
 end subroutine partial_area_total
 
-!> The subroutine computes the total ice volume per unit area [m3*m-2], 
+!> The subroutine computes the aggregated ice volume per unit area [m3*m-2],
 !! which is also equal to the grid cell mean ice thickness,
 !! for 1D arrays of thiknesses and partial area by cats.
 subroutine ice_thkn_total(cice_cat, hice_cat, hice_tot)
@@ -835,5 +851,5 @@ subroutine SIS_sponge_end(CS)
   deallocate(CS)
 end subroutine SIS_sponge_end
 
-end module SIS_sponge 
+end module SIS_sponge
 
