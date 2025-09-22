@@ -115,7 +115,9 @@ type ice_data_type !  ice_public_type
     calving_hflx => NULL(), & !< The heat flux associated with calving, based on
                               !! the temperature difference relative to a
                               !! reference temperature, in ???.
-    flux_salt  => NULL()  !< The flux of salt out of the ocean [kg m-2 s-1].
+    flux_salt => NULL(), &    !< The flux of salt out of the ocean [kg m-2 s-1].
+    salt_left_behind => NULL() !< The flux of salt staying in the ocean during
+                               !! ice growth [kg m-2 s-1].
 
   real, pointer, dimension(:,:) :: &
     area => NULL() , &    !< The area of ocean cells [m2].  Land cells have
@@ -208,6 +210,10 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
   call safe_alloc_ptr(Ice%SST_C, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%area, isc, iec, jsc, jec)
   call safe_alloc_ptr(Ice%mi, isc, iec, jsc, jec)  !NR
+
+  if (Ice%sCS%do_brine_plume) then
+    call safe_alloc_ptr(Ice%salt_left_behind, isc, iec, jsc, jec)
+  endif
 
   if (Ice%sCS%pass_stress_mag) then
     call safe_alloc_ptr(Ice%stress_mag, isc, iec, jsc, jec)
