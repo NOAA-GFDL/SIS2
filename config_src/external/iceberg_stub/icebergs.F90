@@ -3,8 +3,9 @@ module ice_bergs
 
 ! This file is part of NOAA-GFDL/icebergs. See LICENSE.md for the license.
 
-use time_manager_mod, only: time_type
-use ice_bergs_framework, only: icebergs
+use time_manager_mod, only : time_type
+use ice_bergs_framework, only : icebergs
+use MOM_error_handler,  only : MOM_error, FATAL
 
 implicit none ; private
 
@@ -51,6 +52,9 @@ subroutine icebergs_init(bergs, &
   logical, intent(in), optional :: maskmap(:,:) !< Masks out parallel cores
   logical, intent(in), optional :: fractional_area !< If true, ice_area contains cell area as fraction of entire spherical surface
 
+  call MOM_error(FATAL, "The stub version of icebergs_init() should never be called.  Disable icebergs or "//&
+                 "check your build script to make sure the correct version of icebergs.F90 is being used.")
+
 end subroutine icebergs_init
 
 !> The main driver the steps updates icebergs
@@ -77,6 +81,9 @@ subroutine icebergs_run(bergs, time, calving, uo, vo, ui, vi, tauxa, tauya, ssh,
   real, dimension(:,:), optional, pointer :: mass_berg !< Mass of bergs (kg)
   real, dimension(:,:), optional, pointer :: ustar_berg !< Friction velocity on base of bergs (m/s)
   real, dimension(:,:), optional, pointer :: area_berg !< Area of bergs (m2)
+
+  call MOM_error(FATAL, "The stub version of icebergs_run() should never be called.  Disable icebergs or "//&
+                 "check your build script to make sure the correct version of icebergs.F90 is being used.")
 
 end subroutine icebergs_run
 
