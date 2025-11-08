@@ -2210,11 +2210,11 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
     CS%cols_written = CS%cols_written + 1
 
   ! Open up the file for output if this is the first call.
-    if (CS%u_file < 0) then
+    if (CS%u_file == -1) then
       if (len_trim(CS%u_trunc_file) < 1) return
       call open_ASCII_file(CS%u_file, trim(CS%u_trunc_file), &
           action=APPEND_FILE)
-      if (CS%u_file < 0) then
+      if (CS%u_file == -1) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%u_trunc_file)//'.')
         return
       endif
@@ -2286,11 +2286,11 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
     CS%cols_written = CS%cols_written + 1
 
   ! Open up the file for output if this is the first call.
-    if (CS%v_file < 0) then
+    if (CS%v_file == -1) then
       if (len_trim(CS%v_trunc_file) < 1) return
       call open_ASCII_file(CS%v_file, trim(CS%v_trunc_file), &
           action=APPEND_FILE)
-      if (CS%v_file < 0) then
+      if (CS%v_file == -1) then
         call SIS_error(NOTE, 'Unable to open file '//trim(CS%v_trunc_file)//'.')
         return
       endif
