@@ -143,7 +143,7 @@ type slow_thermo_CS ; private
   integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
   integer :: id_lsrc_i=-1, id_lsnk_i=-1, id_bsnk_i=-1
   integer :: id_lsrc_s=-1, id_lsnk_s=-1, id_bsnk_s=-1
-  integer :: id_lsrc_a=-1, id_lsnk_a=-1
+  integer :: id_lsrc_c=-1, id_lsnk_c=-1
   !!@}
 end type slow_thermo_CS
 
