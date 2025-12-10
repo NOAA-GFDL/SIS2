@@ -263,7 +263,8 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
 !  real :: enth_snow2ocn !< Mass-averaged enthalpy of the now dumped into ocean during ridging [Q ~> J kg-1]
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging [T-1 ~> s-1]
-!    rdg_vosh    ! rate of ice mass shiftedse from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
+!    rdg_vosh    ! rate of ice mass shifted from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
+  real :: yr_dt  ! The number of seconds in a year divided by the timestep [s yr-1 T-1 ~> yr-1]
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv   ! The convergence of frozen water transport of ice and snow [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_i ! The convergence of frozen water transport of ice [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_s ! The convergence of frozen water transport of snow [R Z ~> kg m-2].
@@ -388,9 +389,10 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
   ! Calculate and send transport-related diagnostics.
   Idt = 0.0 ; if (CAS%dt_sum > 0.0) Idt = 1.0 / CAS%dt_sum
   if (CS%id_xprt>0) then
+    yr_dt = (8.64e4 * 365.0) * Idt
     call get_cell_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
-      trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * Idt
+      trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * yr_dt
     enddo ; enddo
     call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
   endif
@@ -1355,14 +1357,16 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                cmor_standard_name='sea_ice_y_transport', &
                cmor_long_name='Y-Component of Sea-Ice Mass Transport')
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
-               'frozen water transport convergence', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               'frozen water transport convergence', units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_xprt_i = register_diag_field('ice_model', 'XPRTi', diag%axesT1, Time, &
-               'frozen water transport convergence (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water transport convergence (of ice)', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                cmor_field_name='sidmassdyn', &
                cmor_standard_name='tendency_of_sea_ice_amount_due_to_dynamics', &
                cmor_long_name='Sea-Ice Mass Change from Dynamics')
   CS%id_xprt_s = register_diag_field('ice_model', 'XPRTs', diag%axesT1, Time, &
-               'frozen water transport convergence (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water transport convergence (of snow)', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                cmor_field_name='sisndmassdyn', &
                cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics', &
                cmor_long_name='Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics')

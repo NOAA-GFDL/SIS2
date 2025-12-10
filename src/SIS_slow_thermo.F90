@@ -674,6 +674,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
+  real :: yr_dtslow   ! The number of seconds in a year divided by the timestep [s yr-1 T-1 ~> yr-1],
+                      ! used to change the units of several diagnostics to rates in yr-1.
   real :: heat_to_ocn    ! The heat passed from the ice to the ocean [Q R Z ~> J m-2]
   real :: water_to_ocn   ! The water passed to the ocean [R Z ~> kg m-2]
   real :: salt_to_ocn    ! The salt passed to the ocean [R Z S ~> gSalt m-2]
@@ -1083,8 +1085,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt*Idt_slow ! bot. melt. ice and snow ablation
       bsnk_i(i,j) = bsnk_i(i,j) - IST%part_size(i,j,k)*bablt_i*Idt_slow ! bot. melt. ice ablation
       bsnk_s(i,j) = bsnk_s(i,j) - IST%part_size(i,j,k)*bablt_s*Idt_slow ! bot. melt. snow ablation
-      simass_evap(i,j) = simass_evap(i,j) + IST%part_size(i,j,k)*evap_i*Idt_slow
-      sisnmass_evap(i,j) = sisnmass_evap(i,j) + IST%part_size(i,j,k)*evap_s*Idt_slow
+      simass_evap(i,j) = simass_evap(i,j) - IST%part_size(i,j,k)*evap_i*Idt_slow
+      sisnmass_evap(i,j) = sisnmass_evap(i,j) - IST%part_size(i,j,k)*evap_s*Idt_slow
 
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
@@ -1415,10 +1417,11 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! output that has been requested.
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
 
+  yr_dtslow = (864e2*365*Idt_slow)
   if (CS%id_lsnk>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = min(h2o_change(i,j),0.0) * Idt_slow
+      tmp2d(i,j) = min(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(CS%id_lsnk, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1439,7 +1442,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (CS%id_lsrc>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
-      tmp2d(i,j) = max(h2o_change(i,j),0.0) * Idt_slow
+      tmp2d(i,j) = max(h2o_change(i,j),0.0) * yr_dtslow
     enddo ; enddo
     call post_data(CS%id_lsrc, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1676,13 +1679,14 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   endif
 
   CS%id_lsrc = register_diag_field('ice_model','LSRC', diag%axesT1, Time, &
-               'frozen water local source', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               'frozen water local source', &
+               units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_lsnk = register_diag_field('ice_model','LSNK',diag%axesT1, Time, &
                'frozen water local sink', &
-               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_bsnk = register_diag_field('ice_model','BSNK',diag%axesT1, Time, &
                'frozen water local bottom sink', &
-               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               units='kg m-2 yr-1', conversion=864e2*365.*US%RZ_T_to_kg_m2s)
   CS%id_lsrc_i = register_diag_field('ice_model','LSRCi', diag%axesT1, Time, &
                'frozen water local source (of ice)', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
