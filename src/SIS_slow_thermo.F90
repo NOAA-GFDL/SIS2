@@ -620,7 +620,9 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     bsnk, &               ! The bottom melting mass sink of ice and snow [R Z T-1 ~> kg m-2 s-1]
     bsnk_i, &             ! The bottom melting mass sink of ice [R Z T-1 ~> kg m-2 s-1]
     bsnk_s, &             ! The bottom melting mass sink of snow [R Z T-1 ~> kg m-2 s-1]
-    tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 yr-1]
+    simass_evap, &        ! The mass of ice evaporated from the surface [R Z T-1 ~> kg m-2 s-1]
+    sisnmass_evap, &      ! The mass of snow evaporated from the surface [R Z T-1 ~> kg m-2 s-1] 
+    tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 s-1]
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
     cool_nudge, &         ! A heat flux out of the sea ice that
@@ -682,6 +684,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: snow_loss      ! The loss of snow mass from transmutation [R Z ~> kg m-2]
   real :: h2o_ice_to_ocn ! The downward water flux from the ice to the ocean [R Z ~> kg m-2]
   real :: h2o_ocn_to_ice ! The upward water flux from the ocean to the ice [R Z ~> kg m-2]
+  real :: evap_i         ! The loss of ice due to evaporation [R Z ~> kg m-2]
+  real :: evap_s         ! The loss of snow due to evaporation [R Z ~> kg m-2]
   real :: evap_from_ocn  ! The evaporation from the ocean [R Z ~> kg m-2]
   real :: bablt       ! The bottom ablation ice and snow loss [R Z ~> kg m-2]
   real :: bablt_i     ! The bottom ablation ice loss [R Z ~> kg m-2]
@@ -873,6 +877,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   bsnk(:,:) = 0.0
   bsnk_i(:,:) = 0.0
   bsnk_s(:,:) = 0.0
+  simass_evap(:,:) = 0.0
+  sisnmass_evap(:,:) = 0.0
   salt_change(:,:) = 0.0
   h2o_change(:,:) = 0.0
   h2o_change_i(:,:) = 0.0
@@ -982,7 +988,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                    FIA%tmelt(i,j,k), FIA%bmelt(i,j,k), NkIce, npassive, TrLay, &
                    heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                    snow_to_ice(i,j,k), salt_to_ice, IST%ITV, US, CS%ice_thm_CSp, bablt, &
-                   bablt_i, bablt_s, enth_evap, enth_ice_to_ocn, enth_ocn_to_ice)
+                   bablt_i, bablt_s, enth_evap, enth_ice_to_ocn, enth_ocn_to_ice, evap_i, evap_s)
 
       IST%mH_snow(i,j,k) = m_lay(0)
       call rebalance_ice_layers(m_lay, mtot_ice, Enthalpy, Salin, NkIce, npassive, TrLay)
@@ -1077,6 +1083,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       bsnk(i,j) = bsnk(i,j) - IST%part_size(i,j,k)*bablt*Idt_slow ! bot. melt. ice and snow ablation
       bsnk_i(i,j) = bsnk_i(i,j) - IST%part_size(i,j,k)*bablt_i*Idt_slow ! bot. melt. ice ablation
       bsnk_s(i,j) = bsnk_s(i,j) - IST%part_size(i,j,k)*bablt_s*Idt_slow ! bot. melt. snow ablation
+      simass_evap(i,j) = simass_evap(i,j) + IST%part_size(i,j,k)*evap_i*Idt_slow
+      sisnmass_evap(i,j) = sisnmass_evap(i,j) + IST%part_size(i,j,k)*evap_s*Idt_slow
 
     endif ! Applying surface fluxes to each category.
   enddo ; enddo ; enddo
@@ -1464,6 +1472,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (CS%id_qfres>0) call post_data(CS%id_qfres, qflx_res_ice, CS%diag)
   if (CS%id_net_melt>0) call post_data(CS%id_net_melt, net_melt, CS%diag)
   if (CS%id_CMOR_melt>0) call post_data(CS%id_CMOR_melt, net_melt, CS%diag)
+  if (FIA%id_evap_i>0) call post_data(FIA%id_evap_i, simass_evap, CS%diag)
+  if (FIA%id_evap_s>0) call post_data(FIA%id_evap_s, sisnmass_evap, CS%diag)
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_send_data(IOF%tr_flux_ocn_top, CS%Time)

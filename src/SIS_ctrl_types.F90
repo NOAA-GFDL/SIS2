@@ -241,6 +241,10 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'frozen runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'sidmassevapsubl',diag%axesT1, Time, &
+               'evaporation and sublimation of ice', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'sisndmasssubl',diag%axesT1, Time, &
+               'evaporation and sublimation of snow', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
                'ice to ocean salt flux', units='kg m-2 s-1', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, &
                cmor_field_name='siflsaltbot', &
