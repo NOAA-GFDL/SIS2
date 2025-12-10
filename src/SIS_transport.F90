@@ -1363,7 +1363,7 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                'frozen water transport convergence (of snow)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
                missing_value=missing)
   CS%id_xprt_c = register_diag_field('ice_model', 'XPRTc', diag%axesT1, Time, &
-               'frozen water area transport convergence', 'm^2/s', conversion=US%RZ_to_kg_m2, &
+               'frozen water area transport convergence', 's-1', conversion=US%RZ_to_kg_m2, &
                missing_value=missing)
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', '1/sec', conversion=US%s_to_T, missing_value=missing)
