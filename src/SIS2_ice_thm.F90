@@ -1123,7 +1123,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   if (evap < 0.0) then
     m_lay(0) = m_lay(0) - evap ! Treat frost formation like snow.
     enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
-    evap_s = evap_s - evap
+    evap_s = evap_s + evap
   endif
 
   if (top_melt < 0.0 .and. CS%do_pond) then ! mw/new: add fresh/0C ice to top layer

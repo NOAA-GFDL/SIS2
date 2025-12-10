@@ -1358,13 +1358,19 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                missing_value=missing)
   CS%id_xprt_i = register_diag_field('ice_model', 'XPRTi', diag%axesT1, Time, &
                'frozen water transport convergence (of ice)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing)
+               missing_value=missing, cmor_field_name='sidmassdyn', &
+               cmor_standard_name='tendency_of_sea_ice_amount_due_to_dynamics', &
+               cmor_long_name='Sea-Ice Mass Change from Dynamics')
   CS%id_xprt_s = register_diag_field('ice_model', 'XPRTs', diag%axesT1, Time, &
                'frozen water transport convergence (of snow)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing)
+               missing_value=missing, cmor_field_name='sisndmassdyn', &
+               cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics', &
+               cmor_long_name='Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics')
   CS%id_xprt_c = register_diag_field('ice_model', 'XPRTc', diag%axesT1, Time, &
                'frozen water area transport convergence', 's-1', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing)
+               missing_value=missing, cmor_field_name='sidconcdyn', &
+               cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics', &
+               cmor_long_name='Sea-Ice Area Fraction Tendency Due to Dynamics')
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', '1/sec', conversion=US%s_to_T, missing_value=missing)
   CS%id_rdgh = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
