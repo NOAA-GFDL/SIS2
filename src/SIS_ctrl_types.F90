@@ -241,10 +241,16 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'frozen runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
-  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'sidmassevapsubl',diag%axesT1, Time, &
-               'evaporation and sublimation of ice', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
-  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'sisndmasssubl',diag%axesT1, Time, &
-               'evaporation and sublimation of snow', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'EVAPi',diag%axesT1, Time, &
+               'evaporation and sublimation of ice', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sidmassevapsubl', &
+               cmor_standard_name='water_evapotranspiration_flux', &
+               cmor_long_name='Sea-Ice Mass Change Through Evaporation and Sublimation')
+  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'EVAPs',diag%axesT1, Time, &
+               'evaporation and sublimation of snow', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sisndmasssubl', &
+               cmor_standard_name='tendency_of_atmosphere_mass_content_of_water_vapor_due_to_sublimation_of_surface_snow_and_ice', &
+               cmor_long_name='Snow Mass Rate of Change Through Evaporation or Sublimation')
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
                'ice to ocean salt flux', units='kg m-2 s-1', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, &
                cmor_field_name='siflsaltbot', &

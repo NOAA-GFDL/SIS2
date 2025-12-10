@@ -395,7 +395,6 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
     call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
   endif
   if (CS%id_xprt_i>0) then
-    sec_dt = US%s_to_T * Idt
     call get_ice_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mI0(i,j)) * Idt
@@ -403,7 +402,6 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
     call post_SIS_data(CS%id_xprt_i, trans_conv, CS%diag)
   endif
   if (CS%id_xprt_s>0) then
-    sec_dt = US%s_to_T * Idt
     call get_snow_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mS0(i,j)) * Idt
@@ -1359,11 +1357,20 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
                'frozen water transport convergence', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_xprt_i = register_diag_field('ice_model', 'XPRTi', diag%axesT1, Time, &
-               'frozen water transport convergence (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               'frozen water transport convergence (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sidmassdyn', &
+               cmor_standard_name='tendency_of_sea_ice_amount_due_to_dynamics', &
+               cmor_long_name='Sea-Ice Mass Change from Dynamics')
   CS%id_xprt_s = register_diag_field('ice_model', 'XPRTs', diag%axesT1, Time, &
-               'frozen water transport convergence (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+               'frozen water transport convergence (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sisndmassdyn', &
+               cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics', &
+               cmor_long_name='Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics')
   CS%id_xprt_c = register_diag_field('ice_model', 'XPRTc', diag%axesT1, Time, &
-               'frozen water fractional area transport convergence', units='s-1', conversion=US%s_to_T)
+               'frozen water fractional area transport convergence', units='s-1', conversion=US%s_to_T, &
+               cmor_field_name='sidconcdyn', &
+               cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics', &
+               cmor_long_name='Sea-Ice Area Fraction Tendency Due to Dynamics')
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', units='s-1', conversion=US%s_to_T)
   CS%id_rdgh = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
