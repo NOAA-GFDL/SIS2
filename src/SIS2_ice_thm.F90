@@ -1009,7 +1009,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                            snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, US, CS, ablation, &
-                           enthalpy_evap, enthalpy_melt, enthalpy_freeze)
+                           ablation_i, ablation_s, enthalpy_evap, enthalpy_melt, enthalpy_freeze)
   ! mw/new - melt pond - added first two arguments & rain
   real, intent(in   ) :: a_ice       !< area of ice (1-open_water_frac) for pond retention [nondim]
   real, intent(inout) :: m_pond      !< melt pond mass [R Z ~> kg m-2]
@@ -1040,7 +1040,9 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
 
-  real, intent(  out) :: ablation      !< The mass loss from bottom melt [R Z ~> kg m-2].
+  real, intent(  out) :: ablation      !< The mass loss from bottom melt of ice and snow [R Z ~> kg m-2].
+  real, intent(  out) :: ablation_i    !< The mass loss from bottom melt of ice [R Z ~> kg m-2].
+  real, intent(  out) :: ablation_s    !< The mass loss from bottom melt of snow [R Z ~> kg m-2].
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
                                        !! by evaporation / sublimation. [Q R Z ~> J m-2]
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
@@ -1229,6 +1231,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   ! apply bottom melt heat flux
 
   melt_left = bot_melt ; ablation = 0.0
+  ablation_i = 0.0 ; ablation_s = 0.0
   if (melt_left > 0.0) then ! melt ice and snow from below
     do k=NkIce,0,-1
       if (melt_left < m_lay(k) * (enth_fr(k) - Enthalpy(k))) then
@@ -1243,7 +1246,11 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
       ablation = ablation + M_melt
-
+      if (k > 0) then
+        ablation_i = ablation_i + M_melt
+      else
+        ablation_s = ablation_s + M_melt
+      endif
       if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
 
