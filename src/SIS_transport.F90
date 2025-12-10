@@ -265,6 +265,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
 !    rdg_open, & ! formation rate of open water due to ridging [T-1 ~> s-1]
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
   real :: sec_dt           ! Tne number of timesteps in a second [nondim].
+  real :: yr_dt           ! Tne number of timesteps in a year [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv   ! The convergence of frozen water transport of ice and snow [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_i ! The convergence of frozen water transport of ice [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_s ! The convergence of frozen water transport of snow [R Z ~> kg m-2].
@@ -389,10 +390,10 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
   ! Calculate and send transport-related diagnostics.
   Idt = 0.0 ; if (CAS%dt_sum > 0.0) Idt = 1.0 / CAS%dt_sum
   if (CS%id_xprt>0) then
-    sec_dt = US%s_to_T * Idt
+    yr_dt = (8.64e4 * 365.0) * US%s_to_T * Idt
     call get_cell_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
-      trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * sec_dt
+      trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * yr_dt
     enddo ; enddo
     call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
   endif
@@ -1354,7 +1355,7 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                'y-direction ice transport', 'kg/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                missing_value=missing, interp_method='none')
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
-               'frozen water transport convergence', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
+               'frozen water transport convergence', 'kg/(m^2*yr)', conversion=US%RZ_to_kg_m2, &
                missing_value=missing)
   CS%id_xprt_i = register_diag_field('ice_model', 'XPRTi', diag%axesT1, Time, &
                'frozen water transport convergence (of ice)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
