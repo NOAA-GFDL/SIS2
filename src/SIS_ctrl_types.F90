@@ -238,16 +238,17 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'frozen runoff sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
                'evaporation', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'EVAPi',diag%axesT1, Time, &
-               'evaporation and sublimation of ice (negative corresponds to ice loss)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s,
-                missing_value=missing, cmor_field_name='sidmassevapsubl', &
-               cmor_standard_name='water_evapotranspiration_flux', &
-               cmor_long_name='Sea-Ice Mass Change Through Evaporation and Sublimation')
-  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'EVAPs',diag%axesT1, Time, &
-               'evaporation and sublimation of snow (negative corresponds to snow loss)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
-               missing_value=missing, cmor_field_name='sisndmasssubl', &
-               cmor_standard_name='tendency_of_atmosphere_mass_content_of_water_vapor_due_to_sublimation_of_surface_snow_and_ice', &
-               cmor_long_name='Snow Mass Rate of Change Through Evaporation or Sublimation')
+  
+  !CMOR evaporation diagnostics
+  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'sidmassevapsubl',diag%axesT1, Time, &
+               'Sea-Ice Mass Change Through Evaporation and Sublimation', 'kg/(m^2*s)', &
+               conversion=US%RZ_T_to_kg_m2s, missing_value=missing, &
+               cmor_standard_name='water_evapotranspiration_flux')
+  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'sisndmasssubl',diag%axesT1, Time, &
+               'Snow Mass Rate of Change Through Evaporation or Sublimation', 'kg/(m^2*s)', &
+               conversion=US%RZ_T_to_kg_m2s, missing_value=missing, &
+               cmor_standard_name='tendency_of_atmosphere_mass_content_of_water_vapor_due_to_sublimation_of_surface_snow_and_ice')
+              
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
                'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, missing_value=missing)
   FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT', diag%axesT1, Time, &
@@ -347,11 +348,12 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
   OSS%id_frazil   = register_SIS_diag_field('ice_model', 'FRAZIL', diag%axesT1, Time, &
                'energy flux of frazil formation', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
-  OSS%id_frazilmass   = register_SIS_diag_field('ice_model', 'FRAZILMASS', diag%axesT1, Time, &
-               'mass flux of frazil formation', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, & 
-               missing_value=missing, cmor_field_name='sidmassgrowthwat', &
-               cmor_standard_name='tendency_of_sea_ice_amount_due_to_frazil_ice_accumulation_in_leads', &
-               cmor_long_name='Sea-Ice Mass Change Through Growth in Supercooled Open Water (Frazil)')
+  
+  !CMOR frazil diagnostic
+  OSS%id_frazilmass   = register_SIS_diag_field('ice_model', 'sidmassgrowthwat', diag%axesT1, Time, &
+               'Sea-Ice Mass Change Through Growth in Supercooled Open Water (Frazil)', 'kg m-2 s-1', & 
+               conversion=US%RZ_to_kg_m2, missing_value=missing, & 
+               cmor_standard_name='tendency_of_sea_ice_amount_due_to_frazil_ice_accumulation_in_leads')
 
   if (coupler_type_initialized(OSS%tr_fields)) &
     call coupler_type_set_diags(OSS%tr_fields, 'ice_model', diag%axesT1%handles, Time)

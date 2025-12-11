@@ -72,6 +72,7 @@ type, public :: SIS_transport_CS ; private
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
   integer :: id_xprt_i = -1, id_xprt_s = -1, id_xprt_c = -1
+  integer :: id_xprt_i_cmor = -1, id_xprt_s_cmor = -1, id_xprt_c_cmor = -1
   integer :: id_rdgh=-1
   ! integer :: id_rdgo=-1, id_rdgv=-1 ! These do not exist yet
   !!@}
@@ -397,29 +398,32 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
     enddo ; enddo
     call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
   endif
-  if (CS%id_xprt_i>0) then
+  if ((CS%id_xprt_i>0) .or. (CS%id_xprt_i_cmor>0)) then
     sec_dt = US%s_to_T * Idt
     call get_ice_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mI0(i,j)) * sec_dt
     enddo ; enddo
-    call post_SIS_data(CS%id_xprt_i, trans_conv, CS%diag)
+    if (CS%id_xprt_i>0) call post_SIS_data(CS%id_xprt_i, trans_conv, CS%diag)
+    if (CS%id_xprt_i_cmor>0) call post_SIS_data(CS%id_xprt_i_cmor, trans_conv, CS%diag)
   endif
-  if (CS%id_xprt_s>0) then
+  if ((CS%id_xprt_s>0) .or. (CS%id_xprt_s_cmor>0)) then
     sec_dt = US%s_to_T * Idt
     call get_snow_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mS0(i,j)) * sec_dt
     enddo ; enddo
-    call post_SIS_data(CS%id_xprt_s, trans_conv, CS%diag)
+    if (CS%id_xprt_s>0) call post_SIS_data(CS%id_xprt_s, trans_conv, CS%diag)
+    if (CS%id_xprt_s_cmor>0) call post_SIS_data(CS%id_xprt_s_cmor, trans_conv, CS%diag)
   endif
-  if (CS%id_xprt_c>0) then
+  if ((CS%id_xprt_c>0) .or. (CS%id_xprt_c_cmor>0)) then
     sec_dt = US%s_to_T * Idt
     call get_ice_area(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%cvr0(i,j)) * sec_dt
     enddo ; enddo
-    call post_SIS_data(CS%id_xprt_c, trans_conv, CS%diag)
+    if (CS%id_xprt_c>0) call post_SIS_data(CS%id_xprt_c, trans_conv, CS%diag)
+    if (CS%id_xprt_c_cmor>0) call post_SIS_data(CS%id_xprt_c_cmor, trans_conv, CS%diag)
   endif
   if (CS%id_ix_trans>0) then
     do j=jsc,jec ; do I=isc-1,iec ; uf(I,j) = Idt * CAS%uh_sum(I,j) ; enddo ; enddo
@@ -1359,19 +1363,25 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                missing_value=missing)
   CS%id_xprt_i = register_diag_field('ice_model', 'XPRTi', diag%axesT1, Time, &
                'frozen water transport convergence (of ice)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing, cmor_field_name='sidmassdyn', &
-               cmor_standard_name='tendency_of_sea_ice_amount_due_to_dynamics', &
-               cmor_long_name='Sea-Ice Mass Change from Dynamics')
+               missing_value=missing)
   CS%id_xprt_s = register_diag_field('ice_model', 'XPRTs', diag%axesT1, Time, &
                'frozen water transport convergence (of snow)', 'kg/(m^2*s)', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing, cmor_field_name='sisndmassdyn', &
-               cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics', &
-               cmor_long_name='Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics')
+               missing_value=missing)
   CS%id_xprt_c = register_diag_field('ice_model', 'XPRTc', diag%axesT1, Time, &
                'frozen water area transport convergence', 's-1', conversion=US%RZ_to_kg_m2, &
-               missing_value=missing, cmor_field_name='sidconcdyn', &
-               cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics', &
-               cmor_long_name='Sea-Ice Area Fraction Tendency Due to Dynamics')
+               missing_value=missing)
+
+  !CMOR diagnostics for dynamics 
+  CS%id_xprt_i_cmor = register_diag_field('ice_model', 'sidmassdyn', diag%axesT1, Time, &
+               'Sea-Ice Mass Change from Dynamics', 'kg m-2 s-1', conversion=US%RZ_to_kg_m2, &
+               missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_dynamics')
+  CS%id_xprt_s_cmor = register_diag_field('ice_model', 'sisndmassdyn', diag%axesT1, Time, &
+               'Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics', 'kg m-2 s-1', conversion=US%RZ_to_kg_m2, &
+               missing_value=missing, cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics')
+  CS%id_xprt_c_cmor = register_diag_field('ice_model', 'sidconcdyn', diag%axesT1, Time, &
+               'Sea-Ice Area Fraction Tendency Due to Dynamics', 's-1', conversion=US%RZ_to_kg_m2, &
+               missing_value=missing, cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics')
+
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', '1/sec', conversion=US%s_to_T, missing_value=missing)
   CS%id_rdgh = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
@@ -1405,11 +1415,11 @@ subroutine alloc_cell_average_state_type(CAS, HI, IG, CS)
   if (present(CS)) then
     if (CS%id_xprt>0) &
       call safe_alloc(CAS%mass0, isd, ied, jsd, jed)
-    if (CS%id_xprt_i>0) &
+    if ((CS%id_xprt_i>0) .or. (CS%id_xprt_i_cmor>0)) &
       call safe_alloc(CAS%mI0, isd, ied, jsd, jed)
-    if (CS%id_xprt_s>0) &
+    if ((CS%id_xprt_s>0) .or. (CS%id_xprt_s_cmor>0)) &
       call safe_alloc(CAS%mS0, isd, ied, jsd, jed)
-    if (CS%id_xprt_c>0) &
+    if ((CS%id_xprt_c>0) .or. (CS%id_xprt_c_cmor>0)) &
       call safe_alloc(CAS%cvr0, isd, ied, jsd, jed)
     if (CS%id_ix_trans>0) &
       call safe_alloc(CAS%uh_sum, HI%IsdB, HI%IedB, jsd, jed)
