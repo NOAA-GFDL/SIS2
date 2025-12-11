@@ -1375,6 +1375,7 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                cmor_field_name='sidconcdyn', &
                cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics', &
                cmor_long_name='Sea-Ice Area Fraction Tendency Due to Dynamics')
+
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', units='s-1', conversion=US%s_to_T)
   CS%id_rdgh = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
