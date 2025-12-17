@@ -275,7 +275,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag, IST)
 
   real :: Idt_slow  ! The inverse of the thermodynamic step [T-1 ~> s-1].
   real :: LatHtFus  ! The latent heat of fusion of ice [Q ~> J kg-1].
-  real :: ILatHtFus ! The inverse of latent heat of fusion of ice [Q ~> kg J-1].
+  real :: ILatHtFus_s ! The inverse of latent heat of fusion of ice, per second [Q-1 ~> kg J-1 s-1].
   Idt_slow = 0.0 ; if (dt_slow > 0.0) Idt_slow = 1.0/dt_slow
 
   ! Write out diagnostics of the ocean surface state, as seen by the slow sea ice.
@@ -294,8 +294,8 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag, IST)
     call post_data(OSS%id_frazil, OSS%frazil*Idt_slow, diag)
   if (OSS%id_frazilmass>0) then
     call get_SIS2_thermo_coefs(IST%ITV, Latent_fusion=LatHtFus)
-    ILatHtFus = 1.0 / LatHtFus
-    call post_data(OSS%id_frazilmass, ILatHtFus*OSS%frazil*Idt_slow, diag)
+    ILatHtFus_s = 1.0 / (LatHtFus * dt_slow)
+    call post_data(OSS%id_frazilmass, OSS%frazil*ILatHtFus_s, diag)
   endif
 
   if (coupler_type_initialized(OSS%tr_fields)) &

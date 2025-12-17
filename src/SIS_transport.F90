@@ -265,7 +265,6 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging [T-1 ~> s-1]
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
-  real :: sec_dt           ! Tne number of timesteps in a second [nondim].
   real :: yr_dt           ! Tne number of timesteps in a year [nondim].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv   ! The convergence of frozen water transport of ice and snow [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_i ! The convergence of frozen water transport of ice [R Z ~> kg m-2].
@@ -399,28 +398,25 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
     call post_SIS_data(CS%id_xprt, trans_conv, CS%diag)
   endif
   if ((CS%id_xprt_i>0) .or. (CS%id_xprt_i_cmor>0)) then
-    sec_dt = US%s_to_T * Idt
     call get_ice_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
-      trans_conv(i,j) = (trans_conv(i,j) - CAS%mI0(i,j)) * sec_dt
+      trans_conv(i,j) = (trans_conv(i,j) - CAS%mI0(i,j)) * Idt
     enddo ; enddo
     if (CS%id_xprt_i>0) call post_SIS_data(CS%id_xprt_i, trans_conv, CS%diag)
     if (CS%id_xprt_i_cmor>0) call post_SIS_data(CS%id_xprt_i_cmor, trans_conv, CS%diag)
   endif
   if ((CS%id_xprt_s>0) .or. (CS%id_xprt_s_cmor>0)) then
-    sec_dt = US%s_to_T * Idt
     call get_snow_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
-      trans_conv(i,j) = (trans_conv(i,j) - CAS%mS0(i,j)) * sec_dt
+      trans_conv(i,j) = (trans_conv(i,j) - CAS%mS0(i,j)) * Idt
     enddo ; enddo
     if (CS%id_xprt_s>0) call post_SIS_data(CS%id_xprt_s, trans_conv, CS%diag)
     if (CS%id_xprt_s_cmor>0) call post_SIS_data(CS%id_xprt_s_cmor, trans_conv, CS%diag)
   endif
   if ((CS%id_xprt_c>0) .or. (CS%id_xprt_c_cmor>0)) then
-    sec_dt = US%s_to_T * Idt
     call get_ice_area(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
-      trans_conv(i,j) = (trans_conv(i,j) - CAS%cvr0(i,j)) * sec_dt
+      trans_conv(i,j) = (trans_conv(i,j) - CAS%cvr0(i,j)) * Idt
     enddo ; enddo
     if (CS%id_xprt_c>0) call post_SIS_data(CS%id_xprt_c, trans_conv, CS%diag)
     if (CS%id_xprt_c_cmor>0) call post_SIS_data(CS%id_xprt_c_cmor, trans_conv, CS%diag)
