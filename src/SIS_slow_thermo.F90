@@ -734,7 +734,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   integer :: i, j, k, l, m, n, b, nb, isc, iec, jsc, jec, ncat, NkIce, tr, npassive
   integer :: k_merge
   real :: LatHtFus     ! The latent heat of fusion of ice [Q ~> J kg-1].
-  real :: ILatHtFus    ! The inverse latent heat of fusion of ice [Q ~> kg J-1].
+  real :: ILatHtFus    ! The inverse latent heat of fusion of ice [Q-1 ~> kg J-1].
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
 
   real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2, s2i_agg
@@ -1491,7 +1491,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       do k=0,ncat
         s2i_agg = s2i_agg + IST%part_size(i,j,k) * snow_to_ice_s(i,j,k)
       enddo    
-      tmp2d(i,j) = (min(h2o_change_s(i,j),0.0) -  sisnmass_evap(i,j) - s2i_agg)* Idt_slow
+      tmp2d(i,j) = (min(h2o_change_s(i,j),0.0)*Idt_slow -  sisnmass_evap(i,j) - s2i_agg)
     enddo ; enddo
     call post_data(CS%id_net_s, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1502,14 +1502,14 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       do k=0,ncat
         s2i_agg = s2i_agg + IST%part_size(i,j,k) * snow_to_ice_i(i,j,k)
       enddo 
-      tmp2d(i,j) = (max(h2o_change_i(i,j),0.0) -  s2i_agg - OSS%frazil(i,j)*ILatHtFus)* Idt_slow
+      tmp2d(i,j) = (max(h2o_change_i(i,j),0.0)*Idt_slow -  s2i_agg - OSS%frazil(i,j)*ILatHtFus)
     enddo ; enddo
     call post_data(CS%id_bsrc_i, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
   if (CS%id_tsnk_i>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec   
-      tmp2d(i,j) = (min(h2o_change_i(i,j),0.0) -  bsnk_i(i,j) - simass_evap(i,j))* Idt_slow
+      tmp2d(i,j) = (min(h2o_change_i(i,j),0.0)*Idt_slow -  bsnk_i(i,j) - simass_evap(i,j))
     enddo ; enddo
     call post_data(CS%id_tsnk_i, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1769,15 +1769,15 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                'frozen water area local sink', units='s-1', conversion=US%s_to_T)
 
   !CMOR diagnostics for thermodynamics             
-  CS%id_bsnk_i_cmor = register_diag_field('ice_model', 'sidmassmeltbot', diag%axesT1, Time, &
+  CS%id_bsnk_i_cmor = register_diag_field('ice_model','sidmassmeltbot',diag%axesT1, Time, &
                'Sea-Ice Mass Change Through Bottom Melting', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                cmor_standard_name='tendency_of_sea_ice_amount_due_to_basal_melting')
-  CS%id_tsnk_i = register_diag_field('ice_model', 'sidmassmelttop', diag%axesT1, Time, &
+  CS%id_tsnk_i = register_diag_field('ice_model','sidmassmelttop', diag%axesT1, Time, &
                'Sea-Ice Mass Change Through Surface Melting', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                cmor_standard_name='tendency_of_sea_ice_amount_due_to_surface_melting')
-  CS%id_bsrc_i = register_diag_field('ice_model', 'sidmassgrowthbot', diag%axesT1, Time, &
+  CS%id_bsrc_i = register_diag_field('ice_model','sidmassgrowthbot',diag%axesT1, Time, &
                'Sea-Ice Mass Change Through Basal Growth', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                cmor_standard_name='tendency_of_sea_ice_amount_due_to_congelation_ice_accumulation')
