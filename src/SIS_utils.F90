@@ -128,7 +128,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
   type(SIS_diag_ctrl),     intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                  optional, intent(in) :: G   !< The horizontal grid type
-  logical, dimension(:,:), &
+  real, dimension(:,:), &
                  optional, intent(in) :: mask !< A mask to use for the diagnostic
   real,          optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
   real,          optional, intent(in) :: offset !< An additive offset for the diagnostic
@@ -212,7 +212,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
   type(SIS_diag_ctrl),      intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                   optional, intent(in) :: G   !< The horizontal grid type
-  logical, dimension(:,:), &
+  real, dimension(:,:), &
                   optional, intent(in) :: mask !< A mask to use for the diagnostic
   real,           optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
   real,           optional, intent(in) :: offset !< An additive offset for the diagnostic
