@@ -1027,8 +1027,7 @@ integer function register_SIS_diag_field(module_name, field_name, axes_in, init_
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
   real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in SIS?)
-                                                     !! in arbitrary units [a]
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable in arbitrary units [a]
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
                                                          !! post_data calls (not used in SIS?)
   logical,          optional, intent(in) :: verbose !< If true, FMS is verbose (not used in SIS?)
@@ -1188,8 +1187,7 @@ logical function register_diag_field_expand_cmor(dm_id, module_name, field_name,
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
   real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in SIS?)
-                                                     !! in arbitrary units [a]
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable in arbitrary units [a]
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided
                                                          !! with post_data calls (not used in SIS?)
   logical,          optional, intent(in) :: verbose !< If true, FMS is verbose (not used in SIS?)
@@ -1298,8 +1296,7 @@ integer function register_diag_field_expand_axes(module_name, field_name, axes, 
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
   real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in SIS?)
-                                                     !! in arbitrary units [a]
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable in arbitrary units [a]
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided
                                                          !! with post_data calls (not used in SIS?)
   logical,          optional, intent(in) :: verbose !< If true, FMS is verbose (not used in SIS?)
@@ -1476,8 +1473,7 @@ function register_scalar_field(module_name, field_name, init_time, diag_cs, &
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
   real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in SIS?)
-                                                     !! in arbitrary units [a]
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable in arbitrary units [a]
   logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in SIS?)
   character(len=*), optional, intent(out):: err_msg !< String into which an error message might be
                                                          !! placed (not used in SIS?)
@@ -1591,8 +1587,7 @@ function register_static_field(module_name, field_name, axes, &
   character(len=*), optional, intent(in) :: standard_name !< Standardized name associated with a field
   real,             optional, intent(in) :: missing_value !< A value that indicates missing values in
                                                           !! output files, in unscaled arbitrary units [a]
-  real,             optional, intent(in) :: range(2) !< Valid range of a variable (not used in SIS?)
-                                                     !! in arbitrary units [a]
+  real,             optional, intent(in) :: range(2) !< Valid range of a variable in arbitrary units [a]
   logical,          optional, intent(in) :: mask_variant !< If true a logical mask must be provided with
                                                          !! post_data calls (not used in SIS?)
   logical,          optional, intent(in) :: do_not_log !< If true, do not log something (not used in SIS?)
