@@ -499,7 +499,7 @@ subroutine ice_state_register_restarts(IST, G, IG, US, Ice_restart)
     call register_restart_field(Ice_restart, 'part_size', IST%part_size, dim_3='cat0')
     if (allocated(IST%t_surf)) then
       call register_restart_field(Ice_restart, 't_surf_ice', IST%t_surf, &
-                                  mandatory=.false., units="deg K", conversion=US%C_to_degC)
+                                  mandatory=.false., units="Kelvin", conversion=US%C_to_degC)
     endif
     call register_restart_field(Ice_restart, 'h_pond', IST%mH_pond, &
                                 mandatory=.false., units="kg m-2", conversion=US%RZ_to_kg_m2)
@@ -516,7 +516,7 @@ subroutine ice_state_register_restarts(IST, G, IG, US, Ice_restart)
     call register_restart_field(Ice_restart, 'enth_ice', IST%enth_ice, &
                                 mandatory=.false., units="J kg-1", conversion=US%Q_to_J_kg)
     call register_restart_field(Ice_restart, 'sal_ice', IST%sal_ice, &
-                                mandatory=.false., units="g/kg", conversion=US%S_to_ppt)
+                                mandatory=.false., units="g kg-1", conversion=US%S_to_ppt)
 
     if (allocated(IST%snow_to_ocn)) then
       call register_restart_field(Ice_restart, 'snow_to_ocn', IST%snow_to_ocn, &
@@ -863,7 +863,8 @@ subroutine ice_rad_register_restarts(HI, IG, US, param_file, Rad, Ice_restart)
   call safe_alloc(Rad%coszen_lastrad, isd, ied, jsd, jed)
 
   call register_restart_field(Ice_restart, 'coszen', Rad%coszen_nextrad, mandatory=.false.)
-  call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, mandatory=.false., conversion=US%C_to_degC)
+  call register_restart_field(Ice_restart, 'T_skin', Rad%t_skin, mandatory=.false., &
+                              units="degC", conversion=US%C_to_degC)
 
 end subroutine ice_rad_register_restarts
 

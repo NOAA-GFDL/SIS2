@@ -160,11 +160,11 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
 
 
   CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,     &
-            'first stress invariant', 'none', missing_value=missing)
+            'first stress invariant', units='nondim')
   CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
-            'second stress invariant', 'none', missing_value=missing)
+            'second stress invariant', units='nondim')
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
-            'ice strength', units='Pa*m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
+            'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,    &
             'ice internal stress - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
             interp_method='none')
@@ -184,11 +184,9 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
             'water stress on ice - y component', units='Pa', conversion=-US%RLZ_T2_to_Pa, &
             interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesB1, Time,      &
-            'ice velocity - x component', 'm/s', conversion=US%L_T_to_m_s,     &
-            missing_value=missing, interp_method='none')
+            'ice velocity - x component', units='m s-1', conversion=US%L_T_to_m_s, interp_method='none')
   CS%id_vi    = register_diag_field('ice_model', 'VI', diag%axesB1, Time,      &
-            'ice velocity - y component', 'm/s', conversion=US%L_T_to_m_s,     &
-            missing_value=missing, interp_method='none')
+            'ice velocity - y component', units='m s-1', conversion=US%L_T_to_m_s, interp_method='none')
 
 end subroutine SIS_B_dyn_init
 
