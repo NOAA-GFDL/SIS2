@@ -351,13 +351,13 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   ! following iceberg diagnostics should be offered.
   if (associated(IOF%ustar_berg)) &
     IOF%id_ustar_berg  = register_SIS_diag_field('ice_model', 'USTAR_BERG', diag%axesT1, Time, &
-               'iceberg ustar', 'm/s', missing_value=missing)
+               'iceberg friction velocity', units='m s-1', conversion=1.0)
   if (associated(IOF%area_berg)) &
     IOF%id_area_berg  = register_SIS_diag_field('ice_model', 'AREA_BERG', diag%axesT1, Time, &
-               'icebergs area', 'm2/m2', missing_value=missing)
+               'icebergs area per unit ocean area', units='nondim', conversion=1.0)
   if (associated(IOF%mass_berg)) &
     IOF%id_mass_berg  = register_SIS_diag_field('ice_model', 'MASS_BERG', diag%axesT1, Time, &
-               'icebergs mass', 'kg/m2', missing_value=missing)
+               'icebergs mass per unit ocean area', units='kg m-2', conversion=1.0)
 
   ! Write out static fields.
 
@@ -398,10 +398,10 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nLay = IG%NkIce
 
-  Rad%id_swdn  = register_SIS_diag_field(trim(comp_name),'SWDN', diag%axesT1, Time, &
-             'downward shortwave flux', 'W/m^2', missing_value=missing)
-  Rad%id_lwdn  = register_SIS_diag_field(trim(comp_name),'LWDN', diag%axesT1, Time, &
-             'downward longwave flux', 'W/m^2', missing_value=missing)
+  Rad%id_swdn  = register_SIS_diag_field(trim(comp_name), 'SWDN', diag%axesT1, Time, &
+             'downward shortwave flux', units='W m-2', conversion=1.0)
+  Rad%id_lwdn  = register_SIS_diag_field(trim(comp_name), 'LWDN', diag%axesT1, Time, &
+             'downward longwave flux', units='W m-2', conversion=1.0)
 
   Rad%id_alb      = register_SIS_diag_field(trim(comp_name), 'ALB', diag%axesT1, Time, &
                'surface albedo', units="nondim", range=(/0.,1./) )

@@ -86,6 +86,10 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     temp_snow   ! A diagnostic array with the snow temperature [C ~> degC].
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac    ! fraction of ridged ice per category [nondim]
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    mass_by_cat ! Sea ice mass per unit ocean area by thickness category [R Z ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
+    thick_by_cat ! Sea ice thickness by thickness category [Z ~> m]
   real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true [S ~> gSalt kg-1]
@@ -137,8 +141,20 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
   ! Thermodynamic state diagnostics
   !
   if (IDs%id_cn>0) call post_data(IDs%id_cn, IST%part_size(:,:,1:ncat), diag)
-  if (IDs%id_siitdthick>0) call post_data(IDs%id_siitdthick, IST%mH_ice * Spec_vol_ice, diag)
-  if (IDs%id_simass_n>0) call post_data(IDs%id_simass_n, IST%mH_ice * IST%part_size(:,:,1:ncat), diag)
+  if (IDs%id_siitdthick>0) then
+    thick_by_cat(:,:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      thick_by_cat(i,j,k) = IST%mH_ice(i,j,k) * Spec_vol_ice
+    enddo ; enddo ; enddo
+    call post_data(IDs%id_siitdthick, thick_by_cat, diag)
+  endif
+  if (IDs%id_simass_n>0) then
+    mass_by_cat(:,:,:) = 0.0
+    do k=1,ncat ; do j=jsc,jec ; do i=isc,iec
+      mass_by_cat(i,j,k) = IST%mH_ice(i,j,k) * IST%part_size(i,j,k)
+    enddo ; enddo ; enddo
+    call post_data(IDs%id_simass_n, mass_by_cat, diag)
+  endif
   if ((IDs%id_siconc>0) .or. (IDs%id_siconc_CMOR>0)) then
     diagVar(:,:) = 0.0
     do j=jsc,jec ; do i=isc,iec ; do k=1,ncat
@@ -180,15 +196,15 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     call post_data(IDs%id_ext, diagVar, diag)
   endif
   if (IDs%id_hp>0) call post_avg(IDs%id_hp, IST%mH_pond, IST%part_size(:,:,1:), & ! mw/new
-                                 diag, G=G, scale=US%RZ_to_kg_m2/1e3, wtd=.true.) ! rho_water=1e3
+                                 diag, G=G, scale=1.0/(1e3*US%kg_m3_to_R), wtd=.true.) ! rho_water=1e3 [kg m-3]
   if (IDs%id_hs>0) call post_avg(IDs%id_hs, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%Z_to_m/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=1.0/Rho_snow, wtd=.true.)
   if (IDs%id_sisnthick>0) call post_avg(IDs%id_sisnthick, IST%mH_snow, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%Z_to_m/Rho_snow, wtd=.true.)
+                                 diag, G=G, scale=1.0/Rho_snow, wtd=.true.)
   if (IDs%id_hi>0) call post_avg(IDs%id_hi, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=1.0/Rho_ice, wtd=.true.)
   if (IDs%id_sithick>0) call post_avg(IDs%id_sithick, IST%mH_ice, IST%part_size(:,:,1:), &
-                                 diag, G=G, scale=US%Z_to_m/Rho_ice, wtd=.true.)
+                                 diag, G=G, scale=1.0/Rho_ice, wtd=.true.)
   if (IDs%id_tsn>0) call post_avg(IDs%id_tsn, temp_snow, IST%part_size(:,:,1:), &
                                  diag, G=G, wtd=.true.)
   if (IDs%id_sitimefrac>0) then
@@ -324,17 +340,18 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
 
   ! Ice state diagnostics.
   IDs%id_ext = register_diag_field('ice_model', 'EXT', diag%axesT1, Time, &
-               'ice modeled', '0 or 1', missing_value=missing)
+               'ice extent, indicating cells with more than 15% sea ice cover', &
+               units='nondim')
   IDs%id_cn       = register_diag_field('ice_model', 'CN', diag%axesTc, Time, &
                'ice concentration', units="nondim", range=(/0.,1./) )
   IDs%id_hp       = register_diag_field('ice_model', 'HP', diag%axesT1, Time, &
-               'pond thickness', 'm-pond', missing_value=missing) ! mw/new
+               'pond thickness', units='m', conversion=US%Z_to_m)
   IDs%id_hs       = register_diag_field('ice_model', 'HS', diag%axesT1, Time, &
-               'snow thickness', 'm-snow', missing_value=missing)
+               'snow thickness', units='m', conversion=US%Z_to_m)
   IDs%id_tsn      = register_diag_field('ice_model', 'TSN', diag%axesT1, Time, &
                'snow layer temperature', units='degC', conversion=US%C_to_degC)
   IDs%id_hi       = register_diag_field('ice_model', 'HI', diag%axesT1, Time, &
-               'ice thickness', 'm-ice', missing_value=missing)
+               'ice thickness', units='m', conversion=US%Z_to_m)
   IDs%id_sitimefrac = register_diag_field('ice_model', 'sitimefrac', diag%axesT1, Time, &
                'time fraction of ice cover', units="nondim", range=(/0.,1./) )
   IDs%id_siconc = register_diag_field('ice_model', 'siconc', diag%axesT1, Time, &
@@ -343,16 +360,16 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'Sea-Ice Area Percentage', units='%', conversion=100.0, &
                standard_name="SeaIceAreaFraction")
   IDs%id_sithick  = register_diag_field('ice_model', 'sithick', diag%axesT1, Time, &
-               'ice thickness', 'm-ice', missing_value=missing)
+               'ice thickness', units='m', conversion=US%Z_to_m)
   IDs%id_sivol  = register_diag_field('ice_model', 'sivol', diag%axesT1, Time, &
-               'ice volume', 'm-ice', missing_value=missing)
+               'ice volume', units='m', conversion=US%Z_to_m)
   IDs%id_sisnconc = register_diag_field('ice_model', 'sisnconc', diag%axesT1, Time, &
                'snow concentration', units="nondim", range=(/0.,1./) )
   IDs%id_sisnconc_CMOR = register_diag_field('ice_model', 'sisnconc_CMOR', diag%axesT1, Time, &
                'Snow Area Percentage', units='%', conversion=100.0, missing_value=missing, &
                standard_name="SurfaceSnowAreaFraction")
   IDs%id_sisnthick= register_diag_field('ice_model', 'sisnthick', diag%axesT1, Time, &
-               'snow thickness', 'm-snow', missing_value=missing)
+               'snow thickness', units='m', conversion=US%Z_to_m)
 
   IDs%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', units='degC', conversion=US%C_to_degC)
@@ -377,7 +394,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_simass_n = register_diag_field('ice_model', 'simass_n', diag%axesTc, Time, &
                'ice mass in categories', units='kg m-2', conversion=US%RZ_to_kg_m2)
   IDs%id_siitdthick = register_diag_field('ice_model', 'siitdthick', diag%axesTc, Time, &
-               'ice thickness in categories', 'm-ice', missing_value=missing)
+               'ice thickness in categories', units='m', conversion=US%Z_to_m)
   IDs%id_sisnmass = register_diag_field('ice_model', 'sisnmass', diag%axesT1, Time, &
                'snow mass', units='kg m-2', conversion=US%RZ_to_kg_m2)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &

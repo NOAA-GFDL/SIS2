@@ -257,7 +257,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
 !  real, dimension(SZI_(G),SZJ_(G)) :: &
 !    rdg_open, & ! formation rate of open water due to ridging [T-1 ~> s-1]
 !    rdg_vosh    ! rate of ice mass shifted from level to ridged ice [R Z T-1 ~> kg m-2 s-1]
-  real :: yr_dt           ! Tne number of timesteps in a year [nondim].
+  real :: yr_dt  ! The number of seconds in a year divided by the timestep [s yr-1 T-1 ~> yr-1]
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv ! The convergence of frozen water transport [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   type(EFP_type) :: tot_ice, tot_snow, enth_ice, enth_snow
@@ -379,7 +379,7 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
   ! Calculate and send transport-related diagnostics.
   Idt = 0.0 ; if (CAS%dt_sum > 0.0) Idt = 1.0 / CAS%dt_sum
   if (CS%id_xprt>0) then
-    yr_dt = (8.64e4 * 365.0) * US%s_to_T * Idt
+    yr_dt = (8.64e4 * 365.0) * Idt
     call get_cell_mass(IST, G, IG, trans_conv)
     do j=jsc,jec ; do i=isc,iec
       trans_conv(i,j) = (trans_conv(i,j) - CAS%mass0(i,j)) * yr_dt
@@ -1258,7 +1258,7 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                'y-direction ice transport', units='kg s-1', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                interp_method='none')
   CS%id_xprt = register_diag_field('ice_model', 'XPRT', diag%axesT1, Time, &
-               'frozen water transport convergence', units='kg m-2 yr-1', conversion=US%RZ_to_kg_m2)
+               'frozen water transport convergence', units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_rdgr = register_diag_field('ice_model', 'RDG_RATE', diag%axesT1, Time, &
                'ice ridging rate', units='s-1', conversion=US%s_to_T)
   CS%id_rdgh = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
@@ -1266,9 +1266,8 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
 !### THESE DIAGNOSTICS DO NOT EXIST YET.
 !  CS%id_rdgo = register_diag_field('ice_model', 'RDG_OPEN', diag%axesT1, Time, &
 !               'rate of opening due to ridging', units='s-1', conversion=US%s_to_T)
-!  CS%id_rdgv = register_diag_field('ice_model', 'RDG_VOSH', diag%axesT1, Time, &
-!               'volume shifted from level to ridged ice', 'm^3/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
-!                missing_value=missing)
+!  CS%id_rdgv = register_diag_field('ice_model', 'RDG_MISH', diag%axesT1, Time, &
+!               'Mass shifted from level to ridged ice', units='kg s-1', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2)
 
 end subroutine SIS_transport_init
 

@@ -580,7 +580,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     salt_change, &        ! The change in integrated salinity [R Z S ~> gSalt m-2]
     h2o_change, &         ! The change in water in the ice [R Z ~> kg m-2]
     bsnk, &               ! The bottom melting mass sink [R Z T-1 ~> kg m-2 s-1]
-    tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 yr-1]
+    tmp2d, &              ! A temporary array for mass balance diagnostics [R Z s T-1 yr-1 ~> kg m-2 yr-1]
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
     cool_nudge, &         ! A heat flux out of the sea ice that
@@ -632,8 +632,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
-  real :: yr_dtslow   ! The ratio of 1 year to the thermodynamic time step times some scaling
-                      ! factors, used to change the units of several diagnostics to rate yr-1.
+  real :: yr_dtslow   ! The number of seconds in a year divided by the timestep [s yr-1 T-1 ~> yr-1],
+                      ! used to change the units of several diagnostics to rates in yr-1.
   real :: heat_to_ocn    ! The heat passed from the ice to the ocean [Q R Z ~> J m-2]
   real :: water_to_ocn   ! The water passed to the ocean [R Z ~> kg m-2]
   real :: salt_to_ocn    ! The salt passed to the ocean [R Z S ~> gSalt m-2]
@@ -1357,7 +1357,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! output that has been requested.
   call enable_SIS_averaging(US%T_to_s*dt_slow, CS%Time, CS%diag)
 
-  yr_dtslow = US%RZ_T_to_kg_m2s*(864e2*365*Idt_slow)
+  yr_dtslow = (864e2*365*Idt_slow)
   if (CS%id_lsnk>0) then
     !$OMP parallel do default(shared)
     do j=jsc,jec ; do i=isc,iec
@@ -1380,7 +1380,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                                     scale=Idt_slow, wtd=.true.)
   if (FIA%id_bheat>0) call post_data(FIA%id_bheat, OSS%bheat, CS%diag)
   if (CS%id_sn2ic>0) call post_avg(CS%id_sn2ic, snow_to_ice, IST%part_size(:,:,1:), CS%diag, G=G, &
-                                    scale=US%RZ_T_to_kg_m2s*Idt_slow)
+                                    scale=Idt_slow)
   if (CS%id_qflim>0) call post_data(CS%id_qflim, qflx_lim_ice, CS%diag)
   if (CS%id_qfres>0) call post_data(CS%id_qfres, qflx_res_ice, CS%diag)
   if (CS%id_net_melt>0) call post_data(CS%id_net_melt, net_melt, CS%diag)
@@ -1587,14 +1587,17 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   endif
 
   CS%id_lsrc = register_diag_field('ice_model','LSRC', diag%axesT1, Time, &
-               'frozen water local source', 'kg/(m^2*yr)', missing_value=missing)
+               'frozen water local source', &
+               units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_lsnk = register_diag_field('ice_model','LSNK',diag%axesT1, Time, &
-               'frozen water local sink', 'kg/(m^2*yr)', missing_value=missing)
+               'frozen water local sink', &
+               units='kg m-2 yr-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_bsnk = register_diag_field('ice_model','BSNK',diag%axesT1, Time, &
                'frozen water local bottom sink', &
                units='kg m-2 yr-1', conversion=864e2*365.*US%RZ_T_to_kg_m2s)
   CS%id_sn2ic = register_diag_field('ice_model','SN2IC'  ,diag%axesT1,Time, &
-               'rate of snow to ice conversion', 'kg/(m^2*s)', missing_value=missing)
+               'rate of snow to ice conversion', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   CS%id_net_melt = register_diag_field('ice_model','net_melt' ,diag%axesT1, Time, &
                'net mass flux from ice & snow to ocean due to melting & freezing', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
