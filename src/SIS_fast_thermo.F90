@@ -657,8 +657,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
     ! different index conventions than are used internally in this component.
     do k=0,ncat ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off ; k2 = k+1
-      flux_u(i,j,k)  = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Atmos_boundary%u_flux(i2,j2,k2)
-      flux_v(i,j,k)  = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Atmos_boundary%v_flux(i2,j2,k2)
+      flux_u(i,j,k)  = US%Pa_to_RLZ_T2*Atmos_boundary%u_flux(i2,j2,k2)
+      flux_v(i,j,k)  = US%Pa_to_RLZ_T2*Atmos_boundary%v_flux(i2,j2,k2)
       flux_sh(i,j,k)  = US%W_m2_to_QRZ_T*Atmos_boundary%t_flux(i2,j2,k2)
       evap(i,j,k)  = US%kg_m2s_to_RZ_T*Atmos_boundary%q_flux(i2,j2,k2)
       flux_lw(i,j,k) = US%W_m2_to_QRZ_T*Atmos_boundary%lw_flux(i2,j2,k2)
@@ -685,8 +685,8 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   enddo
 
   if (CS%debug_fast) then
-    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(flux_u(:,:,1:), "Mid do_fast flux_u", G%HI, unscale=US%RLZ_T2_to_Pa)
+    call hchksum(flux_v(:,:,1:), "Mid do_fast flux_v", G%HI, unscale=US%RLZ_T2_to_Pa)
     call hchksum(flux_sh(:,:,1:), "Mid do_fast flux_sh", G%HI, unscale=US%QRZ_T_to_W_m2)
     call hchksum(evap(:,:,1:), "Mid do_fast evap", G%HI, unscale=US%RZ_T_to_kg_m2s)
     call hchksum(flux_lw(:,:,1:), "Mid do_fast flux_lw", G%HI, unscale=US%QRZ_T_to_W_m2)

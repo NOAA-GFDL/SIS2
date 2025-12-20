@@ -220,8 +220,8 @@ subroutine update_ice_slow_thermo(Ice)
       !$OMP parallel do default(none) shared(Ice,sG,US,i_off,j_off) private(i2,j2)
       do j=sG%jsc,sG%jec ; do i=sG%isc,sG%iec
         i2 = i+i_off ; j2 = j+j_off
-        Ice%sCS%IOF%flux_u_ocn(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Ice%flux_u(i2,j2)
-        Ice%sCS%IOF%flux_v_ocn(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Ice%flux_v(i2,j2)
+        Ice%sCS%IOF%flux_u_ocn(i,j) = US%Pa_to_RLZ_T2*Ice%flux_u(i2,j2)
+        Ice%sCS%IOF%flux_v_ocn(i,j) = US%Pa_to_RLZ_T2*Ice%flux_v(i2,j2)
       enddo ; enddo
     endif
 
@@ -654,11 +654,11 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
 !   It is possible that the ice mass and surface pressure will be needed after
 ! the thermodynamic step, in which case this should be uncommented.
 !  if (IOF%slp2ocean) then
-!     Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
+!     Ice%p_surf(i2,j2) = US%RLZ_T2_to_Pa*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
 !   else
 !     Ice%p_surf(i2,j2) = 0.0
 !   endif
-!   Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + US%L_T_to_m_s**2*US%m_to_Z*G%g_Earth*Ice%mi(i2,j2)
+!   Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + US%L_T2_to_m_s2*US%L_to_Z*G%g_Earth*Ice%mi(i2,j2)
   enddo ; enddo
   if (allocated(IOF%melt_nudge)) then
     do j=jsc,jec ; do i=isc,iec
@@ -755,21 +755,21 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   !$OMP parallel do default(shared) private(i2,j2)
   do j=jsc,jec ; do i=isc,iec
     i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
-    Ice%flux_u(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_u_ocn(i,j)
-    Ice%flux_v(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%flux_v_ocn(i,j)
+    Ice%flux_u(i2,j2) = US%RLZ_T2_to_Pa*IOF%flux_u_ocn(i,j)
+    Ice%flux_v(i2,j2) = US%RLZ_T2_to_Pa*IOF%flux_v_ocn(i,j)
 
     if (IOF%slp2ocean) then
-      Ice%p_surf(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
+      Ice%p_surf(i2,j2) = US%RLZ_T2_to_Pa*FIA%p_atm_surf(i,j) - 1e5 ! SLP - 1 std. atmosphere [Pa].
     else
       Ice%p_surf(i2,j2) = 0.0
     endif
-    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + US%L_T_to_m_s**2*US%m_to_Z*G%g_Earth*Ice%mi(i2,j2)
+    Ice%p_surf(i2,j2) = Ice%p_surf(i2,j2) + US%L_T2_to_m_s2*US%L_to_Z*G%g_Earth*Ice%mi(i2,j2)
   enddo ; enddo
   if (associated(Ice%stress_mag) .and. allocated(IOF%stress_mag)) then
     i_off = LBOUND(Ice%stress_mag,1) - G%isc ; j_off = LBOUND(Ice%stress_mag,2) - G%jsc
     !$OMP parallel do default(shared) private(i2,j2)
     do j=jsc,jec ; do i=isc,iec ; i2 = i+i_off ; j2 = j+j_off
-      Ice%stress_mag(i2,j2) = US%RZ_T_to_kg_m2s*US%L_T_to_m_s*IOF%stress_mag(i,j)
+      Ice%stress_mag(i2,j2) = US%RLZ_T2_to_Pa*IOF%stress_mag(i,j)
     enddo ; enddo
   endif
 
@@ -1311,7 +1311,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   do j=jsc,jec ; do i=isc,iec
     i3 = i+io_A ; j3 = j+jo_A
     Rad%coszen_nextrad(i,j) = Atmos_boundary%coszen(i3,j3,1)
-    FIA%p_atm_surf(i,j) = US%kg_m2s_to_RZ_T*US%m_s_to_L_T*Atmos_boundary%p(i3,j3,1)
+    FIA%p_atm_surf(i,j) = US%Pa_to_RLZ_T2*Atmos_boundary%p(i3,j3,1)
     if (Rad%coszen_nextrad(i,j) /= Rad%coszen_lastrad(i,j)) coszen_changed = .true.
   enddo ; enddo
 

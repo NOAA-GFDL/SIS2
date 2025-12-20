@@ -1963,15 +1963,15 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
   call register_restart_field(Ice_restart, 'flux_sw_top', FIA%flux_sw_top, dim_3="cat0", dim_4="band", &
                               mandatory=.false., units="W m-2", conversion=US%QRZ_T_to_W_m2)
   call register_restart_field(Ice_restart, 'WindStr_x', FIA%WindStr_x, &
-                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                              mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'WindStr_y', FIA%WindStr_y, &
-                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                              mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'WindStr_ocn_x', FIA%WindStr_ocn_x, &
-                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                              mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'WindStr_ocn_y', FIA%WindStr_ocn_y, &
-                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                              mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'p_atm_surf', FIA%p_atm_surf, &
-                              mandatory=.false., units="Pa", conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                              mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'runoff', FIA%runoff, &
                               mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'calving', FIA%calving, &
@@ -2230,12 +2230,12 @@ subroutine IOF_chksum(mesg, IOF, G, US, mech_fluxes, thermo_fluxes)
 
   endif
   if (do_mech) then
-    call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-    call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+    call hchksum(IOF%flux_u_ocn,      trim(mesg)//" IOF%flux_u_ocn",   G%HI, unscale=US%RLZ_T2_to_Pa)
+    call hchksum(IOF%flux_v_ocn,      trim(mesg)//" IOF%flux_v_ocn",   G%HI, unscale=US%RLZ_T2_to_Pa)
+    call hchksum(IOF%pres_ocn_top,    trim(mesg)//" IOF%pres_ocn_top", G%HI, unscale=US%RLZ_T2_to_Pa)
     call hchksum(IOF%mass_ice_sn_p,   trim(mesg)//" IOF%mass_ice_sn_p", G%HI, unscale=US%RZ_to_kg_m2)
     if (allocated(IOF%stress_mag)) &
-      call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call hchksum(IOF%stress_mag,    trim(mesg)//" IOF%stress_mag", G%HI, unscale=US%RLZ_T2_to_Pa)
   endif
 
   if (do_thermo) then
@@ -2291,11 +2291,11 @@ subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   call hchksum(FIA%bmelt, trim(mesg)//" FIA%bmelt", G%HI, unscale=US%QRZ_T_to_W_m2*US%T_to_s)
   call hchksum(FIA%sw_abs_ocn, trim(mesg)//" FIA%sw_abs_ocn", G%HI)
 
-  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+  call hchksum(FIA%WindStr_x, trim(mesg)//" FIA%WindStr_x", G%HI, unscale=US%RLZ_T2_to_Pa)
+  call hchksum(FIA%WindStr_y, trim(mesg)//" FIA%WindStr_y", G%HI, unscale=US%RLZ_T2_to_Pa)
+  call hchksum(FIA%WindStr_ocn_x, trim(mesg)//" FIA%WindStr_ocn_x", G%HI, unscale=US%RLZ_T2_to_Pa)
+  call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, unscale=US%RLZ_T2_to_Pa)
+  call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, unscale=US%RLZ_T2_to_Pa)
   call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, unscale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, unscale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, unscale=US%QRZ_T_to_W_m2)

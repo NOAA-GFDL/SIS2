@@ -310,7 +310,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
-             'sea level pressure', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, missing_value=missing)
+             'sea level pressure', units='Pa', conversion=US%RLZ_T2_to_Pa)
   ! diagnostics for quantities produced outside the ice model
   OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
              'sea surface temperature', 'deg-C', conversion=US%C_to_degC, missing_value=missing)

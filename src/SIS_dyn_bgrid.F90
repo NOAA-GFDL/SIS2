@@ -113,7 +113,7 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
   call get_param(param_file, mdl, "ICE_STRENGTH_PSTAR", CS%p0, &
                  "A constant in the expression for the ice strength, "//&
                  "P* in Hunke & Dukowicz 1997.", &
-                 units="Pa", scale=US%kg_m3_to_R*US%m_s_to_L_T**2, default=2.75e4)
+                 units="Pa", scale=US%Pa_to_RL2_T2, default=2.75e4)
   call get_param(param_file, mdl, "ICE_STRENGTH_CSTAR", CS%c0, &
                  "A constant in the exponent of the expression for the "//&
                  "ice strength, c* in Hunke & Dukowicz 1997.", &
@@ -142,7 +142,7 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
                  "A negligibly small magnitude below which ice stress tensor "//&
                  "components are set to 0.  A reasonable value might be "//&
                  "1e-15 kg m-1 s-1 times vel_underflow.", &
-                 units="Pa m", default=0.0, scale=US%m_s_to_L_T**2*US%kg_m3_to_R*US%m_to_Z)
+                 units="Pa m", default=0.0, scale=US%Pa_to_RL2_T2*US%m_to_Z)
 
   call get_param(param_file, mdl, "DEBUG", debug, &
                  "If true, write out verbose debugging data.", default=.false., &
@@ -164,25 +164,25 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
   CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
             'second stress invariant', 'none', missing_value=missing)
   CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
-            'ice strength', 'Pa*m', missing_value=missing, conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+            'ice strength', units='Pa*m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,    &
-            'ice internal stress - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'ice internal stress - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesB1, Time,    &
-            'ice internal stress - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'ice internal stress - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesB1, Time,    &
-            'coriolis force - x component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'coriolis force - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesB1, Time,    &
-            'coriolis force - y component', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'coriolis force - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesB1, Time,    &
-            'water stress on ice - x component', 'Pa', conversion=-US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'water stress on ice - x component', units='Pa', conversion=-US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesB1, Time,    &
-            'water stress on ice - y component', 'Pa', conversion=-US%RZ_T_to_kg_m2s*US%L_T_to_m_s, &
-            missing_value=missing, interp_method='none')
+            'water stress on ice - y component', units='Pa', conversion=-US%RLZ_T2_to_Pa, &
+            interp_method='none')
   CS%id_ui    = register_diag_field('ice_model', 'UI', diag%axesB1, Time,      &
             'ice velocity - x component', 'm/s', conversion=US%L_T_to_m_s,     &
             missing_value=missing, interp_method='none')
@@ -432,7 +432,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   if (CS%debug .or. CS%debug_redundant) then
     call Bchksum_pair("sld[xy] in SIS_B_dynamics", sldx, sldy, G, symmetric=.true., unscale=US%L_T_to_m_s)
     call Bchksum_pair("f[xy]at in SIS_B_dynamics", fxat, fyat, G, symmetric=.true., &
-                      unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+                      unscale=US%RLZ_T2_to_Pa)
     call Bchksum_pair("[uv]i pre-steps SIS_B_dynamics", ui, vi, G, symmetric=.true., unscale=US%L_T_to_m_s)
     call Bchksum_pair("[uv]o in SIS_B_dynamics", uo, vo, G, symmetric=.true., unscale=US%L_T_to_m_s)
     call Bchksum_pair("d[yx]d[xy] in SIS_B_dynamics", dydx, dxdy, G, scalars=.true., unscale=US%L_to_m)
@@ -594,23 +594,23 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     enddo ; enddo
 
     if (CS%debug) then
-      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
-      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
-      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+      call hchksum(CS%sig11, "sig11 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RLZ_T2_to_Pa*US%L_to_m)
+      call hchksum(CS%sig22, "sig22 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RLZ_T2_to_Pa*US%L_to_m)
+      call hchksum(CS%sig12, "sig12 in SIS_B_dynamics", G%HI, haloshift=1, unscale=US%RLZ_T2_to_Pa*US%L_to_m)
 
-      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call Bchksum(fxic, "fxic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
+      call Bchksum(fyic, "fyic in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
+      call Bchksum(fxoc, "fxoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
+      call Bchksum(fyoc, "fyoc in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
+      call Bchksum(fxco, "fxco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
+      call Bchksum(fyco, "fyco in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%RLZ_T2_to_Pa)
       call Bchksum(ui, "ui in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
       call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
     endif
     if (CS%debug_redundant) then
-      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
-      call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G, unscale=US%RZ_T_to_kg_m2s*US%L_T_to_m_s)
+      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G, unscale=US%RLZ_T2_to_Pa)
+      call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G, unscale=US%RLZ_T2_to_Pa)
+      call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G, unscale=US%RLZ_T2_to_Pa)
       call check_redundant_B("ui/vi in SIS_B_dynamics steps", ui, vi, G, unscale=US%L_T_to_m_s)
     endif
 
@@ -743,11 +743,11 @@ subroutine SIS_B_dyn_register_restarts(HI, param_file, CS, US, Ice_restart)
 
   if (associated(Ice_restart)) then
     call register_restart_field(Ice_restart, 'sig11', CS%sig11, mandatory=.false., &
-                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                                units="Pa m", conversion=US%RLZ_T2_to_Pa*US%L_to_m)
     call register_restart_field(Ice_restart, 'sig22', CS%sig22, mandatory=.false., &
-                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                                units="Pa m", conversion=US%RLZ_T2_to_Pa*US%L_to_m)
     call register_restart_field(Ice_restart, 'sig12', CS%sig12, mandatory=.false., &
-                                units="Pa m", conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2)
+                                units="Pa m", conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   endif
 end subroutine SIS_B_dyn_register_restarts
 
