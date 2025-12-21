@@ -1307,7 +1307,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     snow_to_ice = min(m_submerged - mtot_ice, m_lay(0)) ! need ice from snow
 
     m_lay(0) = m_lay(0) - snow_to_ice
-    s2i_s = sn2i_s - snow_to_ice
+    s2i_s = s2i_s - snow_to_ice
 
     ! Add ice to the topmost layer and dilute its salinity.
     Enthalpy(1) = (m_lay(1)*Enthalpy(1) + snow_to_ice*Enthalpy(0)) / &
