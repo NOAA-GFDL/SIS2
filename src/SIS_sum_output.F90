@@ -438,6 +438,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     enddo ; enddo
   endif
   call max_across_PEs(max_CFL)
+  if (max_CFL == 0.0) max_CFL = abs(max_CFL) ! This is to deal with negative zeros.
 
   ! Set combinations of scalign factors that rescale back to MKS units for output
   area_scale = US%L_to_m**2
