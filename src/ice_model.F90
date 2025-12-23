@@ -2158,7 +2158,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call SIS_dyn_trans_register_restarts(sHI, sIG, param_file, Ice%sCS%dyn_trans_CSp, US, &
                                            Ice%Ice_restart)
 
-    call SIS_diag_mediator_init(sG, sIG, param_file, Ice%sCS%diag, component="SIS", &
+    call SIS_diag_mediator_init(sG, sIG, US, param_file, Ice%sCS%diag, component="SIS", &
                                 doc_file_dir = dirs%output_directory)
     call set_SIS_axes_info(sG, sIG, param_file, Ice%sCS%diag)
 
@@ -2318,7 +2318,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     allocate(Ice%fCS%diag)
-    call SIS_diag_mediator_init(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, component="SIS_fast", &
+    call SIS_diag_mediator_init(fG, Ice%fCS%IG, US, param_file, Ice%fCS%diag, component="SIS_fast", &
                                 doc_file_dir = dirs%output_directory)
     call set_SIS_axes_info(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, axes_set_name="ice_fast")
 
