@@ -2153,8 +2153,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                                            Ice%Ice_restart)
 
     call SIS_diag_mediator_init(sG, sIG, US, param_file, Ice%sCS%diag, component="SIS", &
-                                doc_file_dir = dirs%output_directory)
-    call set_SIS_axes_info(sG, sIG, param_file, Ice%sCS%diag)
+                                doc_file_dir=dirs%output_directory)
+    call set_SIS_axes_info(sG, sIG, Ice%sCS%diag)
 
     call ice_thermo_init(param_file, sIST%ITV, US, init_EOS=nudge_sea_ice)
 
@@ -2313,8 +2313,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
     allocate(Ice%fCS%diag)
     call SIS_diag_mediator_init(fG, Ice%fCS%IG, US, param_file, Ice%fCS%diag, component="SIS_fast", &
-                                doc_file_dir = dirs%output_directory)
-    call set_SIS_axes_info(fG, Ice%fCS%IG, param_file, Ice%fCS%diag, axes_set_name="ice_fast")
+                                doc_file_dir=dirs%output_directory)
+    call set_SIS_axes_info(fG, Ice%fCS%IG, Ice%fCS%diag, axes_set_name="ice_fast")
 
     if (redo_fast_update .or. .not.single_IST) then
       call ice_thermo_init(param_file, Ice%fCS%IST%ITV, US, init_EOS=nudge_sea_ice)

@@ -194,10 +194,9 @@ integer :: id_clock_diag_mediator
 contains
 
 !> Set up the grid and axis information for use by SIS.
-subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_name)
-  type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
-  type(ice_grid_type),     intent(inout) :: IG  !< The sea-ice specific grid type
-  type(param_file_type),   intent(in)    :: param_file !< Parameter file structure
+subroutine set_SIS_axes_info(G, IG, diag_cs, set_vertical, axes_set_name)
+  type(SIS_hor_grid_type), intent(in)    :: G   !< The horizontal grid type
+  type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_diag_ctrl),     intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
   logical,          optional, intent(in) :: set_vertical !< If true (or missing), set up the vertical axes
   character(len=*), optional, intent(in) :: axes_set_name !<  A name to use for this set of axes.
@@ -211,10 +210,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   logical :: set_vert
   real :: zlev_ice(IG%NkIce)   ! Fractional position labels for the vertical layers in the ice [nondim]
   real :: zinter_ice(IG%NkIce+1) ! Fractional position labels for the vertical interfaces in the ice [nondim]
-  character(len=80) :: grid_config, units_temp, set_name
-! This include declares and sets the variable "version".
-#include "version_variable.h"
-  character(len=40)  :: mdl = "SIS_diag_mediator" ! This module's name.
+  character(len=80) :: set_name
   real, allocatable, dimension(:) :: IaxB, iax ! Index-based integer and half-integer i-axis labels [nondim]
   real, allocatable, dimension(:) :: JaxB, jax ! Index-based integer and half-integer j-axis labels [nondim]
   ! real, allocatable, dimension(:) :: cat_vals  ! Nominal ice thicknesses of the thickness categories [m]
@@ -222,38 +218,6 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
 
   set_vert = .true. ; if (present(set_vertical)) set_vert = set_vertical
   set_name = "ice" ; if (present(axes_set_name)) set_name = trim(axes_set_name)
-
-  ! This is inconsistent with the labeling of axis units from MOM6, and it will be corrected in a subsequent commit.
-
-  ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mdl, version)
-  call get_param(param_file, mdl, "GRID_CONFIG", grid_config, &
-                 "The method for defining the horizontal grid.  Valid "//&
-                 "entries include:\n"//&
-                 "\t file - read the grid from GRID_FILE \n"//&
-                 "\t mosaic - read the grid from a mosaic grid file \n"//&
-                 "\t cartesian - a Cartesian grid \n"//&
-                 "\t spherical - a spherical grid \n"//&
-                 "\t mercator  - a Mercator grid", fail_if_missing=.true.)
-
-  G%x_axis_units = "degrees_E"
-  G%y_axis_units = "degrees_N"
-  if (index(lowercase(trim(grid_config)),"cartesian") > 0) then
-    ! This is a Cartesian grid, and may have different axis units.
-    call get_param(param_file, mdl, "AXIS_UNITS", units_temp, &
-                 "The units for the x- and y- axis labels.  AXIS_UNITS "//&
-                 "should be defined as 'k' for km, 'm' for m, or 'd' "//&
-                 "for degrees of latitude and longitude (the default). "//&
-                 "Except on a Cartesian grid, only degrees are currently "//&
-                 "implemented.", default='degrees')
-    if (units_temp(1:1) == 'k') then
-      G%x_axis_units = "kilometers" ; G%y_axis_units = "kilometers"
-    elseif (units_temp(1:1) == 'm') then
-      G%x_axis_units = "meters" ; G%y_axis_units = "meters"
-    endif
-    call log_param(param_file, mdl, "explicit AXIS_UNITS", G%x_axis_units)
-  endif
-
 
   if (diag_cs%index_space_axes) then
     allocate(IaxB(G%IsgB:G%IegB))
