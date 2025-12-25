@@ -1154,9 +1154,7 @@ integer function register_SIS_diag_field(module_name, field_name, axes_in, init_
   if (is_root_pe() .and. (diag_CS%available_diag_doc_unit > 0)) then
     msg = ''
     if (present(cmor_field_name)) msg = 'CMOR equivalent is "'//trim(cmor_field_name)//'"'
-    cm_string = ''
-    !### Uncoment this to add cell methods:
-    ! call attach_cell_methods(-1, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
+    call attach_cell_methods(-1, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
     module_list = trim(module_list)//"}"
     if (num_modnm <= 1) module_list = module_name
     if (num_varnm <= 1) var_list = ''
@@ -1232,9 +1230,7 @@ logical function register_diag_field_expand_cmor(dm_id, module_name, field_name,
              verbose=verbose, do_not_log=do_not_log, err_msg=err_msg, &
              interp_method=interp_method, tile_count=tile_count)
   if (.not. diag_cs%diag_as_chksum) &
-    cm_string = ''
-    !### Uncoment this to add cell methods:
-    ! call attach_cell_methods(fms_id, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
+    call attach_cell_methods(fms_id, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
 
   this_diag => null()
   if (fms_id /= DIAG_FIELD_NOT_FOUND) then
@@ -1266,9 +1262,7 @@ logical function register_diag_field_expand_cmor(dm_id, module_name, field_name,
                missing_value=SIS_missing_value, range=range, mask_variant=mask_variant,               &
                standard_name=trim(posted_cmor_standard_name), verbose=verbose, do_not_log=do_not_log, &
                err_msg=err_msg, interp_method=interp_method, tile_count=tile_count)
-    cm_string = ''
-    !### Uncoment this to add cell methods:
-    ! call attach_cell_methods(fms_id, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
+    call attach_cell_methods(fms_id, axes, cm_string, cell_methods, x_cell_method, y_cell_method)
 
     this_diag => null()
     if (fms_id /= DIAG_FIELD_NOT_FOUND) then
@@ -1725,8 +1719,7 @@ function register_static_field(module_name, field_name, axes, &
   endif
 
   ! Document diagnostics in list of available diagnostics
-  !### if (is_root_pe() .and. diag_CS%available_diag_doc_unit > 0) then
-  if (is_root_pe() .and. .false.) then  ! Replace this to work like MOM6.
+  if (is_root_pe() .and. diag_CS%available_diag_doc_unit > 0) then
     if (present(cmor_field_name)) then
       call log_available_diag(associated(diag), module_name, field_name, '', '', diag_CS, &
                               long_name, units, standard_name, &
@@ -2159,34 +2152,27 @@ subroutine log_available_diag(used, module_name, field_name, cell_methods_string
   character(len=240) :: mesg
 
   if (used) then
-    mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Used]'
+    mesg = '"'//trim(field_name)//'"  [Used]'
   else
-    mesg = '"'//trim(module_name)//'", "'//trim(field_name)//'"  [Unused]'
+    mesg = '"'//trim(field_name)//'"  [Unused]'
   endif
-  !### This form of output agrees with MOM6:
-  ! if (used) then
-  !   mesg = '"'//trim(field_name)//'"  [Used]'
-  ! else
-  !   mesg = '"'//trim(field_name)//'"  [Unused]'
-  ! endif
   if (len(trim((comment)))>0) then
     write(diag_CS%available_diag_doc_unit, '(a,1x,"(",a,")")') trim(mesg),trim(comment)
   else
     write(diag_CS%available_diag_doc_unit, '(a)') trim(mesg)
   endif
-  !### Thes should be uncommented later to align with MOM6.
-! call describe_option("modules", module_name, diag_CS)
-! if (present(dimensions)) then
-!   if (len(trim(dimensions)) > 0) then
-!     call describe_option("dimensions", dimensions, diag_CS)
-!   endif
-! endif
+  call describe_option("modules", module_name, diag_CS)
+  if (present(dimensions)) then
+    if (len(trim(dimensions)) > 0) then
+      call describe_option("dimensions", dimensions, diag_CS)
+    endif
+  endif
   if (present(long_name)) call describe_option("long_name", long_name, diag_CS)
   if (present(units)) call describe_option("units", units, diag_CS)
   if (present(standard_name)) &
     call describe_option("standard_name", standard_name, diag_CS)
-! if (len(trim((cell_methods_string)))>0) &
-!   call describe_option("cell_methods", trim(cell_methods_string), diag_CS)
+  if (len(trim((cell_methods_string)))>0) &
+    call describe_option("cell_methods", trim(cell_methods_string), diag_CS)
   if (present(variants)) then ; if (len(trim(variants)) > 0) then
     call describe_option("variants", variants, diag_CS)
   endif ; endif
