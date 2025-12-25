@@ -297,11 +297,11 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
 
   call get_param(PF, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", &
-                 units = "g/kg", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
+                 units="g kg-1", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(PF, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
-                 units = "nondim", default=0.0, do_not_log=.true.)
+                 units="nondim", default=0.0, do_not_log=.true.)
   if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
 
   S_col(:) = 0.0
@@ -949,11 +949,11 @@ subroutine read_archaic_thermo_restarts(Ice, IST, G, IG, US, PF, dirs, restart_f
 
   call get_param(PF, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", &
-                 units="g/kg", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
+                 units="g kg-1", default=4.0, scale=US%ppt_to_S, do_not_log=.true.)
   call get_param(PF, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
-                 units = "nondim", default=0.0, do_not_log=.true.)
+                 units="nondim", default=0.0, do_not_log=.true.)
   if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
 
   restart_path = trim(dirs%restart_input_dir)//trim(restart_file)

@@ -1460,7 +1460,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "is based on work by Torge Martin.", default=.false.)
   call get_param(param_file, mdl, "ICE_BULK_SALINITY", CS%ice_bulk_salin, &
                  "The fixed bulk salinity of sea ice.", &
-                 units="g/kg", default=4.0, scale=US%ppt_to_S)
+                 units="g kg-1", default=4.0, scale=US%ppt_to_S)
   call get_param(param_file, mdl, "ICE_RELATIVE_SALINITY", CS%ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
@@ -1503,12 +1503,12 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "The rate of cooling of ice-free water that should be ice "//&
                  "covered in order to constrained the ice concentration to "//&
                  "track observations.  A suggested value is ~10000 W m-2.", &
-                 units = "W m-2", default=0.0, scale=US%W_m2_to_QRZ_T, &
+                 units="W m-2", default=0.0, scale=US%W_m2_to_QRZ_T, &
                  do_not_log=.not.CS%nudge_sea_ice)
   call get_param(param_file, mdl, "NUDGE_SEA_ICE_TOLERANCE", CS%nudge_conc_tol, &
                  "The tolerance for mismatch in the sea ice concentations "//&
                  "before nudging begins to be applied.  Values of order 0.1 "//&
-                 "should work well.", units = "nondim", default=0.0, &
+                 "should work well.", units="nondim", default=0.0, &
                  do_not_log=.not.CS%nudge_sea_ice)
   call get_param(param_file, mdl, "NUDGE_SEA_ICE_STABILITY", CS%nudge_stab_fac, &
                  "A factor that determines whether the buoyancy flux "//&

@@ -207,8 +207,8 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   call get_param(param_file, mdl, "DT_RHEOLOGY", CS%dt_Rheo, &
                  "The sub-cycling time step for iterating the rheology "//&
                  "and ice momentum equations. If DT_RHEOLOGY is negative, "//&
-                 "the time step is set via NSTEPS_DYN.", units="seconds", &
-                 default=-1.0, scale=US%s_to_T)
+                 "the time step is set via NSTEPS_DYN.", &
+                 units="seconds", default=-1.0, scale=US%s_to_T)
   CS%evp_sub_steps = -1
   if (CS%dt_Rheo <= 0.0) &
     call get_param(param_file, mdl, "NSTEPS_DYN", CS%evp_sub_steps, &

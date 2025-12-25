@@ -1706,8 +1706,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     str_x, str_y, stress_mag ! Temporary stress arrays
 
   real :: g_Earth        !   The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
-  real :: ice_bulk_salin ! The globally constant sea ice bulk salinity [S ~> gSalt kg-1] = [S ~> ppt]
-                         ! that is used to calculate the ocean salt flux.
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
   real :: coszen_IC      ! A constant value that is used to initialize
@@ -1873,7 +1871,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   call get_param(param_file, mdl, "G_EARTH", g_Earth, &
                  "The gravitational acceleration of the Earth.", &
-                 units="m s-2", default = 9.80, scale=US%m_s_to_L_T**2*US%Z_to_m)
+                 units="m s-2", default=9.80, scale=US%m_s_to_L_T**2*US%Z_to_m)
 
   call get_param(param_file, mdl, "MOMENTUM_ROUGH_ICE", mom_rough_ice, &
                  "The default momentum roughness length scale for the ocean.", &
@@ -1934,14 +1932,10 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If true, the sea ice is being given wind stresses with "//&
                  "the atmospheric sign convention, and need to have their sign changed.", &
                  default=.true.)
-  call get_param(param_file, mdl, "ICE_BULK_SALINITY", ice_bulk_salin, &
-                 "The fixed bulk salinity of sea ice.", units = "g/kg", &
-                 default=4.0, do_not_log=.true.)
   call get_param(param_file, mdl, "ICE_RELATIVE_SALINITY", ice_rel_salin, &
                  "The initial salinity of sea ice as a fraction of the "//&
                  "salinity of the seawater from which it formed.", &
-                 units = "nondim", default=0.0, do_not_log=.true.)
-  if ((ice_bulk_salin < 0.0) .or. (ice_rel_salin > 0.0)) ice_bulk_salin = 0.0
+                 units="nondim", default=0.0, do_not_log=.true.)
 
   call get_param(param_file, mdl, "APPLY_SLP_TO_OCEAN", slp2ocean, &
                  "If true, apply the atmospheric sea level pressure to the ocean.", &

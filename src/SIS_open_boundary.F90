@@ -330,7 +330,7 @@ subroutine open_boundary_config(G, US, param_file, OBC)
                  do_not_log=.not.debug_OBC, debuggingParam=.true.)
     call get_param(param_file, mdl, "OBC_SILLY_VEL", OBC%silly_u, &
                  "A silly value of velocities used outside of open boundary "//&
-                 "conditions for debugging.", units="m/s", default=0.0, scale=US%m_s_to_L_T, &
+                 "conditions for debugging.", units="m s-1", default=0.0, scale=US%m_s_to_L_T, &
                  do_not_log=.not.debug_OBC, debuggingParam=.true.)
     reentrant_x = .false.
     call get_param(param_file, mdl, "REENTRANT_X", reentrant_x, default=.true.)

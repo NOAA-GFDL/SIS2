@@ -155,9 +155,8 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
                  debuggingParam=.true.)
   call get_param(param_file, mdl, "AIR_WATER_STRESS_TURN_ANGLE", CS%blturn, &
                  "An angle by which to rotate the velocities at the air-water "//&
-                 "boundary in calculating stresses.", units="degrees", &
-                 default=0.0)
-
+                 "boundary in calculating stresses.", &
+                 units="degrees", default=0.0)
 
   CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,     &
             'first stress invariant', units='nondim')
