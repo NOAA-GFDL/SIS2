@@ -1849,10 +1849,11 @@ end subroutine advect_tracers_thicker
 
 !> Initialze allocate the control structure for the SIS_tracer_advect module
 !! and set its parameters
-subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
+subroutine SIS_tracer_advect_init(Time, G, US, param_file, diag, CS, scheme)
   type(time_type),     target, intent(in)    :: Time !< The sea-ice model's clock,
                                                      !! set with the current model time.
   type(SIS_hor_grid_type),     intent(in)    :: G    !< The horizontal grid type
+  type(unit_scale_type),       intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type),       intent(in)    :: param_file !< A structure to parse for run-time parameters
   type(SIS_diag_ctrl), target, intent(inout) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_tracer_advect_CS),  pointer       :: CS   !< The control structure returned by a previous
@@ -1881,8 +1882,8 @@ subroutine SIS_tracer_advect_init(Time, G, param_file, diag, CS, scheme)
   call get_param(param_file, mdl, "DT_ICE_DYNAMICS", CS%dt, &
                  "The time step used for the slow ice dynamics, including "//&
                  "stepping the continuity equation and interactions between "//&
-                 "the ice mass field and velocities.", units="s", &
-                 default=-1.0, do_not_log=.true.)
+                 "the ice mass field and velocities.", &
+                 units="s", default=-1.0, scale=US%s_to_T, do_not_log=.true.)
   call get_param(param_file, mdl, "DEBUG", debug, default=.false.)
   call get_param(param_file, mdl, "DEBUG_SLOW_ICE", CS%debug, &
                  "If true, write out verbose debugging data on the slow ice PEs.", &

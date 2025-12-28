@@ -1336,13 +1336,13 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
 
   call SIS_continuity_init(Time, G, US, param_file, diag, CS%continuity_CSp, &
                            CS_cvr=cover_trans_CSp)
-  call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_tr_adv_CSp)
+  call SIS_tracer_advect_init(Time, G, US, param_file, diag, CS%SIS_tr_adv_CSp)
   if (CS%do_ridging) &
       call ice_ridging_init(G, IG, param_file, CS%ice_ridging_CSp, US)
 
   if (present(continuity_CSp)) continuity_CSp => CS%continuity_CSp
 
-  call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
+  call SIS_tracer_advect_init(Time, G, US, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
                'x-direction ice transport', units='kg s-1', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
