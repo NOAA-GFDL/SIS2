@@ -210,7 +210,7 @@ subroutine set_SIS_axes_info(G, IG, param_file, diag_cs, set_vertical, axes_set_
   integer :: i, j, k, ncat
   logical :: set_vert
   real :: zlev_ice(IG%NkIce)   ! Fractional position labels for the vertical layers in the ice [nondim]
-  real :: zinter_ice(IG%NkIce) ! Fractional position labels for the vertical interfaces in the ice [nondim]
+  real :: zinter_ice(IG%NkIce+1) ! Fractional position labels for the vertical interfaces in the ice [nondim]
   character(len=80) :: grid_config, units_temp, set_name
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
