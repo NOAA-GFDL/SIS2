@@ -2499,17 +2499,30 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   if (CS%Cgrid_dyn) then
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesCu1, Time, &
                'Air stress on ice on C-grid - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-                interp_method='none')
+                interp_method='none', &
+                cmor_field_name='sistrxdtop', &
+                cmor_standard_name='surface_downward_x_stress', &
+                cmor_long_name='X-Component of Atmospheric Stress on Sea Ice')
+
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesCv1, Time, &
                'Air stress on ice on C-grid - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-               interp_method='none')
+                interp_method='none', &
+                cmor_field_name='sistrydtop', &
+                cmor_standard_name='surface_downward_y_stress', &
+                cmor_long_name='Y-Component of Atmospheric Stress on Sea Ice')
   else
     CS%id_fax = register_diag_field('ice_model', 'FA_X', diag%axesB1, Time, &
                'air stress on ice - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-               interp_method='none')
+                interp_method='none', &
+                cmor_field_name='sistrxdtop', &
+                cmor_standard_name='surface_downward_x_stress', &
+                cmor_long_name='X-Component of Atmospheric Stress on Sea Ice')
     CS%id_fay = register_diag_field('ice_model', 'FA_Y', diag%axesB1, Time, &
                'air stress on ice - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-               interp_method='none')
+                interp_method='none', &
+                cmor_field_name='sistrydtop', &
+                cmor_standard_name='surface_downward_y_stress', &
+                cmor_long_name='Y-Component of Atmospheric Stress on Sea Ice')
   endif
 
   call register_ice_state_diagnostics(Time, IG, US, param_file, diag, CS%IDs)

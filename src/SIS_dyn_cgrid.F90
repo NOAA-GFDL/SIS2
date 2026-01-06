@@ -403,16 +403,28 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
             'ice internal stress - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-            interp_method='none')
+            interp_method='none', &
+            cmor_field_name='siforceintstrx', &
+            cmor_standard_name='sea_ice_x_internal_stress', &
+            cmor_long_name='Internal Stress Term in Force Balance (X-Component)')
   CS%id_fiy   = register_diag_field('ice_model', 'FI_Y', diag%axesCv1, Time,   &
             'ice internal stress - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-            interp_method='none')
+            interp_method='none', &
+            cmor_field_name='siforceintstry', &
+            cmor_standard_name='sea_ice_y_internal_stress', &
+            cmor_long_name='Internal Stress Term in Force Balance (Y-Component)')
   CS%id_fcx   = register_diag_field('ice_model', 'FC_X', diag%axesCu1, Time,   &
             'Coriolis force - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-            interp_method='none')
+            interp_method='none', &
+            cmor_field_name='siforcecoriolx', &
+            cmor_standard_name='sea_ice_x_force_per_unit_area_due_to_coriolis_effect', &
+            cmor_long_name='Coriolis Force Term in Force Balance (X-Component)')
   CS%id_fcy   = register_diag_field('ice_model', 'FC_Y', diag%axesCv1, Time,   &
             'Coriolis force - y component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
-            interp_method='none')
+            interp_method='none', &
+            cmor_field_name='siforcecorioly', &
+            cmor_standard_name='sea_ice_y_force_per_unit_area_due_to_coriolis_effect', &
+            cmor_long_name='Coriolis Force Term in Force Balance (Y-Component)')
   CS%id_Coru   = register_diag_field('ice_model', 'Cor_ui', diag%axesCu1, Time,&
             'Coriolis ice acceleration - x component', &
             units='m s-2', conversion=US%L_T2_to_m_s2, interp_method='none')
@@ -421,10 +433,16 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             units='m s-2', conversion=US%L_T2_to_m_s2, interp_method='none')
   CS%id_fpx   = register_diag_field('ice_model', 'FP_X', diag%axesCu1, Time,   &
             'Pressure force - x component', &
-            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none')
+            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none', &
+            cmor_field_name='siforcetiltx', &
+            cmor_standard_name='sea_ice_x_force_per_unit_area_due_to_sea_surface_tilt', &
+            cmor_long_name='Sea-Surface Tilt Term in Force Balance (X-Component)')
   CS%id_fpy   = register_diag_field('ice_model', 'FP_Y', diag%axesCv1, Time,   &
             'Pressure force - y component', &
-            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none')
+            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none', &
+            cmor_field_name='siforcetilty', &
+            cmor_standard_name='sea_ice_y_force_per_unit_area_due_to_sea_surface_tilt', &
+            cmor_long_name='Sea-Surface Tilt Term in Force Balance (Y-Component)')
   CS%id_PFu   = register_diag_field('ice_model', 'Pfa_ui', diag%axesCu1, Time, &
             'Pressure-force ice acceleration - x component', &
             units='m s-2',  conversion=US%L_T2_to_m_s2, interp_method='none')
@@ -433,10 +451,16 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             units='m s-2',  conversion=US%L_T2_to_m_s2, interp_method='none')
   CS%id_fwx   = register_diag_field('ice_model', 'FW_X', diag%axesCu1, Time,   &
             'water stress on ice - x component', &
-            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none')
+            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none', &
+            cmor_field_name='sistrxubot', &
+            cmor_standard_name='upward_x_stress_at_sea_ice_base', &
+            cmor_long_name='X-Component of Ocean Stress on Sea Ice')
   CS%id_fwy   = register_diag_field('ice_model', 'FW_Y', diag%axesCv1, Time,   &
             'water stress on ice - y component', &
-            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none')
+            units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none', &
+            cmor_field_name='sistryubot', &
+            cmor_standard_name='upward_y_stress_at_sea_ice_base', &
+            cmor_long_name='Y-Component of Ocean Stress on Sea Ice')
   CS%id_flfx  = register_diag_field('ice_model', 'FLF_X', diag%axesCu1, Time,   &
             'land-fast bottom stress on ice - x component', &
             units='Pa', conversion=US%RLZ_T2_to_Pa, interp_method='none')
@@ -522,14 +546,23 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             'ice tension rate', units='s-1', conversion=US%s_to_T)
   CS%id_sh_s_hifreq = register_diag_field('ice_model', 'sh_s_hf', diag%axesB1, Time, &
             'ice shearing rate', units='s-1', conversion=US%s_to_T)
-  CS%id_sigi_hifreq  = register_diag_field('ice_model','sigI_hf' ,diag%axesT1, Time, &
-            'first stress invariant', units='nondim')
-  CS%id_sigii_hifreq = register_diag_field('ice_model','sigII_hf' ,diag%axesT1, Time, &
-            'second stress invariant', units='nondim')
+  CS%id_sigi_hifreq  = register_diag_field('ice_model', 'sigI_hf', diag%axesT1, Time, &
+            'first stress invariant', units='nondim', &
+            cmor_field_name='sistressave', &
+            cmor_standard_name='sea_ice_average_normal_horizontal_stress', &
+            cmor_long_name='Average Normal Stress in Sea Ice')
+  CS%id_sigii_hifreq = register_diag_field('ice_model', 'sigII_hf', diag%axesT1, Time, &
+            'second stress invariant', units='nondim', &
+            cmor_field_name='sistressmax', &
+            cmor_standard_name='maximum_over_coordinate_rotation_of_sea_ice_horizontal_shear_stress', &
+            cmor_long_name='Maximum Shear Stress in Sea Ice')
   CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
             'Summed concentration of ice at t-points', units='nondim')
   CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time, &
-            'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
+            'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m, &
+            cmor_field_name='sicompstren', &
+            cmor_standard_name='compressive_strength_of_sea_ice', &
+            cmor_long_name='Compressive Sea Ice Strength')
 
   CS%id_siu = register_diag_field('ice_model', 'siu', diag%axesT1, Time, &
             'ice velocity - x component', units='m s-1', conversion=US%L_T_to_m_s, &

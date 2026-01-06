@@ -343,7 +343,10 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'ice extent, indicating cells with more than 15% sea ice cover', &
                units='nondim')
   IDs%id_cn       = register_diag_field('ice_model', 'CN', diag%axesTc, Time, &
-               'ice concentration', units="nondim", range=(/0.,1./) )
+               'ice concentration', units="nondim", range=(/0.,1./), &
+               cmor_field_name='siitdconc', &
+               cmor_standard_name='sea_ice_area_fraction', &
+               cmor_long_name='Sea-Ice Area Percentages in Ice Thickness Categories')
   IDs%id_hp       = register_diag_field('ice_model', 'HP', diag%axesT1, Time, &
                'pond thickness', units='m', conversion=US%Z_to_m)
   IDs%id_hs       = register_diag_field('ice_model', 'HS', diag%axesT1, Time, &
@@ -374,7 +377,11 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', units='degC', conversion=US%C_to_degC)
   IDs%id_s_iceav = register_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
-               'Volume-averaged ice salinity', units='g kg-1', conversion=US%S_to_ppt)
+               'Volume-averaged ice salinity', units='g kg-1', conversion=US%S_to_ppt, &
+               cmor_field_name='sisali', &
+               cmor_standard_name='sea_ice_salinity', &
+               cmor_long_name='Sea-Ice Salinity')
+
   call safe_alloc_ids_1d(IDs%id_t, nLay)
   call safe_alloc_ids_1d(IDs%id_sal, nLay)
   do n=1,nLay
