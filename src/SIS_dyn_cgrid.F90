@@ -585,7 +585,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
             'Summed concentration of ice at t-points', 'nondim', missing_value=missing)
   CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time, &
-            'ice strength', 'Pa*m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing, &
+            'ice strength', units='Pa m', conversion=US%RZ_to_kg_m2*US%L_T_to_m_s**2, missing_value=missing, &
             cmor_field_name='sicompstren', &
             cmor_standard_name='compressive_strength_of_sea_ice', &
             cmor_long_name='Compressive Sea Ice Strength')

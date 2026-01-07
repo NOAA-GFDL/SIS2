@@ -360,7 +360,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &
                'Volume-averaged ice temperature', 'C', conversion=US%C_to_degC, missing_value=missing)
   IDs%id_s_iceav = register_diag_field('ice_model', 'S_bulkice', diag%axesT1, Time, &
-               'Volume-averaged ice salinity', 'g/kg', conversion=US%S_to_ppt, missing_value=missing, &
+               'Volume-averaged ice salinity', units='g kg-1', conversion=US%S_to_ppt, missing_value=missing, &
                cmor_field_name='sisali', &
                cmor_standard_name='sea_ice_salinity', &
                cmor_long_name='Sea-Ice Salinity')

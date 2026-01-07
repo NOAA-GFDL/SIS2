@@ -1252,13 +1252,13 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
   call SIS_tracer_advect_init(Time, G, param_file, diag, CS%SIS_thick_adv_CSp, scheme=scheme)
 
   CS%id_ix_trans = register_diag_field('ice_model', 'IX_TRANS', diag%axesCu1, Time, &
-               'x-direction ice transport', 'kg/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
+               'x-direction ice transport', units='kg s-1', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                missing_value=missing, interp_method='none', &
                cmor_field_name='sidmasstranx', &
                cmor_standard_name='sea_ice_x_transport', &
                cmor_long_name='X-Component of Sea-Ice Mass Transport')
   CS%id_iy_trans = register_diag_field('ice_model', 'IY_TRANS', diag%axesCv1, Time, &
-               'y-direction ice transport', 'kg/s', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
+               'y-direction ice transport', units='kg s-1', conversion=US%RZ_T_to_kg_m2s*US%L_to_m**2, &
                missing_value=missing, interp_method='none', &
                cmor_field_name='sidmasstrany', &
                cmor_standard_name='sea_ice_y_transport', &
