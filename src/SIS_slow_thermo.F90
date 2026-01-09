@@ -1746,10 +1746,10 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                'kg/(m^2*yr)', conversion=864e2*365.*US%RZ_T_to_kg_m2s, &
                missing_value=missing)
   CS%id_lsrc_i = register_diag_field('ice_model','LSRCi', diag%axesT1, Time, &
-               'frozen water local source (of ice)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water local source (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing)
   CS%id_lsnk_i = register_diag_field('ice_model','LSNKi',diag%axesT1, Time, &
-               'frozen water local sink (of ice)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water local sink (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
   CS%id_bsnk_i = register_diag_field('ice_model','BSNKi',diag%axesT1, Time, &
                'frozen water local bottom sink (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
@@ -1757,13 +1757,13 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                 cmor_standard_name='tendency_of_sea_ice_amount_due_to_basal_melting', &
                 cmor_long_name='Sea-Ice Mass Change Through Bottom Melting')
   CS%id_lsrc_s = register_diag_field('ice_model','LSRCs', diag%axesT1, Time, &
-               'frozen water local source (of snow)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water local source (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
   CS%id_lsnk_s = register_diag_field('ice_model','LSNKs',diag%axesT1, Time, &
-               'frozen water local sink (of snow)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water local sink (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
   CS%id_bsnk_s = register_diag_field('ice_model','BSNKs',diag%axesT1, Time, &
-               'frozen water local bottom sink (of snow)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
+               'frozen water local bottom sink (of snow)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
   CS%id_lsrc_c = register_diag_field('ice_model','LSRCc', diag%axesT1, Time, &
                'frozen water area local source', 's-1', conversion=US%RZ_T_to_kg_m2s, &
