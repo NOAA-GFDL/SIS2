@@ -144,7 +144,7 @@ type slow_thermo_CS ; private
   integer :: id_lsrc_i=-1, id_lsnk_i=-1, id_bsnk_i=-1
   integer :: id_lsrc_s=-1, id_lsnk_s=-1, id_bsnk_s=-1
   integer :: id_lsrc_c=-1, id_lsnk_c=-1
-  integer :: id_bsnk_i_cmor=-1, id_tsnk_i=-1, id_bsrc_i=-1, id_net_i=-1, id_net_s=-1
+  integer :: id_tsnk_i=-1, id_bsrc_i=-1, id_net_i=-1, id_net_s=-1
   integer :: id_net_c=-1, id_sn2ic_i=-1, id_sn2ic_s=-1
   !!@}
 end type slow_thermo_CS
@@ -1518,7 +1518,6 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (IOF%id_saltf>0) call post_data(IOF%id_saltf, IOF%flux_salt, CS%diag)
   if (CS%id_bsnk>0)  call post_data(CS%id_bsnk, bsnk, CS%diag)
   if (CS%id_bsnk_i>0) call post_data(CS%id_bsnk_i, bsnk_i, CS%diag)
-  if (CS%id_bsnk_i_cmor>0) call post_data(CS%id_bsnk_i_cmor, bsnk_i, CS%diag)
   if (CS%id_bsnk_s>0) call post_data(CS%id_bsnk_s, bsnk_s, CS%diag)
   if (FIA%id_tmelt>0) call post_avg(FIA%id_tmelt, FIA%tmelt, IST%part_size(:,:,1:), CS%diag, G=G, &
                                     scale=Idt_slow, wtd=.true.)
@@ -1753,8 +1752,10 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                'frozen water local sink (of ice)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
   CS%id_bsnk_i = register_diag_field('ice_model','BSNKi',diag%axesT1, Time, &
-               'frozen water local bottom sink (of ice)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
-                missing_value=missing)
+               'frozen water local bottom sink (of ice)', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+                cmor_field_name='sidmassmeltbot', missing_value=missing, &
+                cmor_standard_name='tendency_of_sea_ice_amount_due_to_basal_melting', &
+                cmor_long_name='Sea-Ice Mass Change Through Bottom Melting')
   CS%id_lsrc_s = register_diag_field('ice_model','LSRCs', diag%axesT1, Time, &
                'frozen water local source (of snow)', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, &
                 missing_value=missing)
@@ -1772,29 +1773,26 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                 missing_value=missing)
 
   !CMOR diagnostics for thermodynamics             
-  CS%id_bsnk_i_cmor = register_diag_field('ice_model','sidmassmeltbot',diag%axesT1, Time, &
-               'Sea-Ice Mass Change Through Bottom Melting', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
-               missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_basal_melting')
   CS%id_tsnk_i = register_diag_field('ice_model','sidmassmelttop', diag%axesT1, Time, &
-               'Sea-Ice Mass Change Through Surface Melting', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Sea-Ice Mass Change Through Surface Melting', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_surface_melting')
   CS%id_bsrc_i = register_diag_field('ice_model','sidmassgrowthbot',diag%axesT1, Time, &
-               'Sea-Ice Mass Change Through Basal Growth', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Sea-Ice Mass Change Through Basal Growth', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_congelation_ice_accumulation')
   CS%id_net_i = register_diag_field('ice_model','sidmassth',diag%axesT1, Time, &
-               'Sea-Ice Mass Change from Thermodynamics', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Sea-Ice Mass Change from Thermodynamics', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_sea_ice_thermodynamics')
   CS%id_net_s = register_diag_field('ice_model','sisndmassmelt', diag%axesT1, Time, &
-               'Snow Mass Rate of Change Through Melt', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Snow Mass Rate of Change Through Melt', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='surface_snow_melt_flux')
   CS%id_net_c = register_diag_field('ice_model','sidconcth', diag%axesT1, Time, &
-               'Sea-Ice Area Fraction Tendency Due to Thermodynamics', 's-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Sea-Ice Area Fraction Tendency Due to Thermodynamics', units='s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_thermodynamics')
   CS%id_sn2ic_i = register_diag_field('ice_model','sidmassgrowthsi', diag%axesT1,Time, &
-               'Sea-Ice Mass Change Through Snow-to-Ice Conversion', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Sea-Ice Mass Change Through Snow-to-Ice Conversion', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_sea_ice_amount_due_to_conversion_of_snow_to_sea_ice')
   CS%id_sn2ic_s = register_diag_field('ice_model','sisndmasssi', diag%axesT1,Time, &
-               'Snow Mass Rate of Change Through Snow-to-Ice Conversion', 'kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               'Snow Mass Rate of Change Through Snow-to-Ice Conversion', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
                missing_value=missing, cmor_standard_name='tendency_of_surface_snow_amount_due_to_conversion_of_snow_to_sea_ice')
 
   CS%id_sn2ic = register_diag_field('ice_model','SN2IC', diag%axesT1,Time, &
