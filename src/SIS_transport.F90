@@ -1371,7 +1371,8 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
                cmor_standard_name='tendency_of_surface_snow_amount_due_to_sea_ice_dynamics', &
                cmor_long_name='Snow Mass Rate of Change Through Advection by Sea-Ice Dynamics')
   CS%id_xprt_c = register_diag_field('ice_model', 'XPRTc', diag%axesT1, Time, &
-               'frozen water fractional area transport convergence', units='s-1', conversion=US%s_to_T, &
+               'frozen water fractional area transport convergence', &
+               units='s-1', conversion=US%s_to_T, &
                cmor_field_name='sidconcdyn', &
                cmor_standard_name='tendency_of_sea_ice_area_fraction_due_to_dynamics', &
                cmor_long_name='Sea-Ice Area Fraction Tendency Due to Dynamics')
