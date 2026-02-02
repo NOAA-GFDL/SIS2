@@ -1488,8 +1488,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       s2i_agg = 0.0
       do k=0,ncat
         s2i_agg = s2i_agg + IST%part_size(i,j,k) * snow_to_ice_s(i,j,k)
-      enddo    
-      tmp2d(i,j) = (min(h2o_change_s(i,j),0.0)*Idt_slow -  sisnmass_evap(i,j) - s2i_agg)
+      enddo
+      tmp2d(i,j) = (min(h2o_change_s(i,j),0.0)*Idt_slow -  sisnmass_evap(i,j) - s2i_agg*Idt_slow)
     enddo ; enddo
     call post_data(CS%id_net_s, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
@@ -1499,8 +1499,8 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       s2i_agg = 0.0
       do k=0,ncat
         s2i_agg = s2i_agg + IST%part_size(i,j,k) * snow_to_ice_i(i,j,k)
-      enddo 
-      tmp2d(i,j) = (max(h2o_change_i(i,j),0.0)*Idt_slow -  s2i_agg - OSS%frazil(i,j)*ILatHtFus)
+      enddo
+      tmp2d(i,j) = (max(h2o_change_i(i,j),0.0)*Idt_slow -  s2i_agg*Idt_slow - OSS%frazil(i,j)*ILatHtFus*Idt_slow) 
     enddo ; enddo
     call post_data(CS%id_bsrc_i, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
