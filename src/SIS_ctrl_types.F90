@@ -24,6 +24,7 @@ use SIS_types,         only : ice_state_type, ice_ocean_flux_type, ocean_sfc_sta
 use SIS_types,         only : fast_ice_avg_type, ice_rad_type, simple_OSS_type
 use SIS_types,         only : total_sfc_flux_type
 use specified_ice,     only : specified_ice_CS
+use SIS_sponge,        only : isponge_CS
 
 implicit none ; private
 
@@ -114,6 +115,8 @@ type SIS_slow_CS
   logical :: bounds_check   !< If true, check for sensible values of thicknesses
                             !! temperatures, fluxes, etc.
   logical :: debug          !< If true, write verbose checksums for debugging purposes.
+  logical :: do_brine_plume !< If true, keep track of how much salt stays in the ocean
+                            !! during ice formation.
 
 !  type(SIS_tracer_registry_type), pointer :: TrReg => NULL()
 
@@ -160,6 +163,8 @@ type SIS_slow_CS
   type(total_sfc_flux_type), pointer :: XSF => NULL()  !< A structure of the excess
                             !! fluxes between the atmosphere and the ice or ocean
                             !! relative to those stored in TSF.
+  type(isponge_CS), pointer :: isponge_CSp => NULL() !< A pointer to the control structure containing
+                                                     ! ice relaxation (sponge) arrays, variables
 
 end type SIS_slow_CS
 
@@ -212,126 +217,159 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                  'cell area', 'sphere')
 
   FIA%id_sh       = register_SIS_diag_field('ice_model', 'SH', diag%axesT1, Time, &
-               'sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_lh       = register_SIS_diag_field('ice_model', 'LH', diag%axesT1, Time, &
-               'latent heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'latent heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw       = register_SIS_diag_field('ice_model', 'SW', diag%axesT1, Time, &
-               'shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_lw       = register_SIS_diag_field('ice_model', 'LW', diag%axesT1, Time, &
-               'longwave heat flux over ice', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'longwave heat flux over ice', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_snofl    = register_SIS_diag_field('ice_model', 'SNOWFL', diag%axesT1, Time, &
-               'rate of snow fall', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'rate of snow fall', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   FIA%id_rain     = register_SIS_diag_field('ice_model', 'RAIN', diag%axesT1, Time, &
-               'rate of rain fall', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'rate of rain fall', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sipr', &
+               cmor_standard_name='rainfall_flux', &
+               cmor_long_name='Rainfall Rate over Sea Ice')
   FIA%id_runoff   = register_SIS_diag_field('ice_model', 'RUNOFF', diag%axesT1, Time, &
-               'liquid runoff', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'liquid runoff', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   FIA%id_calving  = register_SIS_diag_field('ice_model', 'CALVING', diag%axesT1, Time, &
-               'frozen runoff', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'frozen runoff', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   FIA%id_runoff_hflx  = register_SIS_diag_field('ice_model', 'RUNOFF_HFLX', diag%axesT1, Time, &
-               'liquid runoff sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'liquid runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_calving_hflx = register_SIS_diag_field('ice_model', 'CALVING_HFLX', diag%axesT1, Time, &
-               'frozen runoff sensible heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'frozen runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
-               'evaporation', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
+               'evaporation', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+  
+  !CMOR evaporation diagnostics
+  FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'EVAPi', diag%axesT1, Time, &
+               'evaporation and sublimation of ice (negative corresponds to ice loss)', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sidmassevapsubl', &
+               cmor_standard_name='water_evapotranspiration_flux', &
+               cmor_long_name='Sea-Ice Mass Change Through Evaporation and Sublimation')
+  FIA%id_evap_s   = register_SIS_diag_field('ice_model', 'EVAPs', diag%axesT1, Time, &
+               'evaporation and sublimation of snow (negative corresponds to snow loss)', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sisndmasssubl', &
+               cmor_standard_name='tendency_of_atmosphere_mass_content_of_water_vapor_due_to_sublimation_of_surface_snow_and_ice', &
+               cmor_long_name='Snow Mass Rate of Change Through Evaporation or Sublimation')
   IOF%id_saltf    = register_SIS_diag_field('ice_model', 'SALTF', diag%axesT1, Time, &
-               'ice to ocean salt flux', 'kg/(m^2*s)', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, missing_value=missing)
+               'ice to ocean salt flux', units='kg m-2 s-1', conversion=US%S_to_ppt*US%RZ_T_to_kg_m2s, &
+               cmor_field_name='siflsaltbot', &
+               cmor_standard_name='downward_sea_ice_basal_salt_flux', &
+               cmor_long_name='Salt Flux from Sea Ice')
+
   FIA%id_tmelt    = register_SIS_diag_field('ice_model', 'TMELT', diag%axesT1, Time, &
-               'upper surface melting energy flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'upper surface melting energy flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_bmelt    = register_SIS_diag_field('ice_model', 'BMELT', diag%axesT1, Time, &
-               'bottom surface melting energy flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'bottom surface melting energy flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_bheat    = register_SIS_diag_field('ice_model', 'BHEAT', diag%axesT1, Time, &
-               'ocean to ice heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'ocean to ice heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2, &
+               cmor_field_name='siflsensbot', &
+               cmor_standard_name='upward_sea_ice_basal_heat_flux', &
+               cmor_long_name='Net Upward Sensible Heat Flux under Sea Ice')
 
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
     call coupler_type_set_diags(IOF%tr_flux_ocn_top, 'ice_model', diag%axesT1%handles, Time)
 
-
   FIA%id_sw_dn   = register_SIS_diag_field('ice_model', 'SWDN', diag%axesT1, Time, &
                'Downward shortwave heat flux at the bottom of the atmosphere', &
-               'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               units='W m-2', conversion=US%QRZ_T_to_W_m2, &
+               cmor_field_name='siflswdtop', &
+               cmor_standard_name='surface_downwelling_shortwave_flux_in_air', &
+               cmor_long_name='Downwelling Shortwave Flux over Sea Ice')
   FIA%id_albedo  = register_SIS_diag_field('ice_model', 'ALB', diag%axesT1, Time, &
-               'Shortwave flux weighted surface albedo, or 1 if no SW', '0-1', &
-               missing_value=missing)
+               'Shortwave flux weighted surface albedo, or 1 if no SW [0,1]', &
+               units="nondim" )
   FIA%id_sw_vis   = register_SIS_diag_field('ice_model', 'SW_VIS', diag%axesT1, Time, &
-               'visible shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'visible shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_dir   = register_SIS_diag_field('ice_model', 'SW_DIR', diag%axesT1, Time, &
-               'direct shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'direct shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_dif   = register_SIS_diag_field('ice_model', 'SW_DIF', diag%axesT1, Time, &
-               'diffuse shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'diffuse shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_vis_dir = register_SIS_diag_field('ice_model', 'SW_VIS_DIR', diag%axesT1, Time, &
-               'visible direct shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'visible direct shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_vis_dif = register_SIS_diag_field('ice_model', 'SW_VIS_DIF', diag%axesT1, Time, &
-               'visible diffuse shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'visible diffuse shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_nir_dir = register_SIS_diag_field('ice_model', 'SW_NIR_DIR', diag%axesT1, Time, &
-               'near IR direct shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'near IR direct shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sw_nir_dif = register_SIS_diag_field('ice_model', 'SW_NIR_DIF', diag%axesT1, Time, &
-               'near IR diffuse shortwave heat flux', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'near IR diffuse shortwave heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
 
   if (allocated(FIA%flux_sh0)) then
-    FIA%id_evap0  = register_SIS_diag_field('ice_model', 'EVAP_T0',diag%axesTc0, Time, &
-               'evaporation at 0 degC', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-    FIA%id_lw0  = register_SIS_diag_field('ice_model', 'LW_T0',diag%axesTc0, Time, &
+    FIA%id_evap0  = register_SIS_diag_field('ice_model', 'EVAP_T0', diag%axesTc0, Time, &
+               'evaporation at 0 degC', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+    FIA%id_lw0  = register_SIS_diag_field('ice_model', 'LW_T0', diag%axesTc0, Time, &
                'net downward longwave heat flux over ice at 0 degC', &
-               'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               units='W m-2', conversion=US%QRZ_T_to_W_m2)
     FIA%id_sh0  = register_SIS_diag_field('ice_model', 'SH_T0', diag%axesTc0, Time, &
-               'sensible heat flux at 0 degC', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'sensible heat flux at 0 degC', units='W m-2', conversion=US%QRZ_T_to_W_m2)
     FIA%id_devdt  = register_SIS_diag_field('ice_model', 'dEVAP_dT', diag%axesTc0, Time, &
                'partial derivative of evaporation with ice skin temperature', &
-               'kg/(m^2*s*K)', conversion=US%RZ_T_to_kg_m2s*US%degC_to_C, missing_value=missing)
-    FIA%id_dlwdt = register_SIS_diag_field('ice_model', 'dLW_dT',diag%axesTc0, Time, &
+               units='kg m-2 s-1 K-1', conversion=US%RZ_T_to_kg_m2s*US%degC_to_C)
+    FIA%id_dlwdt = register_SIS_diag_field('ice_model', 'dLW_dT', diag%axesTc0, Time, &
                'partial derivative of net downward longwave heat flux with ice skin temperature', &
-               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2*US%degC_to_C, missing_value=missing)
+               units='W m-2 K-1', conversion=US%QRZ_T_to_W_m2*US%degC_to_C)
     FIA%id_dshdt = register_SIS_diag_field('ice_model', 'dSH_dT', diag%axesTc0, Time, &
                'partial derivative of sensible heat flux with ice skin temperature', &
-               'W/(m^2*K)', conversion=US%QRZ_T_to_W_m2*US%degC_to_C, missing_value=missing)
+               units='W m-2 K-1', conversion=US%QRZ_T_to_W_m2*US%degC_to_C)
     FIA%id_tsfc_cat =register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
-               'surface temperature by category', 'C', conversion=US%C_to_degC, missing_value=missing)
+               'surface temperature by category', units='degC', conversion=US%C_to_degC)
   endif
   FIA%id_evap_cat  = register_SIS_diag_field('ice_model', 'EVAP_CAT', diag%axesTc0, Time, &
-             'evaporation by category', 'kg/(m^2*s)', conversion=US%RZ_T_to_kg_m2s, missing_value=missing)
-  FIA%id_lw_cat  = register_SIS_diag_field('ice_model', 'LW_CAT',diag%axesTc0, Time, &
-             'longwave heat flux by category', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+             'evaporation by category', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
+  FIA%id_lw_cat  = register_SIS_diag_field('ice_model', 'LW_CAT', diag%axesTc0, Time, &
+             'longwave heat flux by category', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_sh_cat  = register_SIS_diag_field('ice_model', 'SH_CAT', diag%axesTc0, Time, &
-             'sensible heat flux by category', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+             'sensible heat flux by category', units='W m-2', conversion=US%QRZ_T_to_W_m2)
 
 
   FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
-               'surface temperature', 'C', conversion=US%C_to_degC, missing_value=missing)
+               'surface temperature', units='degC', conversion=US%C_to_degC)
   FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
-               'surface temperature', 'C', conversion=US%C_to_degC, missing_value=missing)
+               'surface temperature', units='degC', conversion=US%C_to_degC)
   FIA%id_sitemptop_CMOR = register_SIS_diag_field('ice_model', 'sitemptop_CMOR', diag%axesT1, Time, &
-               'Surface Temperature of Sea ice', 'Kelvin', conversion=US%C_to_degC, missing_value=missing, &
+               'Surface Temperature of Sea ice', units='Kelvin', conversion=US%C_to_degC, &
                standard_name="SeaIceSurfaceTemperature")
 
   ! diagnostics for quantities produced outside the ice model
   FIA%id_slp   = register_SIS_diag_field('ice_model', 'SLP', diag%axesT1, Time, &
-             'sea level pressure', 'Pa', conversion=US%RZ_T_to_kg_m2s*US%L_T_to_m_s, missing_value=missing)
+             'sea level pressure', units='Pa', conversion=US%RLZ_T2_to_Pa)
   ! diagnostics for quantities produced outside the ice model
   OSS%id_sst   = register_SIS_diag_field('ice_model', 'SST', diag%axesT1, Time, &
-             'sea surface temperature', 'deg-C', conversion=US%C_to_degC, missing_value=missing)
+             'sea surface temperature', units='degC', conversion=US%C_to_degC)
   OSS%id_sss   = register_SIS_diag_field('ice_model', 'SSS', diag%axesT1, Time, &
-             'sea surface salinity', 'psu', conversion=US%S_to_ppt, missing_value=missing)
+             'sea surface salinity', units='psu', conversion=US%S_to_ppt)
   OSS%id_ssh   = register_SIS_diag_field('ice_model', 'SSH', diag%axesT1, Time, &
-             'sea surface height', 'm', conversion=US%Z_to_m, missing_value=missing)
+             'sea surface height', units='m', conversion=US%Z_to_m)
 
   if (Cgrid_dyn) then
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesCu1, Time, &
-               'surface current - x component', 'm/s', conversion=US%L_T_to_m_s, &
-               missing_value=missing, interp_method='none')
+               'surface current - x component', units='m s-1', conversion=US%L_T_to_m_s, &
+               interp_method='none')
     OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesCv1, Time, &
-               'surface current - y component', 'm/s', conversion=US%L_T_to_m_s, &
-               missing_value=missing, interp_method='none')
+               'surface current - y component', units='m s-1', conversion=US%L_T_to_m_s, &
+               interp_method='none')
   else
     OSS%id_uo     = register_SIS_diag_field('ice_model', 'UO', diag%axesB1, Time, &
-               'surface current - x component', 'm/s', conversion=US%L_T_to_m_s, &
-               missing_value=missing, interp_method='none')
+               'surface current - x component', units='m s-1', conversion=US%L_T_to_m_s, &
+               interp_method='none')
     OSS%id_vo     = register_SIS_diag_field('ice_model', 'VO', diag%axesB1, Time, &
-               'surface current - y component', 'm/s', conversion=US%L_T_to_m_s, &
-               missing_value=missing, interp_method='none')
+               'surface current - y component', units='m s-1', conversion=US%L_T_to_m_s, &
+               interp_method='none')
   endif
 
   OSS%id_frazil   = register_SIS_diag_field('ice_model', 'FRAZIL', diag%axesT1, Time, &
-               'energy flux of frazil formation', 'W/m^2', conversion=US%QRZ_T_to_W_m2, missing_value=missing)
+               'energy flux of frazil formation', units='W m-2', conversion=US%QRZ_T_to_W_m2)
+  
+  OSS%id_frazilmass   = register_SIS_diag_field('ice_model', 'FRAZILMASS', diag%axesT1, Time, &
+               'mass flux of frazil formation', &
+               units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
+               cmor_field_name='sidmassgrowthwat', &
+               cmor_standard_name='tendency_of_sea_ice_amount_due_to_frazil_ice_accumulation_in_leads', &
+               cmor_long_name='Sea-Ice Mass Change Through Growth in Supercooled Open Water (Frazil)')
 
   if (coupler_type_initialized(OSS%tr_fields)) &
     call coupler_type_set_diags(OSS%tr_fields, 'ice_model', diag%axesT1%handles, Time)
@@ -346,13 +384,13 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   ! following iceberg diagnostics should be offered.
   if (associated(IOF%ustar_berg)) &
     IOF%id_ustar_berg  = register_SIS_diag_field('ice_model', 'USTAR_BERG', diag%axesT1, Time, &
-               'iceberg ustar', 'm/s', missing_value=missing)
+               'iceberg friction velocity', units='m s-1', conversion=1.0)
   if (associated(IOF%area_berg)) &
     IOF%id_area_berg  = register_SIS_diag_field('ice_model', 'AREA_BERG', diag%axesT1, Time, &
-               'icebergs area', 'm2/m2', missing_value=missing)
+               'icebergs area per unit ocean area', units='nondim', conversion=1.0)
   if (associated(IOF%mass_berg)) &
     IOF%id_mass_berg  = register_SIS_diag_field('ice_model', 'MASS_BERG', diag%axesT1, Time, &
-               'icebergs mass', 'kg/m2', missing_value=missing)
+               'icebergs mass per unit ocean area', units='kg m-2', conversion=1.0)
 
   ! Write out static fields.
 
@@ -393,47 +431,53 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   nLay = IG%NkIce
 
-  Rad%id_swdn  = register_SIS_diag_field(trim(comp_name),'SWDN', diag%axesT1, Time, &
-             'downward shortwave flux', 'W/m^2', missing_value=missing)
-  Rad%id_lwdn  = register_SIS_diag_field(trim(comp_name),'LWDN', diag%axesT1, Time, &
-             'downward longwave flux', 'W/m^2', missing_value=missing)
-
-  Rad%id_alb      = register_SIS_diag_field(trim(comp_name),'ALB',diag%axesT1, Time, &
-               'surface albedo','0-1', missing_value=missing )
-  Rad%id_coszen   = register_SIS_diag_field(trim(comp_name),'coszen',diag%axesT1, Time, &
-               'cosine of the solar zenith angle for the next radiation step','-1:1', missing_value=missing )
-  Rad%id_sw_abs_sfc= register_SIS_diag_field(trim(comp_name),'sw_abs_sfc',diag%axesT1, Time, &
-               'SW frac. abs. at the ice surface','0-1', missing_value=missing )
-  Rad%id_sw_abs_snow= register_SIS_diag_field(trim(comp_name),'sw_abs_snow',diag%axesT1, Time, &
-               'SW frac. abs. in snow','0-1', missing_value=missing )
+  Rad%id_swdn  = register_SIS_diag_field(trim(comp_name), 'SWDN', diag%axesT1, Time, &
+             'downward shortwave flux', units='W m-2', conversion=1.0, &
+             cmor_field_name='siflswdtop', &
+             cmor_standard_name='surface_downwelling_shortwave_flux_in_air', &
+             cmor_long_name='Downwelling Shortwave Flux over Sea Ice')
+  Rad%id_lwdn  = register_SIS_diag_field(trim(comp_name), 'LWDN', diag%axesT1, Time, &
+             'downward longwave flux', units='W m-2', conversion=1.0, &
+             cmor_field_name='sifllwdtop', &
+             cmor_standard_name='surface_downwelling_longwave_flux_in_air', &
+             cmor_long_name='Downwelling Longwave Flux over Sea Ice')
+ 
+  Rad%id_alb      = register_SIS_diag_field(trim(comp_name), 'ALB', diag%axesT1, Time, &
+               'surface albedo [0,1]', units="nondim" )
+  Rad%id_coszen   = register_SIS_diag_field(trim(comp_name), 'coszen', diag%axesT1, Time, &
+               'cosine of the solar zenith angle for the next radiation step [-1,1]', &
+               units="nondim" )
+  Rad%id_sw_abs_sfc= register_SIS_diag_field(trim(comp_name), 'sw_abs_sfc', diag%axesT1, Time, &
+               'SW frac. abs. at the ice surface [0,1]', units="nondim" )
+  Rad%id_sw_abs_snow= register_SIS_diag_field(trim(comp_name), 'sw_abs_snow', diag%axesT1, Time, &
+               'SW frac. abs. in snow [0,1]', units="nondim" )
 
   call safe_alloc_ids_1d(Rad%id_sw_abs_ice, nLay)
   do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
     Rad%id_sw_abs_ice(n) = register_SIS_diag_field(trim(comp_name),'sw_abs_ice'//trim(nstr), &
-                 diag%axesT1, Time, 'SW frac. abs. in ice layer '//trim(nstr), &
-                 '0:1', missing_value=missing )
+                 diag%axesT1, Time, 'SW fraction absorbed in ice layer '//trim(nstr)//' [0,1]', &
+                 units="nondim" )
   enddo
-  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name),'sw_pen',diag%axesT1, Time, &
-               'SW frac. pen. surf.','0:1', missing_value=missing )
-  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name),'sw_abs_ocn',diag%axesT1, Time, &
-               'SW frac. sent to the ocean','0:1', missing_value=missing )
+  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name),'sw_pen', diag%axesT1, Time, &
+               'SW fraction penetrating the ice surface [0,1]', units="nondim" )
+  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name),'sw_abs_ocn', diag%axesT1, Time, &
+               'SW fraction sent to the ocean [0,1]', units="nondim" )
 
-
-  Rad%id_alb_vis_dir = register_SIS_diag_field(trim(comp_name),'alb_vis_dir',diag%axesT1, Time, &
-               'ice surface albedo vis_dir','0-1', missing_value=missing )
-  Rad%id_alb_vis_dif = register_SIS_diag_field(trim(comp_name),'alb_vis_dif',diag%axesT1, Time, &
-               'ice surface albedo vis_dif','0-1', missing_value=missing )
-  Rad%id_alb_nir_dir = register_SIS_diag_field(trim(comp_name),'alb_nir_dir',diag%axesT1, Time, &
-               'ice surface albedo nir_dir','0-1', missing_value=missing )
-  Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name),'alb_nir_dif',diag%axesT1, Time, &
-               'ice surface albedo nir_dif','0-1', missing_value=missing )
+  Rad%id_alb_vis_dir = register_SIS_diag_field(trim(comp_name), 'alb_vis_dir', diag%axesT1, Time, &
+               'ice surface albedo vis_dir [0,1]', units="nondim" )
+  Rad%id_alb_vis_dif = register_SIS_diag_field(trim(comp_name), 'alb_vis_dif', diag%axesT1, Time, &
+               'ice surface albedo vis_dif [0,1]', units="nondim" )
+  Rad%id_alb_nir_dir = register_SIS_diag_field(trim(comp_name), 'alb_nir_dir', diag%axesT1, Time, &
+               'ice surface albedo nir_dir [0,1]', units="nondim" )
+  Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name), 'alb_nir_dif', diag%axesT1, Time, &
+               'ice surface albedo nir_dif [0,1]', units="nondim" )
   Rad%id_tskin = register_SIS_diag_field(trim(comp_name),'Tskin', diag%axesTc, Time, &
-               'Skin temperature', 'degC', conversion=G%US%C_to_degC, missing_value=missing )
+               'Skin temperature', units='degC', conversion=G%US%C_to_degC)
   Rad%id_cn = register_SIS_diag_field(trim(comp_name),'CN_fast', diag%axesTc, Time, &
-               'Category concentration','0-1', missing_value=missing )
+               'Category concentration [0,1]', units="nondim" )
   Rad%id_mi = register_SIS_diag_field(trim(comp_name),'MI_fast', diag%axesTc, Time, &
-               'Category concentration','0-1', missing_value=missing )
+               'Category concentration [0,1]', units="nondim" )
 
 end subroutine ice_diags_fast_init
 

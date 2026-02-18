@@ -1009,7 +1009,8 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                            snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
                            snow_to_ice, salt_to_ice, ITV, US, CS, ablation, &
-                           enthalpy_evap, enthalpy_melt, enthalpy_freeze)
+                           ablation_i, ablation_s, enthalpy_evap, enthalpy_melt, enthalpy_freeze, &
+                           evap_i, evap_s)
   ! mw/new - melt pond - added first two arguments & rain
   real, intent(in   ) :: a_ice       !< area of ice (1-open_water_frac) for pond retention [nondim]
   real, intent(inout) :: m_pond      !< melt pond mass [R Z ~> kg m-2]
@@ -1023,7 +1024,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
         intent(inout) :: Salin       !< Conserved ice bulk salinity by layer [S ~> gSalt kg-1]
   real, intent(in   ) :: snow        !< new snow [R Z ~> kg m-2]
   real, intent(in   ) :: rain        !< rain for pond source [R Z ~> kg m-2] - not yet active
-  real, intent(in   ) :: evap        !< ice evaporation/sublimation [R Z ~> kg m-2]
+  real, intent(in   ) :: evap        !< ice and snow evaporation/sublimation [R Z ~> kg m-2]
   real, intent(in   ) :: tmlt        !< top melting energy [Q R Z ~> J m-2]
   real, intent(in   ) :: bmlt        !< bottom melting energy [Q R Z ~> J m-2]
   integer, intent(in) :: NkIce       !< The number of ice layers.
@@ -1040,13 +1041,17 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
   type(SIS2_ice_thm_CS), intent(in) :: CS  !< The SIS2_ice_thm control structure.
 
-  real, intent(  out) :: ablation      !< The mass loss from bottom melt [R Z ~> kg m-2].
+  real, intent(  out) :: ablation      !< The mass loss from bottom melt of ice and snow [R Z ~> kg m-2].
+  real, intent(  out) :: ablation_i    !< The mass loss from bottom melt of ice [R Z ~> kg m-2].
+  real, intent(  out) :: ablation_s    !< The mass loss from bottom melt of snow [R Z ~> kg m-2].
   real, intent(  out) :: enthalpy_evap !< The enthalpy loss due to the mass loss
                                        !! by evaporation / sublimation. [Q R Z ~> J m-2]
   real, intent(  out) :: enthalpy_melt !< The enthalpy loss due to the mass loss
                                        !! by melting [Q R Z ~> J m-2].
   real, intent(  out) :: enthalpy_freeze !< The enthalpy gain due to the mass gain
                                        !! by freezing [Q R Z ~> J m-2].
+  real, intent(  out) :: evap_i        !< ice evaporation/sublimation [R Z ~> kg m-2]
+  real, intent(  out) :: evap_s        !< snow evaporation/sublimation [R Z ~> kg m-2]
 
   real :: top_melt, bot_melt, melt_left ! Heating amounts, all in [Q R Z ~> J m-2]
   real :: mtot_ice    ! The summed ice mass [R Z ~> kg m-2].
@@ -1100,6 +1105,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   h2o_to_pond = 0.0
   h2o_from_pond = 0.0
   salt_to_ice = 0.0
+  evap_s = 0.0 ; evap_i = 0.0
   enthM_freezing = 0.0 ; enthM_melt = 0.0 ; enthM_evap = 0.0 ; enthM_snowfall = 0.0
 
   ! raining on cold ice led to unphysical temperature oscillations
@@ -1117,6 +1123,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   if (evap < 0.0) then
     m_lay(0) = m_lay(0) - evap ! Treat frost formation like snow.
     enthM_snowfall = enthM_snowfall - evap*enthalpy(0)
+    evap_s = evap_s + evap
   endif
 
   if (top_melt < 0.0 .and. CS%do_pond) then ! mw/new: add fresh/0C ice to top layer
@@ -1185,6 +1192,11 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       evap_here = min(evap_left, m_lay(k))
       evap_left = evap_left - evap_here
       m_lay(k) = m_lay(k) - evap_here
+      if (k == 0) then
+        evap_s = evap_s + evap_here
+      else
+        evap_i = evap_i + evap_here
+      endif
       ! Assume that evaporation does not make ice salty?
       if (k>0) salt_to_ice = salt_to_ice - Salin(k) * evap_here
       enthM_evap = enthM_evap + evap_here * enthalpy(k)
@@ -1229,6 +1241,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   ! apply bottom melt heat flux
 
   melt_left = bot_melt ; ablation = 0.0
+  ablation_i = 0.0 ; ablation_s = 0.0
   if (melt_left > 0.0) then ! melt ice and snow from below
     do k=NkIce,0,-1
       if (melt_left < m_lay(k) * (enth_fr(k) - Enthalpy(k))) then
@@ -1243,7 +1256,11 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       h2o_ice_to_ocn = h2o_ice_to_ocn + M_melt
       enthM_melt = enthM_melt + M_melt*enth_fr(k)
       ablation = ablation + M_melt
-
+      if (k > 0) then
+        ablation_i = ablation_i + M_melt
+      else
+        ablation_s = ablation_s + M_melt
+      endif
       if (melt_left <= 0.0) exit ! All melt energy has been used.
     enddo
 
