@@ -954,6 +954,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,US,IST,S_col0,NkIce,S_col,dt_slow, &
 !$OMP                                  snow_to_ice,heat_in,I_NK,enth_prev,enth_mass_in_col,bsnk, &
+!$OMP                                  snow_to_ice_i,snow_to_ice_s, &
 !$OMP                                  bsnk_i,bsnk_s,sisnmass_evap,simass_evap,Idt_slow, &
 !$OMP                                  salt_change,net_melt,LatHtFus,LatHtVap,IG,CS,OSS, &
 !$OMP                                  FIA,IOF,npassive,nb,salt_left_in_ocean) &
