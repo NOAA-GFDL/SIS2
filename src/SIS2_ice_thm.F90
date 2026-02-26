@@ -1008,7 +1008,7 @@ end subroutine ice_check
 subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
                            snow, rain, evap, tmlt, bmlt, NkIce, npassive, TrLay, &
                            heat_to_ocn, h2o_ice_to_ocn, h2o_ocn_to_ice, evap_from_ocn, &
-                           snow_to_ice, s2i_i, s2i_s, salt_to_ice, ITV, US, CS, ablation, &
+                           snow_to_ice, salt_to_ice, ITV, US, CS, ablation, &
                            ablation_i, ablation_s, enthalpy_evap, enthalpy_melt, enthalpy_freeze, &
                            evap_i, evap_s)
   ! mw/new - melt pond - added first two arguments & rain
@@ -1036,8 +1036,6 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
   real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [R Z ~> kg m-2]
   real, intent(  out) :: evap_from_ocn  !< evaporation flux from ocean [R Z ~> kg m-2]
   real, intent(  out) :: snow_to_ice !< snow below waterline becomes ice [R Z ~> kg m-2]
-  real, intent(  out) :: s2i_i       !< snow below waterline becomes ice (ice flux) [R Z ~> kg m-2]
-  real, intent(  out) :: s2i_s       !< snow below waterline becomes ice (snow flux) [R Z ~> kg m-2]
   real, intent(  out) :: salt_to_ice !< Net flux of salt to the ice [R Z S ~> gSalt m-2].
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
   type(unit_scale_type), intent(in) :: US  !< A structure with unit conversion factors
@@ -1104,7 +1102,6 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
 
   evap_from_ocn = 0.0 ! for excess evap-melt
   h2o_ocn_to_ice = 0.0 ; h2o_ice_to_ocn = 0.0 ; snow_to_ice  = 0.0
-  s2i_i = 0.0 ; s2i_s = 0.0
   h2o_to_pond = 0.0
   h2o_from_pond = 0.0
   salt_to_ice = 0.0
@@ -1307,7 +1304,6 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
     snow_to_ice = min(m_submerged - mtot_ice, m_lay(0)) ! need ice from snow
 
     m_lay(0) = m_lay(0) - snow_to_ice
-    s2i_s = s2i_s - snow_to_ice
 
     ! Add ice to the topmost layer and dilute its salinity.
     Enthalpy(1) = (m_lay(1)*Enthalpy(1) + snow_to_ice*Enthalpy(0)) / &
@@ -1317,7 +1313,6 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_lay, Enthalpy, Sice_therm, Salin, &
       TrLay(1,tr) = TrLay(1,tr) * m_lay(1) / (m_lay(1) + snow_to_ice)
     enddo
     m_lay(1) = m_lay(1) + snow_to_ice
-    s2i_i = s2i_i + snow_to_ice
   else
     snow_to_ice = 0.0
   endif

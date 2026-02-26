@@ -351,7 +351,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'ice extent, indicating cells with more than 15% sea ice cover', &
                units='nondim')
   IDs%id_cn       = register_diag_field('ice_model', 'CN', diag%axesTc, Time, &
-               'ice concentration', units="nondim", range=(/0.,1./), &
+               'ice concentration [0,1]', units="nondim", &
                cmor_field_name='siitdconc', &
                cmor_standard_name='sea_ice_area_fraction', &
                cmor_long_name='Sea-Ice Area Percentages in Ice Thickness Categories')
@@ -364,9 +364,9 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_hi       = register_diag_field('ice_model', 'HI', diag%axesT1, Time, &
                'ice thickness', units='m', conversion=US%Z_to_m)
   IDs%id_sitimefrac = register_diag_field('ice_model', 'sitimefrac', diag%axesT1, Time, &
-               'time fraction of ice cover', units="nondim", range=(/0.,1./) )
+               'time fraction of ice cover [0,1]', units="nondim" )
   IDs%id_siconc = register_diag_field('ice_model', 'siconc', diag%axesT1, Time, &
-               'ice concentration', units="nondim", range=(/0.,1./) )
+               'ice concentration [0,1]', units="nondim" )
   IDs%id_siconc_CMOR = register_diag_field('ice_model', 'siconc_CMOR', diag%axesT1, Time, &
                'Sea-Ice Area Percentage', units='%', conversion=100.0, &
                standard_name="SeaIceAreaFraction")
@@ -375,7 +375,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_sivol  = register_diag_field('ice_model', 'sivol', diag%axesT1, Time, &
                'ice volume', units='m', conversion=US%Z_to_m)
   IDs%id_sisnconc = register_diag_field('ice_model', 'sisnconc', diag%axesT1, Time, &
-               'snow concentration', units="nondim", range=(/0.,1./) )
+               'snow concentration [0,1]', units="nondim" )
   IDs%id_sisnconc_CMOR = register_diag_field('ice_model', 'sisnconc_CMOR', diag%axesT1, Time, &
                'Snow Area Percentage', units='%', conversion=100.0, missing_value=missing, &
                standard_name="SurfaceSnowAreaFraction")
@@ -421,7 +421,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                  "If true, call the ridging routines.", default=.false., do_not_log=.true.)
   if (do_ridging) then
     IDs%id_rdgf = register_diag_field('ice_model', 'RDG_FRAC', diag%axesTc, Time, &
-                   'ridged ice fraction', units="nondim", range=(/0.,1./) )
+                   'ridged ice fraction [0,1]', units="nondim" )
 !   IDs%id_rdg_h = register_diag_field('ice_model', 'RDG_HEIGHT', diag%axesTc, Time, &
 !                  'ice ridge height', units='m', conversion=US%m_to_Z)
   endif
