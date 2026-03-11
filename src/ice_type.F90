@@ -250,7 +250,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     call register_restart_field(Ice_restart, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif)
     call register_restart_field(Ice_restart, 'flux_sw_nir_dir', Ice%flux_sw_nir_dir)
     call register_restart_field(Ice_restart, 'flux_sw_nir_dif', Ice%flux_sw_nir_dif)
-    call register_restart_field(Ice_restart, 'runoff_carbon',   Ice%runoff_carbon)
+    call register_restart_field(Ice_restart, 'runoff_carbon',   Ice%runoff_carbon, mandatory=.false.)
     if (Ice%sCS%pass_stress_mag) &
       call register_restart_field(Ice_restart, 'stress_mag', Ice%stress_mag, mandatory=.false.)
     if (Ice%sCS%pass_iceberg_area_to_ocean) then

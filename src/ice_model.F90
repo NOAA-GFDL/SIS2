@@ -407,7 +407,9 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
     FIA%calving(i,j) = US%kg_m2s_to_RZ_T*LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = US%W_m2_to_QRZ_T*LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*LIB%calving_hflx(i2,j2)
-    FIA%runoff_carbon(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff_carbon(i2,j2)
+    if (associated(LIB%runoff_carbon)) then
+      FIA%runoff_carbon(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff_carbon(i2,j2)
+    endif
   else
     ! This is a land point from the perspective of the sea-ice.
     ! At some point it might make sense to check for non-zero fluxes, which
