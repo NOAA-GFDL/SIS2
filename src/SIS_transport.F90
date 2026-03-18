@@ -1238,7 +1238,7 @@ subroutine cell_mass_from_CAS(CAS, G, IG, mca, scale)
 
   do j=jsc,jec ; do i=isc,iec ; mca(i,j) = 0.0 ; enddo ; enddo
   do k=1,nCat ; do j=jsc,jec ; do i=isc,iec
-    mca(i,j) = mca(i,j) + H_to_units * ((CAS%m_ice(i,j,k) + CAS%m_snow(i,j,k)) + \
+    mca(i,j) = mca(i,j) + H_to_units * ((CAS%m_ice(i,j,k) + CAS%m_snow(i,j,k)) + &
                                         (CAS%m_pond(i,j,k) + CAS%m_pond_ice(i,j,k)))
   enddo ; enddo ; enddo
 
