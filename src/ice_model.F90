@@ -407,18 +407,28 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
     FIA%calving(i,j) = US%kg_m2s_to_RZ_T*LIB%calving(i2,j2)
     FIA%runoff_hflx(i,j)  = US%W_m2_to_QRZ_T*LIB%runoff_hflx(i2,j2)
     FIA%calving_hflx(i,j) = US%W_m2_to_QRZ_T*LIB%calving_hflx(i2,j2)
-    if (associated(LIB%runoff_carbon)) then
-      FIA%runoff_carbon(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff_carbon(i2,j2)
-    endif
   else
     ! This is a land point from the perspective of the sea-ice.
     ! At some point it might make sense to check for non-zero fluxes, which
     ! might indicate regridding errors.  However, bad-data values are also
     ! non-zero and should not be flagged.
-    FIA%runoff(i,j)  = 0.0 ; FIA%runoff_carbon(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
+    FIA%runoff(i,j)  = 0.0 ; FIA%calving(i,j) = 0.0
     FIA%runoff_hflx(i,j)  = 0.0 ; FIA%calving_hflx(i,j) = 0.0
   endif ; enddo ; enddo
 
+  if (associated(LIB%runoff_carbon) .and. allocated(FIA%runoff_carbon)) then
+    do j=jsc,jec ; do i=isc,iec ; if (G%mask2dT(i,j) > 0.0) then
+      i2 = i+i_off ; j2 = j+j_off
+      FIA%runoff_carbon(i,j)  = US%kg_m2s_to_RZ_T*LIB%runoff_carbon(i2,j2)
+    else
+      ! This is a land point from the perspective of the sea-ice.
+      ! At some point it might make sense to check for non-zero fluxes, which
+      ! might indicate regridding errors.  However, bad-data values are also
+      ! non-zero and should not be flagged.
+        FIA%runoff_carbon(i,j)  = 0.0
+    endif ; enddo ; enddo
+  end if
+  
   if (Ice%fCS%debug) then
     call FIA_chksum("End of unpack_land_ice_boundary", FIA, G, Ice%fCS%US)
   endif
@@ -648,7 +658,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
     Ice%fprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%fprec_ocn_top(i,j)
     Ice%lprec(i2,j2) = US%RZ_T_to_kg_m2s*IOF%lprec_ocn_top(i,j)
     Ice%runoff(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff(i,j)
-    Ice%runoff_carbon(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff_carbon(i,j)
     Ice%calving(i2,j2) = US%RZ_T_to_kg_m2s*FIA%calving(i,j)
     Ice%runoff_hflx(i2,j2)  = US%QRZ_T_to_W_m2*FIA%runoff_hflx(i,j)
     Ice%calving_hflx(i2,j2) = US%QRZ_T_to_W_m2*FIA%calving_hflx(i,j)
@@ -676,7 +685,12 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
       Ice%salt_left_behind(i2,j2) = US%RZ_T_to_kg_m2s*IOF%salt_left_behind(i,j)
     enddo ; enddo
   endif
-
+  if (allocated(FIA%runoff_carbon)) then
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
+      Ice%runoff_carbon(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff_carbon(i,j)
+    enddo ; enddo
+  endif
   ! This copy may need to be skipped in the first step of a cold-start run with lagged ice
   ! coupling, but otherwise if it is skipped may indicate a problem that should be trapped.
   if (coupler_type_initialized(IOF%tr_flux_ocn_top)) &
@@ -1781,6 +1795,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               ! during ice formation.
   logical :: read_hlim_vals   ! If true, read the list of ice thickness lower limits
                               ! from an input file.
+  logical :: allow_carbon_flux_exchange ! If true, allow carbon fluxes between the ocean, ice, and atmosphere.
+
   real,  allocatable, dimension(:) :: &
     hlim_vals                 ! List of lower limits on ice thickness categories.
   logical :: Verona
@@ -2017,6 +2033,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   call get_param(param_file, mdl, "READ_HLIM_VALS", read_hlim_vals, &
                  "If true, read the lower limits on the ice thickness"//&
                  "categories.", default=.false.)
+  call get_param(param_file, mdl, "ALLOW_CARBON_FLUX_EXCHANGE", allow_carbon_flux_exchange, &
+                 "If true, allow carbon flux exchange between ice, ocean, and atmosphere.", &
+                 default=.false.)
 
   nCat_dflt = 5 ; if (slab_ice) nCat_dflt = 1
   opm_dflt = 0.0 ; if (redo_fast_update) opm_dflt = 1.0e-40
@@ -2129,7 +2148,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   ! Allocate and register fields for restarts.
 
     call ice_type_slow_reg_restarts(sGD%mpp_domain, CatIce, &
-                      param_file, Ice, Ice%Ice_restart)
+                      param_file, Ice, Ice%Ice_restart, carbon_fluxes=allow_carbon_flux_exchange)
 
     call alloc_IST_arrays(sHI, sIG, US, sIST, omit_tsurf=Eulerian_tsurf, do_ridging=do_ridging)
     call ice_state_register_restarts(sIST, sG, sIG, US, Ice%Ice_restart)
@@ -2144,7 +2163,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                               do_brine_plume=Ice%sCS%do_brine_plume)
     Ice%sCS%IOF%slp2ocean = slp2ocean
     Ice%sCS%IOF%flux_uv_stagger = Ice%flux_uv_stagger
-    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes, gas_fluxes)
+    call alloc_fast_ice_avg(Ice%sCS%FIA, sHI, sIG, interp_fluxes, gas_fluxes, allow_carbon_flux_exchange)
 
     if (Ice%sCS%redo_fast_update) then
       call alloc_total_sfc_flux(Ice%sCS%TSF, sHI, gas_fluxes)
@@ -2299,7 +2318,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                             omit_velocities=.true., omit_tsurf=Eulerian_tsurf)
     endif
     if (.not.single_IST) then
-      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes, gas_fluxes)
+      call alloc_fast_ice_avg(Ice%fCS%FIA, fHI, Ice%fCS%IG, interp_fluxes, gas_fluxes, allow_carbon_flux_exchange)
 
       call alloc_simple_OSS(Ice%fCS%sOSS, fHI, gas_fields_ocn)
     endif

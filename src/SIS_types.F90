@@ -729,7 +729,7 @@ end subroutine rescale_ice_state_restart_fields
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> alloc_fast_ice_avg allocates and zeros out the arrays in a fast_ice_avg_type.
-subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
+subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes, carbon_fluxes)
   type(fast_ice_avg_type), pointer    :: FIA !< A type containing averages of fields
                                              !! (mostly fluxes) over the fast updates
   type(hor_index_type),    intent(in) :: HI  !< The horizontal index type describing the domain
@@ -741,6 +741,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
                  optional, intent(in) :: gas_fluxes !< If present, this type describes the
                                              !! additional gas or other tracer fluxes between the
                                              !! ocean, ice, and atmosphere.
+  logical,       optional,intent(in) :: carbon_fluxes !< If true, allocate fields for carbon fluxes.
 
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, CatIce
 
@@ -760,7 +761,6 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   allocate(FIA%lprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
   allocate(FIA%fprec_top(isd:ied, jsd:jed, 0:CatIce), source=0.0)
   allocate(FIA%runoff(isd:ied, jsd:jed), source=0.0)
-  allocate(FIA%runoff_carbon(isd:ied, jsd:jed), source=0.0)
   allocate(FIA%calving(isd:ied, jsd:jed), source=0.0)
   allocate(FIA%calving_preberg(isd:ied, jsd:jed), source=0.0) ! diag
   allocate(FIA%runoff_hflx(isd:ied, jsd:jed), source=0.0)
@@ -795,6 +795,10 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes)
   if (present(gas_fluxes)) &
     call coupler_type_spawn(gas_fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
                             (/jsd, jsc, jec, jed/), (/0, CatIce/))
+
+  if (present(carbon_fluxes)) then ; if(carbon_fluxes) then
+    allocate(FIA%runoff_carbon(isd:ied, jsd:jed), source=0.0)
+  endif; endif
 
 end subroutine alloc_fast_ice_avg
 
@@ -1412,7 +1416,6 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     FIA_out%WindStr_ocn_y(i2,j2) = FIA_in%WindStr_ocn_y(i,j)
     FIA_out%p_atm_surf(i2,j2) = FIA_in%p_atm_surf(i,j)
     FIA_out%runoff(i2,j2) = FIA_in%runoff(i,j)
-    FIA_out%runoff_carbon(i2,j2) = FIA_in%runoff_carbon(i,j)
     FIA_out%calving(i2,j2) =  FIA_in%calving(i,j)
     FIA_out%runoff_hflx(i2,j2) = FIA_in%runoff_hflx(i,j)
     FIA_out%calving_hflx(i2,j2) =  FIA_in%calving_hflx(i,j)
@@ -1438,6 +1441,13 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
       FIA_out%dlwdt(i2,j2,k) = FIA_in%dlwdt(i,j,k)
       FIA_out%Tskin_cat(i2,j2,k) = FIA_in%Tskin_cat(i,j,k)
     enddo ; enddo ; enddo
+  endif
+  ! runoff_carbon may not always be allocated, so check before copying.
+  if(allocated(FIA_out%runoff_carbon)) then
+    do j=jsc,jec ; do i=isc,iec
+      i2 = i+i_off ; j2 = j+j_off
+      FIA_out%runoff_carbon(i2,j2) = FIA_in%runoff_carbon(i,j)
+    enddo ; enddo
   endif
 
   if (FIA_in%copy_calls /= FIA_out%copy_calls) call SIS_error(WARNING, &
@@ -1525,8 +1535,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                            FIA_out%p_atm_surf, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
                            FIA_out%runoff, complete=.false.)
-    call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
-                           FIA_out%runoff_carbon, complete=.false.)
     call redistribute_data(domain_in, FIA_in%calving, domain_out, &
                            FIA_out%calving, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff_hflx, domain_out, &
@@ -1559,6 +1567,11 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                              FIA_out%dlwdt, complete=.true.)
       call redistribute_data(domain_in, FIA_in%Tskin_cat, domain_out, &
                              FIA_out%Tskin_cat, complete=.true.)
+    endif
+    ! runoff_carbon may not always be allocated, so check before distributing. 
+    if (allocated(FIA_in%runoff_carbon) .and. allocated(FIA_out%runoff_carbon)) then
+      call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
+                             FIA_out%runoff_carbon, complete=.false.)
     endif
 
   elseif (associated(FIA_out)) then
@@ -1602,8 +1615,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%runoff, complete=.false.)
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
-                           FIA_out%runoff_carbon, complete=.false.)
-    call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%calving, complete=.false.)
     call redistribute_data(domain_in, null_ptr2D, domain_out, &
                            FIA_out%runoff_hflx, complete=.false.)
@@ -1636,7 +1647,11 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
       call redistribute_data(domain_in, null_ptr3D, domain_out, &
                              FIA_out%Tskin_cat, complete=.true.)
     endif
-
+    ! runoff_carbon may not always be allocated, so check before distributing.
+    if (allocated(FIA_out%runoff_carbon)) then
+      call redistribute_data(domain_in, null_ptr2D, domain_out, &
+                             FIA_out%runoff_carbon, complete=.false.)
+    endif
 
   elseif (associated(FIA_in)) then
     ! Use the null pointers in place of the unneeded output arrays.
@@ -1678,8 +1693,6 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                            null_ptr2D, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff, domain_out, &
                            null_ptr2D, complete=.false.)
-    call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
-                           null_ptr2D, complete=.false.)
     call redistribute_data(domain_in, FIA_in%calving, domain_out, &
                            null_ptr2D, complete=.false.)
     call redistribute_data(domain_in, FIA_in%runoff_hflx, domain_out, &
@@ -1712,6 +1725,11 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                              null_ptr3D, complete=.true.)
       call redistribute_data(domain_in, FIA_in%Tskin_cat, domain_out, &
                              null_ptr3D, complete=.true.)
+    endif
+    ! runoff_carbon may not always be allocated, so check before distributing.
+    if (allocated(FIA_in%runoff_carbon) .and. allocated(FIA_out%runoff_carbon)) then
+      call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
+                             FIA_out%runoff_carbon, complete=.false.)
     endif
 
   else
@@ -1984,8 +2002,11 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
                               mandatory=.false., units="Pa", conversion=US%RLZ_T2_to_Pa)
   call register_restart_field(Ice_restart, 'runoff', FIA%runoff, &
                               mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
-  call register_restart_field(Ice_restart, 'runoff_carbon', FIA%runoff_carbon, &
-                              mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
+  ! runoff_carbon may not always be allocated, so check before registering.
+  if (allocated(FIA%runoff_carbon)) then
+    call register_restart_field(Ice_restart, 'runoff_carbon', FIA%runoff_carbon, &
+                                mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
+  endif
   call register_restart_field(Ice_restart, 'calving', FIA%calving, &
                               mandatory=.false., units="kg m-2 s-1", conversion=US%RZ_T_to_kg_m2s)
   call register_restart_field(Ice_restart, 'runoff_hflx', FIA%runoff_hflx, &
@@ -2119,7 +2140,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   deallocate(FIA%flux_sh_top, FIA%evap_top, FIA%flux_lw_top)
   deallocate(FIA%flux_lh_top, FIA%lprec_top, FIA%fprec_top)
   deallocate(FIA%flux_sw_top)
-  deallocate(FIA%runoff, FIA%runoff_carbon, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
+  deallocate(FIA%runoff, FIA%calving, FIA%runoff_hflx, FIA%calving_hflx)
   deallocate(FIA%calving_preberg, FIA%calving_hflx_preberg)
 
   deallocate(FIA%tmelt, FIA%bmelt, FIA%frazil_left)
@@ -2134,6 +2155,7 @@ subroutine dealloc_fast_ice_avg(FIA)
   if (allocated(FIA%devapdt))  deallocate(FIA%devapdt)
   if (allocated(FIA%dlwdt)) deallocate(FIA%dlwdt)
   if (allocated(FIA%Tskin_cat)) deallocate(FIA%Tskin_cat)
+  if (allocated(FIA%runoff_carbon)) deallocate(FIA%runoff_carbon)
 
   deallocate(FIA)
 end subroutine dealloc_fast_ice_avg
@@ -2309,7 +2331,8 @@ subroutine FIA_chksum(mesg, FIA, G, US, check_ocean)
   call hchksum(FIA%WindStr_ocn_y, trim(mesg)//" FIA%WindStr_ocn_y", G%HI, unscale=US%RLZ_T2_to_Pa)
   call hchksum(FIA%p_atm_surf, trim(mesg)//" FIA%p_atm_surf", G%HI, unscale=US%RLZ_T2_to_Pa)
   call hchksum(FIA%runoff, trim(mesg)//" FIA%runoff", G%HI, unscale=US%RZ_T_to_kg_m2s)
-  call hchksum(FIA%runoff_carbon, trim(mesg)//" FIA%runoff_carbon", G%HI, unscale=US%RZ_T_to_kg_m2s)
+  if (allocated(FIA%runoff_carbon)) &
+    call hchksum(FIA%runoff_carbon, trim(mesg)//" FIA%runoff_carbon", G%HI, unscale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%calving, trim(mesg)//" FIA%calving", G%HI, unscale=US%RZ_T_to_kg_m2s)
   call hchksum(FIA%runoff_hflx, trim(mesg)//" FIA%runoff_hflx", G%HI, unscale=US%QRZ_T_to_W_m2)
   call hchksum(FIA%calving_hflx, trim(mesg)//" FIA%calving_hflx", G%HI, unscale=US%QRZ_T_to_W_m2)

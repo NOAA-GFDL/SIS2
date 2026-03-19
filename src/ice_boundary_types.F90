@@ -217,7 +217,9 @@ subroutine lnd_ice_bnd_type_chksum(id, timestep, bnd_type)
   chks = SIS_chksum(bnd_type%calving)      ; if (root) write(outunit,100) 'lnd_ice_bnd_type%calving ', chks
   chks = SIS_chksum(bnd_type%runoff_hflx)  ; if (root) write(outunit,100) 'lnd_ice_bnd_type%runoff_hflx ', chks
   chks = SIS_chksum(bnd_type%calving_hflx) ; if (root) write(outunit,100) 'lnd_ice_bnd_type%calving_hflx', chks
-  chks = SIS_chksum(bnd_type%runoff_carbon); if (root) write(outunit,100) 'lnd_ice_bnd_type%runoff_carbon ', chks
+  if (associated(bnd_type%runoff_carbon)) then
+    chks = SIS_chksum(bnd_type%runoff_carbon); if (root) write(outunit,100) 'lnd_ice_bnd_type%runoff_carbon ', chks
+  endif
   ! chks = SIS_chksum(bnd_type%data) ; if (root) write(outunit,100) 'lnd_ice_bnd_type%data    ', chks
   100 FORMAT("CHECKSUM::",A32," = ",Z20)
 end subroutine lnd_ice_bnd_type_chksum
