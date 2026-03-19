@@ -179,7 +179,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
                  optional, intent(in)    :: gas_fluxes !< If present, this type describes the
                                               !! additional gas or other tracer fluxes between the
                                               !! ocean, ice, and atmosphere.
-  logical,       optional,intent(in) :: carbon_fluxes !< If true, allocate fields for carbon fluxes.
+  logical,       optional, intent(in)    :: carbon_fluxes !< If true, allocate fields for carbon fluxes.
 
   ! This subroutine allocates the externally visible ice_data_type's arrays and
   ! registers the appropriate ones for inclusion in the restart file.
