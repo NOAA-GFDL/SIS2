@@ -305,8 +305,8 @@ subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
     if (ASSOCIATED(IOB%lprec)) IOB%lprec(:,:) = Ice%lprec(:,:)
     if (ASSOCIATED(IOB%fprec)) IOB%fprec(:,:) = Ice%fprec(:,:)
     if (ASSOCIATED(IOB%runoff)) IOB%runoff(:,:) = Ice%runoff(:,:)
-    if (ASSOCIATED(Ice%runoff_carbon)) then
-      if (ASSOCIATED(IOB%runoff_carbon)) IOB%runoff_carbon(:,:) = Ice%runoff_carbon(:,:)
+    if (ASSOCIATED(Ice%runoff_carbon) .and. ASSOCIATED(IOB%runoff_carbon)) then
+      IOB%runoff_carbon(:,:) = Ice%runoff_carbon(:,:)
     endif
     if (ASSOCIATED(IOB%calving)) IOB%calving(:,:) = Ice%calving
     if (ASSOCIATED(IOB%runoff_hflx)) IOB%runoff_hflx(:,:) = Ice%runoff_hflx(:,:)

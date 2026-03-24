@@ -427,8 +427,8 @@ subroutine unpack_land_ice_boundary(Ice, LIB)
       ! non-zero and should not be flagged.
         FIA%runoff_carbon(i,j)  = 0.0
     endif ; enddo ; enddo
-  end if
-  
+  endif
+
   if (Ice%fCS%debug) then
     call FIA_chksum("End of unpack_land_ice_boundary", FIA, G, Ice%fCS%US)
   endif
@@ -685,7 +685,7 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
       Ice%salt_left_behind(i2,j2) = US%RZ_T_to_kg_m2s*IOF%salt_left_behind(i,j)
     enddo ; enddo
   endif
-  if (allocated(FIA%runoff_carbon)) then
+  if (allocated(FIA%runoff_carbon) .and. associated(Ice%runoff_carbon)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off! Use these to correct for indexing differences.
       Ice%runoff_carbon(i2,j2)  = US%RZ_T_to_kg_m2s*FIA%runoff_carbon(i,j)

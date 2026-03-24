@@ -741,7 +741,7 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes, carbon_flu
                  optional, intent(in) :: gas_fluxes !< If present, this type describes the
                                              !! additional gas or other tracer fluxes between the
                                              !! ocean, ice, and atmosphere.
-  logical,       optional,intent(in) :: carbon_fluxes !< If true, allocate fields for carbon fluxes.
+  logical,       optional, intent(in) :: carbon_fluxes !< If true, allocate fields for carbon fluxes.
 
   integer :: isc, iec, jsc, jec, isd, ied, jsd, jed, CatIce
 
@@ -796,9 +796,9 @@ subroutine alloc_fast_ice_avg(FIA, HI, IG, interp_fluxes, gas_fluxes, carbon_flu
     call coupler_type_spawn(gas_fluxes, FIA%tr_flux, (/isd, isc, iec, ied/), &
                             (/jsd, jsc, jec, jed/), (/0, CatIce/))
 
-  if (present(carbon_fluxes)) then ; if(carbon_fluxes) then
+  if (present(carbon_fluxes)) then ; if (carbon_fluxes) then
     allocate(FIA%runoff_carbon(isd:ied, jsd:jed), source=0.0)
-  endif; endif
+  endif ; endif
 
 end subroutine alloc_fast_ice_avg
 
@@ -1443,7 +1443,7 @@ subroutine copy_FIA_to_FIA(FIA_in, FIA_out, HI_in, HI_out, IG)
     enddo ; enddo ; enddo
   endif
   ! runoff_carbon may not always be allocated, so check before copying.
-  if(allocated(FIA_out%runoff_carbon)) then
+  if (allocated(FIA_out%runoff_carbon)) then
     do j=jsc,jec ; do i=isc,iec
       i2 = i+i_off ; j2 = j+j_off
       FIA_out%runoff_carbon(i2,j2) = FIA_in%runoff_carbon(i,j)
@@ -1568,7 +1568,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
       call redistribute_data(domain_in, FIA_in%Tskin_cat, domain_out, &
                              FIA_out%Tskin_cat, complete=.true.)
     endif
-    ! runoff_carbon may not always be allocated, so check before distributing. 
+    ! runoff_carbon may not always be allocated, so check before distributing.
     if (allocated(FIA_in%runoff_carbon) .and. allocated(FIA_out%runoff_carbon)) then
       call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
                              FIA_out%runoff_carbon, complete=.false.)
