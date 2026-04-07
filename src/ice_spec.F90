@@ -139,7 +139,9 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
       iceh = 0.0
     end where
     if (.not.do_leads) then
-      where (icec >= minimum_ice_concentration) icec = 1.0
+       where (icec >= minimum_ice_concentration) icec = 1.0
+    else ! Ensure ice concentration does not exceed 1.0 when leads are enabled
+       where (icec >= 1.0) icec = 1.0
     endif
   endif
 
