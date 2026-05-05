@@ -29,6 +29,7 @@ use MOM_domains,       only : pass_var, pass_vector, AGRID, BGRID_NE, CGRID_NE
 use MOM_domains,       only : fill_symmetric_edges, MOM_domains_init, clone_MOM_domain
 use MOM_dyn_horgrid,   only : dyn_horgrid_type, create_dyn_horgrid, destroy_dyn_horgrid
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, SIS_mesg=>MOM_mesg
+use MOM_error_handler, only : SIS_set_verbosity=>MOM_set_verbosity
 use MOM_error_handler, only : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser,   only : get_param, log_param, log_version, read_param, param_file_type
 use MOM_file_parser,   only : open_param_file, close_param_file
@@ -1728,6 +1729,8 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                          ! answers at roundoff.
 
   integer :: CatIce, NkIce, isd, ied, jsd, jed
+  integer :: verbosity      ! The verbosity setting for the sea-ice (1-10).  When the sea-ice and
+                            ! ocean are on the same PEs, the ocean's setting takes precedence.
   integer :: write_geom     ! A flag indicating whether to write the grid geometry files only for
                             ! new runs (1), both new runs and restarts (2) or neither (0).
   logical :: nudge_sea_ice  ! If true, nudge sea ice concentrations towards observations.
@@ -1809,10 +1812,18 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     call Get_SIS_Input(param_file, dirs, check_params=.false., component='SIS_fast')
   endif
 
+  verbosity = 2 ; call read_param(param_file, "VERBOSITY", verbosity)
+  call SIS_set_verbosity(verbosity)
   call callTree_enter("ice_model_init(), ice_model.F90")
 
   ! Read all relevant parameters and write them to the model log.
-  call log_version(param_file, mdl, version, "")
+  call log_version(param_file, mdl, version, "", log_to_all=.true., layout=.true., debugging=.true.)
+  call get_param(param_file, mdl, "VERBOSITY", verbosity,  &
+                 "Integer controlling level of messaging\n" // &
+                 "\t0 = Only FATAL messages\n" // &
+                 "\t2 = Only FATAL, WARNING, NOTE [default]\n" // &
+                 "\t6 = Above plus call tree messages\n" //&
+                 "\t9 = All)", default=2, debuggingParam=.true.)
 
   ! Determining the internal unit scaling factors for this run.
   call unit_scaling_init(param_file, US)
