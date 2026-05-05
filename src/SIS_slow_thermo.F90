@@ -1021,7 +1021,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
       endif
       if (CS%do_brine_plume .and. h2o_ocn_to_ice > 0.0) then
         salt_left_in_ocean(i,j) = salt_left_in_ocean(i,j) + (OSS%s_surf(i,j) * h2o_ocn_to_ice - &
-                                  salt_to_ice * 0.001)
+                                  salt_to_ice)
       endif
 
       ! Copy back into the tracer array
@@ -1385,7 +1385,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   if (CS%do_brine_plume) then
     do j=jsc,jec ; do i=isc,iec
       ! Note the conversion here from g m-2 to kg m-2 s-1.
-      IOF%salt_left_behind(i,j) = salt_left_in_ocean(i,j) * Idt_slow
+      IOF%salt_left_behind(i,j) = salt_left_in_ocean(i,j) * (0.001*Idt_slow)
     enddo ; enddo
   endif
 
