@@ -1738,9 +1738,9 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
                              null_ptr3D, complete=.true.)
     endif
     ! runoff_carbon may not always be allocated, so check before distributing.
-    if (allocated(FIA_in%runoff_carbon) .and. allocated(FIA_out%runoff_carbon)) then
+    if (allocated(FIA_in%runoff_carbon)) then
       call redistribute_data(domain_in, FIA_in%runoff_carbon, domain_out, &
-                             FIA_out%runoff_carbon, complete=.false.)
+                             null_ptr2D, complete=.false.)
     endif
 
   else
