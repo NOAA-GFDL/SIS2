@@ -214,7 +214,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   id_geo_lat   = register_static_field('ice_model', 'GEOLAT', diag%axesT1, 'latitude', &
                  'degrees')
   id_cell_area = register_static_field('ice_model', 'CELL_AREA', diag%axesT1, &
-                 'cell area', 'sphere', conversion=US%L_to_m**2, &
+                 'cell area', 'sphere', &
                  x_cell_method='sum', y_cell_method='sum', area_cell_method='sum')
 
   FIA%id_sh       = register_SIS_diag_field('ice_model', 'SH', diag%axesT1, Time, &
