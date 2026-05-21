@@ -14,7 +14,7 @@ use MOM_error_handler, only   : MOM_mesg, MOM_error, FATAL, WARNING, is_root_pe
 use MOM_error_handler, only   : callTree_enter, callTree_leave, callTree_waypoint
 use MOM_file_parser, only     : get_param, read_param, log_param, log_version, param_file_type
 use MOM_grid_initialize, only : initialize_masks, set_grid_metrics
-use MOM_io, only              : slasher
+use MOM_io, only              : slasher, get_filename_appendix
 ! use MOM_shared_initialization, only : MOM_shared_init_init
 use MOM_shared_initialization, only : MOM_initialize_rotation, MOM_calculate_grad_Coriolis
 use MOM_shared_initialization, only : initialize_topography_from_file, apply_topography_edits_from_file
@@ -48,6 +48,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   character(len=200) :: inputdir   ! The directory where NetCDF input files are.
   character(len=200) :: config
   character(len=40)  :: mdl = "SIS_initialize_fixed" ! This module's name.
+  character(len=32) :: filename_appendix = '' !fms appendix to filename for ensemble runs
   logical :: debug
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -126,8 +127,18 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   call initialize_grid_rotation_angle(G, PF)
 
   ! Write out all of the grid data used by this run.
-  if (write_geom) call write_ocean_geometry_file(G, PF, output_dir, &
-                                                 geom_file="sea_ice_geometry", US=US)
+  if (write_geom) then
+    !query fms_io if there is a filename_appendix (for ensemble runs)
+    call get_filename_appendix(filename_appendix)
+    if (len_trim(filename_appendix) > 0) then
+      call write_ocean_geometry_file(G, PF, output_dir, &
+                geom_file="sea_ice_geometry"//'.'//trim(filename_appendix), US=US)
+    else
+      call write_ocean_geometry_file(G, PF, output_dir, &
+                geom_file="sea_ice_geometry", US=US)
+    endif
+    
+  endif
 
   call callTree_leave('SIS_initialize_fixed()')
 

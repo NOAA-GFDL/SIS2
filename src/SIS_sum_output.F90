@@ -20,6 +20,7 @@ use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser,   only : get_param, log_param, log_version, param_file_type
 ! use MOM_io,          only : create_file, fieldtype, flush_file, reopen_file, vardesc, write_field
 use MOM_io,            only : open_ASCII_file, APPEND_FILE, ASCII_FILE, SINGLE_FILE, WRITEONLY_FILE
+use MOM_io,            only : get_filename_appendix
 use MOM_string_functions, only : slasher
 use MOM_time_manager,  only : time_type, get_time, operator(>), operator(-)
 use MOM_time_manager,  only : get_date, get_calendar_type, NO_CALENDAR
@@ -110,6 +111,8 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   ! Local variables
   character(len=40)  :: mdl = "SIS_sum_output" ! This module's name.
   character(len=200) :: statsfile  ! The name of the statistics file.
+  character(len=32) :: filename_appendix = '' !fms appendix to filename for ensemble runs
+  
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
 
@@ -146,8 +149,15 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
                  "The file to use to write the globally integrated "//&
                  "statistics.", default="seaice.stats")
 
-  CS%statsfile = trim(slasher(directory))//trim(statsfile)
+  !query fms_io if there is a filename_appendix (for ensemble runs)
+  call get_filename_appendix(filename_appendix)
+  if (len_trim(filename_appendix) > 0) then
+     CS%statsfile = trim(slasher(directory))//trim(statsfile)//'.'//trim(filename_appendix)
+  else
+     CS%statsfile = trim(slasher(directory))//trim(statsfile)
+  endif
   call log_param(param_file, mdl, "output_path/STATISTICS_FILE", CS%statsfile)
+
 #ifdef STATSLABEL
   CS%statsfile = trim(CS%statsfile)//"."//trim(adjustl(STATSLABEL))
 #endif
