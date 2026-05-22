@@ -111,7 +111,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   ! Local variables
   character(len=40)  :: mdl = "SIS_sum_output" ! This module's name.
   character(len=200) :: statsfile  ! The name of the statistics file.
-  character(len=32) :: filename_appendix = '' !fms appendix to filename for ensemble runs
+  character(len=32) :: filename_appendix = "" !fms appendix to filename for ensemble runs
   
   ! This include declares and sets the variable "version".
 # include "version_variable.h"

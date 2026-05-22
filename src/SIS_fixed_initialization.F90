@@ -48,7 +48,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   character(len=200) :: inputdir   ! The directory where NetCDF input files are.
   character(len=200) :: config
   character(len=40)  :: mdl = "SIS_initialize_fixed" ! This module's name.
-  character(len=32) :: filename_appendix = '' !fms appendix to filename for ensemble runs
+  character(len=32) :: filename_appendix = "" !fms appendix to filename for ensemble runs
   logical :: debug
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -130,10 +130,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   if (write_geom) then
     !query fms_io if there is a filename_appendix (for ensemble runs)
     call get_filename_appendix(filename_appendix)
-    if (len_trim(filename_appendix) > 0) then
-      call write_ocean_geometry_file(G, PF, output_dir, &
-                geom_file="sea_ice_geometry"//'.'//trim(filename_appendix), US=US)
-    else
+    if ((len_trim(filename_appendix) == 0) .or. (filename_appendix == "ens_01")) then
       call write_ocean_geometry_file(G, PF, output_dir, &
                 geom_file="sea_ice_geometry", US=US)
     endif
