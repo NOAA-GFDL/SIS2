@@ -69,20 +69,17 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
   enddo
 10 call close_file(unit)
   if (present(dirs)) then
-
-      if (present(ensemble_num)) then
-
-        dirs%output_directory = trim(slasher(ensembler(output_directory,ensemble_num)))
-        dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir,ensemble_num)))
-        dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir,ensemble_num)))
-        dirs%input_filename = trim(ensembler(input_filename,ensemble_num))
-      else
-        dirs%output_directory = trim(slasher(ensembler(output_directory)))
-        dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir)))
-        dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir)))
-        dirs%input_filename = trim(ensembler(input_filename))
-      endif
-
+    if (present(ensemble_num)) then
+      dirs%output_directory = trim(slasher(ensembler(output_directory,ensemble_num)))
+      dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir,ensemble_num)))
+      dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir,ensemble_num)))
+      dirs%input_filename = trim(ensembler(input_filename,ensemble_num))
+    else
+      dirs%output_directory = trim(slasher(ensembler(output_directory)))
+      dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir)))
+      dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir)))
+      dirs%input_filename = trim(ensembler(input_filename))
+    endif
   endif
 
   comp = "SIS" ; if (present(component)) comp = trim(adjustl(component))
@@ -90,21 +87,13 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
   if (present(param_file)) then
     output_dir = trim(slasher(ensembler(output_directory)))
     valid_param_files = 0
-    do io = 1, npf
-  
-    if (len_trim(trim(parameter_filename(io))) > 0) then
-  
-     if (present(ensemble_num)) then
-            call open_param_file(trim(ensembler(parameter_filename(io),ensemble_num)), param_file, &
-                                 check_params, component=comp, &
-                                 doc_file_dir=output_dir)
-     else
-            call open_param_file(trim(ensembler(parameter_filename(io))), param_file, &
-                                 check_params, component=comp, &
-                                 doc_file_dir=output_dir)
-     endif
-            valid_param_files = valid_param_files + 1
-    endif
+    do io = 1, npf  
+      if (len_trim(trim(parameter_filename(io))) > 0) then
+        call open_param_file(trim(ensembler(parameter_filename(io),ensemble_num)), param_file, &
+                             check_params, component=comp, &
+                             doc_file_dir=output_dir)
+        valid_param_files = valid_param_files + 1
+      endif
     enddo
     if (valid_param_files == 0) call SIS_error(FATAL, "There must be at "//&
          "least 1 valid entry in input_filename in SIS_input_nml in input.nml.")

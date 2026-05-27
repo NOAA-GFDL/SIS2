@@ -152,9 +152,9 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   !query fms_io if there is a filename_appendix (for ensemble runs)
   call get_filename_appendix(filename_appendix)
   if (len_trim(filename_appendix) > 0) then
-     CS%statsfile = trim(slasher(directory))//trim(statsfile)//'.'//trim(filename_appendix)
+    CS%statsfile = trim(slasher(directory))//trim(statsfile)//'.'//trim(filename_appendix)
   else
-     CS%statsfile = trim(slasher(directory))//trim(statsfile)
+    CS%statsfile = trim(slasher(directory))//trim(statsfile)
   endif
   call log_param(param_file, mdl, "output_path/STATISTICS_FILE", CS%statsfile)
 
