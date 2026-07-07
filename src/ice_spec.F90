@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> sea ice and SST specified from data as per GFDL climate group
 module ice_spec_mod
 

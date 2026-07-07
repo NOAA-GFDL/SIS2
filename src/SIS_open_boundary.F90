@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Controls where open boundary conditions are applied
 module SIS_open_boundary
-
-! This file is part of SIS2. See LICENSE.md for the license.
 
 use MOM_domains,              only : pass_var, pass_vector
 use MOM_domains,              only : To_All, EAST_FACE, NORTH_FACE, SCALAR_PAIR, CGRID_NE, CORNER

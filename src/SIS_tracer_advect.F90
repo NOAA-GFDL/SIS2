@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Routines that conservatively advect sea ice tracer concentrations
 module SIS_tracer_advect
-
-!* This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_cpu_clock, only : cpu_clock_id, cpu_clock_begin, cpu_clock_end
 use MOM_cpu_clock, only : CLOCK_MODULE, CLOCK_ROUTINE

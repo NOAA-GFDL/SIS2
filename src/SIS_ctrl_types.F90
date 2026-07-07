@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Contains a number of common SIS types, along with subroutines to perform various tasks on these
 !! types, including allocation, deallocation, registration for restarts, and checksums.
 module SIS_ctrl_types

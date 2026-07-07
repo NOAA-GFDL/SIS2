@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !********+*********+*********+*********+*********+*********+*********+*
 !*   This include file determines the compile-time memory settings    *
 !*  for the Sea Ice Simulator (SIS), versions 2 and later.            *

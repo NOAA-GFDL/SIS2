@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> maintains the sea ice data, reads/writes restarts, reads the namelist and initializes diagnostics.
 module ice_type_mod
 

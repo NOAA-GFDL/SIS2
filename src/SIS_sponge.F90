@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Implements relaxation regions in SIS2 model
 !> for sea ice concentration (partial area) and thickness by categories
 !> The algorithm can be used to impose open boundary conditions

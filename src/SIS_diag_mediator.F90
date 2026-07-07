@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Convenient wrappers to the FMS diag_manager interfaces with additional diagnostic capabilities.
 module SIS_diag_mediator
-
-! This file is a part of SIS2. See LICENSE.md for the license.
 
 use ice_grid,               only : ice_grid_type
 use MOM_checksums,          only : chksum0, hchksum, uchksum, vchksum, Bchksum

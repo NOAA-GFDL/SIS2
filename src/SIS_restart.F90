@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> The SIS2 facility for reading and writing restart files, and querying what has been read.
 module SIS_restart
-
-! This file is part of SIS2. See LICENSE.md for the license.
 
 use MOM_checksums,     only : chksum => rotated_field_chksum
 use MOM_coupler_types, only : coupler_2d_bc_type, coupler_3d_bc_type

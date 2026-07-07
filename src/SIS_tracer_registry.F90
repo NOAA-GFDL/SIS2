@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !>  This module contains the SIS_tracer_registry_type and subroutines that handle the registration
 !! of tracers and related subroutines.
 module SIS_tracer_registry
-
-! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !********+*********+*********+*********+*********+*********+*********+**
 !*                                                                     *

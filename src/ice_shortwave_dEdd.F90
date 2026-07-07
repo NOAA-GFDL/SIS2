@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> A Delta-Eddington treatment of shortwave radiation by Briegleb and Light, adopted from CICE
 module ice_shortwave_dEdd
 !=======================================================================

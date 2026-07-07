@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> A tracer package with an areal age and a mass balance age tracer.
 module ice_age_tracer
-
-! This file is a part of SIS2.  See LICENSE.md for the license
 
 ! ashao: Get all the dependencies from other modules (check against
 !   ideal_age_example.F90)

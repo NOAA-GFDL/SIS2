@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> sets up sea-ice specific grid information, including the category thicknesses and
 !! vertical structure of the ice.
 module ice_grid

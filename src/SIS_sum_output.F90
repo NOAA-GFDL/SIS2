@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !>  Subroutines that calculate globally integrated sea-ice quantities for SIS2, and writes them
 !! to a netcdf file and an ASCII output file.
 module SIS_sum_output
-
-! This file is a part of SIS2.  See LICENSE.md for the license.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !                                                                              !
