@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Contains routines to copy shared dyamic grids to the ice grid and vice versa.
 module SIS_transcribe_grid
-
-! This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_domains, only : pass_var, pass_vector
 use MOM_domains, only : To_All, SCALAR_PAIR, CGRID_NE, AGRID, BGRID_NE, CORNER

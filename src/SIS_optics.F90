@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Specifies the sea-ice optical properties
 module SIS_optics
-
-! This file is a part of SIS2. See LICENSE.md for the license.
 
 ! for calling delta-Eddington shortwave from ice_optics
 use ice_shortwave_dEdd, only : shortwave_dEdd0_set_snow, shortwave_dEdd0_set_pond

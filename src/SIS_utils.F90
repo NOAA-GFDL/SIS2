@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Contains convenient utilities for use by the SIS2 sea ice model. !
 module SIS_utils
-
-! This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_coms,           only : g_sum=>reproducing_sum
 use MOM_domains,        only : SCALAR_PAIR, CGRID_NE, BGRID_NE, To_All

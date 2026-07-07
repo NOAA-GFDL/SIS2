@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !***********************************************************************
 ! This is a header file to define macros for static and dynamic memory *
 ! allocation.  Define STATIC_MEMORY_ in SIS_memory.h for static memory *

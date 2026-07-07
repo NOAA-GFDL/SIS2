@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Reads the SIS2 namelist input, which indicates which directories to use for certain types of
 !! input and output, and where to look for the full parsable input file(s).
 module SIS_get_input
-
-! This file is a part of SIS2. See LICENSE.md for the license.
 
 use MOM_error_handler, only : SIS_error=>MOM_error, FATAL, WARNING, is_root_pe
 use MOM_file_parser, only : open_param_file, param_file_type, read_param

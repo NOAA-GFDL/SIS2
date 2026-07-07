@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Routines to do SIS2 ice thermodynamic calculations
 module SIS2_ice_thm
-
-! This file is part of SIS2. See LICENSE.md for the license.
 
 use ice_thm_mod,         only : get_thermo_coefs
 use MOM_EOS,             only : EOS_type, EOS_init

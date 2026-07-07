@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Provides a common interface for jointly stepping SIS2 and MOM6, and will
 !! evolve as a platform for tightly integrating the ocean and sea ice models.
 module combined_ice_ocean_driver
-
-! This file is a part of SIS2. See LICENSE.md for the license.
 
 !-----------------------------------------------------------------------
 !

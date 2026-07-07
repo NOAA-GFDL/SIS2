@@ -1,3 +1,7 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 module icepack_itd
 
   use icepack_kinds, only: int_kind, dbl_kind, log_kind

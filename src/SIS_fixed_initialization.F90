@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Initializes fixed aspects of the model, such as horizontal grid metrics,
 !! topography and Coriolis, in a way that is very similar to MOM6.
 module SIS_fixed_initialization
-
-! This file is part of SIS2. See LICENSE.md for the license.
 
 use SIS_debugging, only       : hchksum, Bchksum, uvchksum, chksum
 use SIS_open_boundary, only   : ice_OBC_type, open_boundary_config

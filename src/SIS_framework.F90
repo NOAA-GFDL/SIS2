@@ -1,8 +1,10 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Provides wrapped interfaces for infrastructure calls used by SIS2 that can not be
 !! found in the MOM6 framework directory.
 module SIS_framework
-
-! This file is part of SIS2. See LICENSE.md for the license.
 
 use MOM_coms_infra,    only : SIS_chksum=>field_chksum
 use MOM_coupler_types, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type

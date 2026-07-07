@@ -1,7 +1,9 @@
+! This file is part of the SIS2 sea ice model.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+
 !> Does the transport and redistribution between thickness categories for the SIS2 sea ice model.
 module SIS_transport
-
-! This file is a part of SIS2.  See LICENSE.md for the license.
 
 use MOM_coms,          only : reproducing_sum, EFP_type, EFP_to_real, EFP_real_diff
 use MOM_domains,       only : pass_var, pass_vector, BGRID_NE, CGRID_NE
