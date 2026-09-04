@@ -2399,6 +2399,9 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
       call rescale_ice_state_restart_fields(sIST, sG, US, sIG, Rho_ice, Rho_snow)
       sIG%H_to_kg_m2 = 1.0
 
+      if (Ice%sCS%debug) &
+        call IST_chksum("ice_model_init: After restore_SIS_state", sIST, sG, US, sIG)
+
       if ((.not.query_initialized(Ice%Ice_restart, 'enth_ice')) .or. &
           (.not.query_initialized(Ice%Ice_restart, 'enth_snow')) .or. &
           (.not.query_initialized(Ice%Ice_restart, 'sal_ice'))) then
@@ -2555,6 +2558,11 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     endif
 
     ! The slow physical ice properties do not change after this point.
+
+    ! This checksum is taken after all of the post-restart corrections have been applied, so
+    ! that any modifications made to the restored state are visible in the debugging output.
+    if (is_restart .and. Ice%sCS%debug) &
+      call IST_chksum("ice_model_init: After ice state corrections", sIST, sG, US, sIG)
 
     if (Ice%sCS%redo_fast_update) then
       call SIS_fast_thermo_init(Ice%sCS%Time, sG, sIG, param_file, Ice%sCS%diag, &
