@@ -1107,8 +1107,8 @@ subroutine get_total_mass(IST, G, US, IG, tot_ice, tot_snow, tot_pond, tot_pond_
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: tot_ice  !< The globally integrated total ice [kg].
   type(EFP_type),          intent(out)   :: tot_snow !< The globally integrated total snow [kg].
-  type(EFP_type),optional, intent(out)   :: tot_pond !< The globally integrated total pond water [kg].
-  type(EFP_type),optional, intent(out)   :: tot_pond_ice !< The globally integrated total pond ice [kg].
+  type(EFP_type), optional, intent(out)  :: tot_pond !< The globally integrated total pond water [kg].
+  type(EFP_type), optional, intent(out)  :: tot_pond_ice !< The globally integrated total pond ice [kg].
   real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
 
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_ice, sum_snow, sum_pond, sum_pond_ice

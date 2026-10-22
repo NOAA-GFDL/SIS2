@@ -289,7 +289,7 @@ subroutine post_ocean_sfc_diagnostics(OSS, dt_slow, Time, G, diag, IST)
   type(time_type),            intent(in)    :: Time     !< The ending time of these diagnostics
   type(SIS_hor_grid_type),    intent(inout) :: G    !< The horizontal grid type
   type(SIS_diag_ctrl),        pointer       :: diag !< A structure that is used to regulate diagnostic output
-  type(ice_state_type),       optional,intent(in) :: IST !< A type describing the state of the sea ice
+  type(ice_state_type), optional, intent(in) :: IST !< A type describing the state of the sea ice
 
   real :: Idt_slow  ! The inverse of the thermodynamic step [T-1 ~> s-1].
   real :: LatHtFus  ! The latent heat of fusion of ice [Q ~> J kg-1].

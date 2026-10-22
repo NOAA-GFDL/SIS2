@@ -1933,7 +1933,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   integer, dimension(CS%ncat_b) :: tmp
   real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
 
-  logical, dimension (CS%ncat_b) :: gt    ! result of comparison between x_k and y_n
+  logical, dimension(CS%ncat_b) :: gt    ! result of comparison between x_k and y_n
 
   real, dimension(IG%CatIce) :: vcat   ! category limits (m)
   real, dimension(IG%CatIce) :: acat   ! category limits (m)
@@ -1948,7 +1948,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   real :: v_i       ! (m2)
 
   real, dimension(CS%ncat_i):: tb_tmp
-  real, dimension (SZI_(G),SZJ_(G)):: Tbt ! seabed stress factor at t point [R Z L T-2 -> kg m-1 s-2]
+  real, dimension(SZI_(G),SZJ_(G)):: Tbt ! seabed stress factor at t point [R Z L T-2 -> kg m-1 s-2]
   real :: atot       ! [nondim]
   real :: x_kmax     ! thickest ice? [m]
   real :: cut        ! thinnest ice thickness [m]

@@ -210,7 +210,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS) !, nCat)
   !      inside if (prs_rothrock), particularly work on getting hi3,ci3,hi3v,Cp & Cf.
   logical :: rdg_lipscomb = .true.
   !Niki: What are ci3,hi3,Cp, Cf?
-!  real, dimension(SZI_(G),SZJ_(G),nCat) :: hi3,ci3
+!  real, dimension(SZI_(G),SZJ_(G),nCat) :: hi3, ci3
 !  real, dimension(nCat) :: hi3v
   real :: Cp, Cf
 
@@ -306,7 +306,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
   logical, dimension(SZI_(G),SZJ_(G))   :: ice_present
   logical :: evp_new = .false.
-  real    :: edt_new,e0 !Niki: What is e0
+  real    :: edt_new, e0 !Niki: What is e0
   ! temporaries for strain calculation
   real, dimension(SZI_(G),SZJ_(G)) :: &
        grid_fac1, grid_fac2, grid_fac3, grid_fac4

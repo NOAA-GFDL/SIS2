@@ -270,7 +270,7 @@ end subroutine update_slow_ice_and_ocean
 !! a ice-ocean boundary type on the same grid.
 subroutine direct_flux_ice_to_IOB(Time, Ice, IOB, do_thermo)
   type(time_type),    intent(in)    :: Time !< Current time
-  type(ice_data_type),intent(in)    :: Ice  !< A derived data type to specify ice boundary data
+  type(ice_data_type), intent(in)   :: Ice  !< A derived data type to specify ice boundary data
   type(ice_ocean_boundary_type), &
                       intent(inout) :: IOB  !< A derived data type to specify properties
                                             !! and fluxes passed from ice to ocean
@@ -372,7 +372,7 @@ end subroutine direct_flux_ice_to_IOB
 !! The data_override is similar to flux_ocean_to_ice_finish
 subroutine direct_flux_ocn_to_OIB(Time, Ocean, OIB, Ice, do_thermo)
   type(time_type),    intent(in)     :: Time  !< Current time
-  type(ocean_public_type),intent(in) :: Ocean !< A derived data type to specify ocean boundary data
+  type(ocean_public_type), intent(in) :: Ocean !< A derived data type to specify ocean boundary data
   type(ocean_ice_boundary_type), intent(inout)   :: OIB !< A type containing ocean surface fields that
                                                       !! are used to drive the sea ice
   logical,  optional, intent(in)     :: do_thermo !< If present and false, do not update the

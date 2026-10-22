@@ -106,7 +106,7 @@ subroutine SIS_sum_output_init(G, param_file, directory, Input_start_time, US, C
   type(unit_scale_type),    intent(in)    :: US     !< A structure with unit conversion factors
   type(SIS_sum_out_CS),     pointer       :: CS     !< A pointer that is set to point to the control
                                                     !! structure for this module
-  integer, target, optional,intent(inout) :: ntrunc !< The integer that stores the number of times
+  integer, target, optional, intent(inout) :: ntrunc !< The integer that stores the number of times
                                                     !! the velocity has been truncated since the
                                                     !! last call to write_ice_statistics
 
