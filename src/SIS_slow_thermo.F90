@@ -141,13 +141,13 @@ type slow_thermo_CS ; private
                             !< A pointers to the control structures for a subsidiary module
 
   !>@{ Diagnostic IDs
-  integer :: id_qflim=-1, id_qfres=-1, id_fwnudge=-1, id_net_melt=-1, id_CMOR_melt=-1
-  integer :: id_lsrc=-1, id_lsnk=-1, id_bsnk=-1, id_sn2ic=-1
-  integer :: id_lsrc_i=-1, id_lsnk_i=-1, id_bsnk_i=-1
-  integer :: id_lsrc_s=-1, id_lsnk_s=-1, id_bsnk_s=-1
-  integer :: id_lsrc_c=-1, id_lsnk_c=-1
-  integer :: id_tsnk_i=-1, id_bsrc_i=-1, id_net_i=-1, id_net_s=-1
-  integer :: id_net_c=-1,  id_sn2ic_s=-1
+  integer :: id_qflim = -1, id_qfres = -1, id_fwnudge = -1, id_net_melt = -1, id_CMOR_melt = -1
+  integer :: id_lsrc = -1, id_lsnk = -1, id_bsnk = -1, id_sn2ic = -1
+  integer :: id_lsrc_i = -1, id_lsnk_i = -1, id_bsnk_i = -1
+  integer :: id_lsrc_s = -1, id_lsnk_s = -1, id_bsnk_s = -1
+  integer :: id_lsrc_c = -1, id_lsnk_c = -1
+  integer :: id_tsnk_i = -1, id_bsrc_i = -1, id_net_i = -1, id_net_s = -1
+  integer :: id_net_c = -1,  id_sn2ic_s = -1
   !!@}
 end type slow_thermo_CS
 

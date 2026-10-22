@@ -34,7 +34,7 @@ logical :: do_leads = .true.   !< when do_leads=false there is no fractional ice
 logical :: sst_degk = .false.  !< when sst_degk=true the input sst data is in degrees Kelvin
                                !! otherwise it is assumed to be in degrees Celsius
 
- integer :: repeat_date(3)=(/-1,-1,-1/) !< amip date for repeating single day (rsd) option
+integer :: repeat_date(3) = (/-1,-1,-1/) !< amip date for repeating single day (rsd) option
 
 namelist / ice_spec_nml / mcm_ice, do_leads, minimum_ice_concentration, &
                           minimum_ice_thickness, sst_degk, sst_pert, repeat_date

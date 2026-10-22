@@ -131,7 +131,7 @@ type dyn_trans_CS ; private
   logical :: itd_landfast     !< If true, use the probabilistic landfast ice parameterization.
 
   !>@{ Diagnostic IDs
-  integer :: id_fax=-1, id_fay=-1
+  integer :: id_fax = -1, id_fay = -1
   !!@}
 
   type(dyn_state_2d), pointer :: DS2d => NULL()

@@ -74,7 +74,7 @@ type, public :: SIS_transport_CS ; private
   !>@{ Diagnostic IDs
   integer :: id_ix_trans = -1, id_iy_trans = -1, id_xprt = -1, id_rdgr = -1
   integer :: id_xprt_i = -1, id_xprt_s = -1, id_xprt_c = -1
-  integer :: id_rdgh=-1
+  integer :: id_rdgh = -1
   ! integer :: id_rdgo=-1, id_rdgv=-1 ! These do not exist yet
   !!@}
 

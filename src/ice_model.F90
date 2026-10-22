@@ -142,8 +142,8 @@ integer :: iceClock
 integer :: ice_clock_slow, ice_clock_fast, ice_clock_exchange
 !!@}
 
-integer, parameter :: REDIST=2 !< Redistribute for exchange
-integer, parameter :: DIRECT=3 !< Use direct exchange
+integer, parameter :: REDIST = 2 !< Redistribute for exchange
+integer, parameter :: DIRECT = 3 !< Use direct exchange
 
 contains
 

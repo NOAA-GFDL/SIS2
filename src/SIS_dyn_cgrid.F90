@@ -106,9 +106,9 @@ type, public :: SIS_C_dyn_CS ; private
                               !! timing of diagnostic output.
   integer, pointer :: ntrunc => NULL() !< The number of times the velocity has been truncated
                               !! since the last call to write_ice_statistics.
-  character(len = 200) :: u_trunc_file !< The complete path to the file in which a column's worth
+  character(len=200) :: u_trunc_file !< The complete path to the file in which a column's worth
                               !! of u-accelerations are written if velocity truncations occur.
-  character(len = 200) :: v_trunc_file !< The complete path to the file in which a column's worth
+  character(len=200) :: v_trunc_file !< The complete path to the file in which a column's worth
                               !! of v-accelerations are written if velocity truncations occur.
   integer :: u_file = -1      !< The unit number for an opened u-truncation file, or -1 if it has
                               !! not been opened.
