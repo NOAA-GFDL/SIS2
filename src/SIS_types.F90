@@ -52,7 +52,7 @@ public :: copy_TSF_to_TSF, redistribute_TSF_to_TSF, TSF_chksum
 public :: copy_Rad_to_Rad, redistribute_Rad_to_Rad, alloc_ice_Rad
 public :: translate_OSS_to_sOSS
 
-integer, parameter :: NBANDS=4 !< the number of 4-D arrays for shortwave radiation and
+integer, parameter :: NBANDS = 4 !< the number of 4-D arrays for shortwave radiation and
 !! albedos within SIS2.
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
@@ -149,7 +149,7 @@ type ocean_sfc_state_type
   logical :: Cgrid_dyn !< If true use a C-grid discretization of the sea-ice dynamics.
 
   !>@{ diagnostic IDs for ocean surface properties
-  integer :: id_sst=-1, id_sss=-1, id_ssh=-1, id_uo=-1, id_vo=-1, id_frazil=-1, id_frazilmass=-1
+  integer :: id_sst = -1, id_sss = -1, id_ssh = -1, id_uo = -1, id_vo = -1, id_frazil = -1, id_frazilmass = -1
   !!@}
 end type ocean_sfc_state_type
 
@@ -262,17 +262,17 @@ type fast_ice_avg_type
                     !! model as the heat flux is used up.
 !SLOW ONLY
   !!@{ Diagnostic IDs
-  integer :: id_sh=-1, id_lh=-1, id_sw=-1, id_slp=-1
-  integer :: id_lw=-1, id_snofl=-1, id_rain=-1,  id_evap=-1, id_evap_i=-1, id_evap_s=-1
-  integer :: id_sw_vis_dir=-1, id_sw_vis_dif=-1, id_sw_nir_dir=-1, id_sw_nir_dif=-1
-  integer :: id_sw_vis=-1, id_sw_dir=-1, id_sw_dif=-1, id_sw_dn=-1, id_albedo=-1
-  integer :: id_runoff=-1, id_calving=-1, id_runoff_hflx=-1, id_calving_hflx=-1
-  integer :: id_tmelt=-1, id_bmelt=-1, id_bheat=-1
-  integer :: id_tsfc=-1, id_sitemptop=-1, id_sitemptop_CMOR=-1
+  integer :: id_sh = -1, id_lh = -1, id_sw = -1, id_slp = -1
+  integer :: id_lw = -1, id_snofl = -1, id_rain = -1,  id_evap = -1, id_evap_i = -1, id_evap_s = -1
+  integer :: id_sw_vis_dir = -1, id_sw_vis_dif = -1, id_sw_nir_dir = -1, id_sw_nir_dif = -1
+  integer :: id_sw_vis = -1, id_sw_dir = -1, id_sw_dif = -1, id_sw_dn = -1, id_albedo = -1
+  integer :: id_runoff = -1, id_calving = -1, id_runoff_hflx = -1, id_calving_hflx = -1
+  integer :: id_tmelt = -1, id_bmelt = -1, id_bheat = -1
+  integer :: id_tsfc = -1, id_sitemptop = -1, id_sitemptop_CMOR = -1
 
-  integer :: id_evap_cat=-1, id_lw_cat=-1, id_sh_cat=-1, id_tsfc_cat=-1
-  integer :: id_evap0=-1, id_lw0=-1, id_sh0=-1
-  integer :: id_devdt=-1, id_dlwdt=-1, id_dshdt=-1
+  integer :: id_evap_cat = -1, id_lw_cat = -1, id_sh_cat = -1, id_tsfc_cat = -1
+  integer :: id_evap0 = -1, id_lw0 = -1, id_sh0 = -1
+  integer :: id_devdt = -1, id_dlwdt = -1, id_dshdt = -1
   !!@}
 end type fast_ice_avg_type
 
@@ -345,10 +345,10 @@ type ice_rad_type
 
   !!@{ Diagnostic IDs
   integer, allocatable, dimension(:)   :: id_sw_abs_ice
-  integer :: id_sw_abs_sfc=-1, id_sw_abs_snow=-1, id_sw_pen=-1, id_sw_abs_ocn=-1
-  integer :: id_alb=-1, id_coszen=-1, id_swdn=-1, id_lwdn=-1
-  integer :: id_alb_vis_dir=-1, id_alb_vis_dif=-1, id_alb_nir_dir=-1, id_alb_nir_dif=-1
-  integer :: id_tskin=-1, id_cn=-1, id_mi=-1
+  integer :: id_sw_abs_sfc = -1, id_sw_abs_snow = -1, id_sw_pen = -1, id_sw_abs_ocn = -1
+  integer :: id_alb = -1, id_coszen = -1, id_swdn = -1, id_lwdn = -1
+  integer :: id_alb_vis_dir = -1, id_alb_vis_dif = -1, id_alb_nir_dir = -1, id_alb_nir_dif = -1
+  integer :: id_tskin = -1, id_cn = -1, id_mi = -1
   !!@}
 
 end type ice_rad_type
@@ -424,10 +424,10 @@ type ice_ocean_flux_type
     tr_flux_ocn_top !< A structure of additional tracer fluxes at the top of the ocean
 
   !>@{ diagnostic IDs for ice-to-ocean fluxes.
-  integer :: id_saltf=-1
+  integer :: id_saltf = -1
   ! The following are diagnostic IDs for iceberg-related fields.  These are only
   ! used if the iceberg code is activated.
-  integer ::  id_ustar_berg=-1, id_area_berg=-1, id_mass_berg=-1
+  integer ::  id_ustar_berg = -1, id_area_berg = -1, id_mass_berg = -1
   !!@}
 end type ice_ocean_flux_type
 

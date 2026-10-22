@@ -40,7 +40,7 @@ end type p3d
 !> The control structure for the ice age tracer module
 type, public :: ice_age_tracer_CS
   integer :: ntr                              !< The number of tracers that are actually used.
-  character(len = 200) :: IC_file             !< The file in which the age-tracer initial values
+  character(len=200) :: IC_file             !< The file in which the age-tracer initial values
                                               ! can be found, or an empty string for internal initialization.
   type(time_type), pointer :: Time            !< A pointer to the ocean model's clock.
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the tracer registry
@@ -75,8 +75,8 @@ type, public :: ice_age_tracer_CS
 
   !>@{ Diagnostic IDs
   integer, dimension(NTR_MAX) :: &
-      id_tracer = -1, id_tr_adx = -1, id_tr_ady = -1, id_avg =-1 ! Indices used for the diagnostic
-                                                                 ! mediator
+    id_tracer = -1, id_tr_adx = -1, id_tr_ady = -1, id_avg = -1 ! Indices used for the diagnostic
+                                                                ! mediator
   !!@}
   integer, dimension(NTR_MAX) :: nlevels      !< The number of vertical levels
 

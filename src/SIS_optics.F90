@@ -22,10 +22,10 @@ public :: VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF
 
 ! parameters facilitate the use of 4-D arrays for shortwave radiation and
 ! albedos within SIS2.
-integer, parameter :: VIS_DIR=1 !< Indicates the visible direct band
-integer, parameter :: VIS_DIF=2 !< Indicates the visible diffuse band
-integer, parameter :: NIR_DIR=3 !< Indicates the near-infrared direct band
-integer, parameter :: NIR_DIF=4 !< Indicates the near-infrared diffuse band
+integer, parameter :: VIS_DIR = 1 !< Indicates the visible direct band
+integer, parameter :: VIS_DIF = 2 !< Indicates the visible diffuse band
+integer, parameter :: NIR_DIR = 3 !< Indicates the near-infrared direct band
+integer, parameter :: NIR_DIF = 4 !< Indicates the near-infrared diffuse band
 
 !> This type contains the parameters regulating sea-ice optics.
 type, public :: SIS_optics_CS ; private
