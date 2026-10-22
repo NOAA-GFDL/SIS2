@@ -1601,7 +1601,7 @@ subroutine PPM_limit_pos(h_in, h_L, h_R, h_min, G, iis, iie, jis, jie)
 ! Local variables
   real    :: curv, dh, scale
   character(len=256) :: mesg
-  integer :: i,j
+  integer :: i, j
 
   do j=jis,jie ; do i=iis,iie
     ! This limiter prevents undershooting minima within the domain with
@@ -1642,7 +1642,7 @@ subroutine PPM_limit_CW84(h_in, h_l, h_r, G, iis, iie, jis, jie)
 ! Local variables
   real    :: h_i, RLdiff, RLdiff2, RLmean, FunFac
   character(len=256) :: mesg
-  integer :: i,j
+  integer :: i, j
 
   do j=jis,jie ; do i=iis,iie
     ! This limiter monotonizes the parabola following

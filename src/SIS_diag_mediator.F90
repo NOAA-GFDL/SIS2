@@ -783,7 +783,7 @@ subroutine post_data_3d_low(diag, field, diag_cs, is_static, mask)
                                                 !! in internally scaled arbitrary units [A ~> a]
   type(SIS_diag_ctrl),   intent(in) :: diag_CS !< Structure used to regulate diagnostic output
   logical, optional, intent(in) :: is_static !< If true, this is a static field that is always offered.
-  real,    optional,target, intent(in) :: mask(:,:,:) !< If present, use this real array as the data mask [nondim]
+  real, optional, target, intent(in) :: mask(:,:,:) !< If present, use this real array as the data mask [nondim]
 
   ! Local variables
   real, dimension(:,:,:), pointer :: locfield ! The field being offered in arbitrary unscaled units [a]
@@ -2022,7 +2022,7 @@ function i2s(a, n_in)
 
   ! Local variables
   character(len=15) :: i2s_temp
-  integer :: i,n
+  integer :: i, n
 
   n = size(a)
   if (present(n_in)) n = n_in

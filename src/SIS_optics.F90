@@ -215,12 +215,12 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     nx_block, ny_block, & ! block dimensions
     icells                ! number of ice-covered grid cells
 
-  integer (kind=int_kind), dimension (1) :: &
+  integer (kind=int_kind), dimension(1) :: &
     indxi   , & ! compressed indices for ice-covered cells
     indxj
 
   ! inputs
-  real (kind=dbl_kind), dimension (1,1) :: &
+  real (kind=dbl_kind), dimension(1,1) :: &
     aice   , & ! concentration of ice [nondim]
     vice   , & ! volume of ice [m]
     vsno   , & ! volume of snow [m]
@@ -233,19 +233,19 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     swidf      ! sw down, near IR, diffuse [W m-2]
 
   ! outputs
-  real (kind=dbl_kind), dimension (1,1) :: &
+  real (kind=dbl_kind), dimension(1,1) :: &
     fs     , & ! horizontal coverage of snow [nondim]
     fp     , & ! pond fractional coverage (0 to 1) [nondim]
     hprad      ! pond depth [m] for radiation code - may be diagnosed
 
-  real (kind=dbl_kind), dimension (1,1,1) :: &
+  real (kind=dbl_kind), dimension(1,1,1) :: &
     rhosnw , & ! density in snow layer [kg m-3]
     rsnw       ! grain radius in snow layer [micro-meters]
 
-  real (kind=dbl_kind), dimension (1,1,18) :: &
+  real (kind=dbl_kind), dimension(1,1,18) :: &
     trcr        ! aerosol tracers
 
-  real (kind=dbl_kind), dimension (1,1) :: &
+  real (kind=dbl_kind), dimension(1,1) :: &
     alvdr   , & ! visible, direct, albedo [nondim]
     alvdf   , & ! visible, diffuse, albedo [nondim]
     alidr   , & ! near-ir, direct, albedo [nondim]
@@ -254,13 +254,13 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     fswint  , & ! SW interior absorption (below surface, above ocean) [W m-2]
     fswthru     ! SW through snow/bare ice/ponded ice into ocean [W m-2]
 
-  real (kind=dbl_kind), dimension (1,1,1) :: &
+  real (kind=dbl_kind), dimension(1,1,1) :: &
     Sswabs      ! SW absorbed in snow layer [W m-2]
 
-  real (kind=dbl_kind), dimension (1,1,NkIce) :: &
+  real (kind=dbl_kind), dimension(1,1,NkIce) :: &
     Iswabs      ! SW absorbed in ice layer [W m-2]
 
-  real (kind=dbl_kind), dimension (1,1) :: &
+  real (kind=dbl_kind), dimension(1,1) :: &
     albice  , & ! bare ice albedo, for history [nondim]
     albsno  , & ! snow albedo, for history [nondim]
     albpnd      ! pond albedo, for history [nondim]
