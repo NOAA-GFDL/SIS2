@@ -1500,7 +1500,7 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   endif
   if (associated(FIA_in)) then
     FIA_in%copy_calls = FIA_in%copy_calls + 1
-    copy_calls = max(copy_calls,FIA_in%copy_calls)
+    copy_calls = max(copy_calls, FIA_in%copy_calls)
   endif
 
   !   FIA%flux_u_top and flux_v_top are deliberately not being copied, as they
@@ -1824,7 +1824,7 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
   endif
   if (associated(TSF_in)) then
     TSF_in%copy_calls = TSF_in%copy_calls + 1
-    copy_calls = max(copy_calls,TSF_in%copy_calls)
+    copy_calls = max(copy_calls, TSF_in%copy_calls)
   endif
 
   if (associated(TSF_out) .and. associated(TSF_in)) then

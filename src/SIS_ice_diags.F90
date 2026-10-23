@@ -416,7 +416,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
                'snow mass', units='kg m-2', conversion=US%RZ_to_kg_m2)
   IDs%id_mib  = register_diag_field('ice_model', 'MIB', diag%axesT1, Time, &
                'ice + snow + bergs mass', units='kg m-2', conversion=US%RZ_to_kg_m2)
-  IDs%id_e2m  = register_diag_field('ice_model','E2MELT' ,diag%axesT1, Time, &
+  IDs%id_e2m  = register_diag_field('ice_model', 'E2MELT', diag%axesT1, Time, &
                'heat needed to melt ice', units='J m-2', conversion=US%Q_to_J_kg*US%RZ_to_kg_m2)
 
   call get_param(param_file, mdl, "DO_RIDGING", do_ridging, &

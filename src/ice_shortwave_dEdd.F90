@@ -351,7 +351,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
 
       ! calculate bare sea ice
       call compute_dEdd0                                    &
-            (nx_block,ny_block,                            &
+            (nx_block, ny_block, &
              icells_DE, indxi_DE, indxj_DE, fnidr, coszen, &
              swvdr,     swvdf,    swidr,    swidf, srftyp, &
              hs,        rhosnw,   rsnw,     hi,    hp,     &
@@ -402,7 +402,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
 
       ! calculate snow covered sea ice
       call compute_dEdd0                                    &
-            (nx_block,ny_block,                            &
+            (nx_block, ny_block, &
              icells_DE, indxi_DE, indxj_DE, fnidr, coszen, &
              swvdr,     swvdf,    swidr,    swidf, srftyp, &
              hs,        rhosnw,   rsnw,     hi,    hp,     &
@@ -453,7 +453,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
 
       ! calculate ponded ice
       call compute_dEdd0                                    &
-            (nx_block,ny_block,                            &
+            (nx_block, ny_block, &
              icells_DE, indxi_DE, indxj_DE, fnidr, coszen, &
              swvdr,     swvdf,    swidr,    swidf, srftyp, &
              hs,        rhosnw,   rsnw,     hi,    hp,     &
@@ -1147,7 +1147,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           ! snow
           else if( srftyp(i,j) == 1 ) then
             dz_ssl = hs_ssl
-            dz     = hs(i,j)/real(nslyr,kind=dbl_kind)
+            dz     = hs(i,j) / real(nslyr, kind=dbl_kind)
             ! for small enough snow thickness, ssl thickness half of snow layer
             dz_ssl = min(dz_ssl, dz/c2)
             ! find snow grain adjustment factor, dependent upon clear/overcast sky
@@ -1201,7 +1201,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           ! pond
           else !if( srftyp(i,j) == 2 ) then
             ! pond water layers evenly spaced
-            dz = hp(i,j)/real(nslyr+1,kind=dbl_kind)
+            dz = hp(i,j) / real(nslyr+1, kind=dbl_kind)
             do k=0,nslyr
               tau(k,ij) = kw(ns)*dz
               w0(k,ij)  = ww(ns)
@@ -1216,7 +1216,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           i = indxi_DE(ij)
           j = indxj_DE(ij)
           dz_ssl = hi_ssl
-          dz     = hi(i,j)/real(nilyr,kind=dbl_kind)
+          dz     = hi(i,j) / real(nilyr, kind=dbl_kind)
           ! empirical reduction in sea ice ssl thickness for ice thinner than 1.5m;
           ! factor of 30 selected to give best albedo comparison with limited observations
           if( hi(i,j) < 1.5_dbl_kind ) dz_ssl = hi(i,j)/30._dbl_kind
@@ -1232,7 +1232,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               ! dl
               k = kii + 1
                 ! scale dz for dl relative to 4 even-layer-thickness 1.5m case
-                fs = real(nilyr,kind=dbl_kind)/real(4,kind=dbl_kind)
+                fs = real(nilyr, kind=dbl_kind) / real(4, kind=dbl_kind)
                 tau(k,ij) = ki_dl(ns)*(dz-dz_ssl)*fs
                 w0(k,ij)  = wi_dl(ns)
                 g(k,ij)   = gi_dl(ns)
@@ -1286,7 +1286,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
                   g(k,ij)  = gi_p_int(ns)
               k = kii + 1
                   ! scale dz for dl relative to 4 even-layer-thickness 1.5m case
-                  fs = real(nilyr,kind=dbl_kind)/real(4,kind=dbl_kind)
+                  fs = real(nilyr, kind=dbl_kind) / real(4, kind=dbl_kind)
                   sig_i      = ki_dl(ns)*wi_dl(ns)*fs
                   sig_p      = ki_p_int(ns)*wi_p_int(ns)
                   sig        = sig_i + (sig_p-sig_i)*(hp(i,j)/hp0)
@@ -1980,7 +1980,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
            ! sure mu0 is large enough for stable and meaningful radiation
            ! solution: .01 is like sun just touching horizon with its lower edge
 
-           mu0  = max(coszen(i,j),p01)
+           mu0 = max(coszen(i,j), p01)
 
            ! mu0n is cosine solar zenith angle used to compute the layer
            ! Delta-Eddington solution; it is initially computed to be the
@@ -2281,7 +2281,7 @@ subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
            endif
            ! bare ice, temperature dependence
            dTs = Timelt - Tsfc(i,j)
-           fT  = -min(dTs/dT_mlt-c1,c0)
+           fT  = -min(dTs/dT_mlt - c1, c0)
            ! tune nonmelt snow grain radius if desired: note that
            ! the sign is negative so that if R_snw is 1, then the
            ! snow grain radius is reduced and thus albedo increased.
@@ -2390,7 +2390,7 @@ subroutine shortwave_dEdd0_set_pond(nx_block, ny_block, &
          if (aice(i,j) > puny) then
            ! bare ice, temperature dependence
            dTs = Timelt - Tsfc(i,j)
-           fT  = -min(dTs/dT_mlt-c1,c0)
+           fT  = -min(dTs/dT_mlt - c1, c0)
            ! pond
            fp(i,j) = 0.3_dbl_kind*fT*(c1-fs(i,j))
            hp(i,j) = 0.3_dbl_kind*fT*(c1-fs(i,j))

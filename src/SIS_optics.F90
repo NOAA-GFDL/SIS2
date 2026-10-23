@@ -312,7 +312,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
 
     ! stuff that matters
     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice
-    if (present(coszen_in)) coszen(1,1) = max(0.01,coszen_in)
+    if (present(coszen_in)) coszen(1,1) = max(0.01, coszen_in)
     Tsfc(1,1) = US%C_to_degC*ts
     vsno(1,1) = US%Z_to_m*hs
     vice(1,1) = US%Z_to_m*hi
@@ -327,7 +327,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     if ( CS%do_pond ) then ! mw/new
 
       max_mp = (rho_water - rho_ice) * hi  ! max pond allowed by waterline
-      fp(1,1) = CS%max_pond_frac*sqrt(min(1.0,m_pond/max_mp))
+      fp(1,1) = CS%max_pond_frac * sqrt(min(1.0, m_pond / max_mp))
       ! set average pond depth (max. = 2*average)
       hprad(1,1) = US%RZ_to_kg_m2*m_pond / (fp(1,1)*1000.0) ! freshwater density = 1000 kg/m2
       fs(1,1) = fs(1,1)*(1.0-fp(1,1))   ! reduce fs to frac of pond-free ice
@@ -374,12 +374,12 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     call get_SIS2_thermo_coefs(ITV, ice_salinity=sal_ice_top)
     temp_ice_freeze = T_freeze(sal_ice_top(1), ITV)
 
-    fh = min(atan(5.0*US%Z_to_m*hi)/atan(5.0*0.5),1.0) ! use this form from CSIM4 to
+    fh = min(atan(5.0*US%Z_to_m*hi) / atan(5.0*0.5), 1.0) ! use this form from CSIM4 to
     ! reduce albedo for thin ice
     if (ts+CS%T_RANGE_MELT > temp_ice_freeze) then        ! reduce albedo for melting as in
        ! CSIM4 assuming 0.53/0.47 vis/ir
-       as = as-0.1235*min((ts+CS%T_RANGE_MELT- temp_ice_freeze)/CS%T_RANGE_MELT,1.0)
-       ai = ai-0.075 *min((ts+CS%T_RANGE_MELT- temp_ice_freeze)/CS%T_RANGE_MELT,1.0)
+       as = as - 0.1235 * min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
+       ai = ai - 0.075 *  min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
     endif
     ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
 

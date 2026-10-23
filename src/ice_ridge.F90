@@ -361,7 +361,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         del_sh = sqrt(sh_Dd**2 + 0.25 * (sh_Dt**2 + &
                      (0.25 * ((sh_Ds(I-1,J-1) + sh_Ds(I,J)) + &
                               (sh_Ds(I-1,J) + sh_Ds(I,J-1))))**2 ) )*US%s_to_T ! H&D eqn 9
-        rdg_conv  = -min(sh_Dd,0.0)*US%s_to_T              ! energy dissipated by convergence ...
+        rdg_conv  = -min(sh_Dd, 0.0)*US%s_to_T              ! energy dissipated by convergence ...
         rdg_shear = 0.5*(del_sh-abs(sh_Dd))*US%s_to_T      ! ... and by shear
 
         aice0 = IST%part_size(i,j,0)
@@ -493,8 +493,8 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
                             i+G%idg_offset, j+G%jdg_offset, k, aicen(k), vicen(k)
               call SIS_error(WARNING, mesg, all_print=.true.)
             endif
-            vicen(k) = max(vicen(k),0.0)
-            vsnon(k) = max(vicen(k),0.0)
+            vicen(k) = max(vicen(k), 0.0)
+            vsnon(k) = max(vicen(k), 0.0)
           enddo
         endif
 
@@ -505,7 +505,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
                             i+G%idg_offset, j+G%jdg_offset, k, aicen(k), vsnon(k)
               call SIS_error(WARNING, mesg, all_print=.true.)
             endif
-            vsnon(k) = max(vsnon(k),0.0)
+            vsnon(k) = max(vsnon(k), 0.0)
           enddo
         endif
 

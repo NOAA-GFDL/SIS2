@@ -170,12 +170,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
        "SIS_tracer_advect_init must be called before advect_tracer.")
   if (ntr==0) return
 
-  x_first = (MOD(G%first_direction,2) == 0)
+  x_first = (MOD(G%first_direction, 2) == 0)
 
   Idt = 1.0/dt
 
   nL_max = 0
-  do m=1,ntr ; nL_max = max(Tr(m)%nL,nL_max) ; enddo
+  do m=1,ntr ; nL_max = max(Tr(m)%nL, nL_max) ; enddo
 
   max_iter = 3
   if (CS%dt > 0.0) max_iter = 2*INT(CEILING(dt/CS%dt)) + 1
@@ -216,12 +216,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
 !$OMP end do nowait
 !$OMP do
   do j=jsd,jed ; do I=isd,ied-1
-    uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
+    uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j), G%areaT(i+1,j))
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
   do J=jsd,jed-1 ; do i=isd,ied
-    vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
+    vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j), G%areaT(i,j+1))
   enddo ; enddo
 !$OMP end do nowait
 !$OMP do
@@ -268,7 +268,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
       call pass_var(hprev, G%Domain)
       call cpu_clock_end(id_clock_pass)
 
-      nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stencil
+      nsten_halo = min(is-isd, ied-ie, js-jsd, jed-je) / stencil
       isv = is-nsten_halo*stencil ; jsv = js-nsten_halo*stencil
       iev = ie+nsten_halo*stencil ; jev = je+nsten_halo*stencil
       ! Reevaluate domore_u & domore_v unless the valid range is the same size as
@@ -449,7 +449,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
       enddo ; enddo
     enddo
   else
-    x_first = (MOD(G%first_direction,2) == 0)
+    x_first = (MOD(G%first_direction, 2) == 0)
 
     Idt = 1.0/dt
 
@@ -499,12 +499,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
 !$OMP end do nowait
 !$OMP do
     do j=jsd,jed ; do I=isd,ied-1
-      uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j),G%areaT(i+1,j))
+      uh_neglect(I,j) = h_neglect*MIN(G%areaT(i,j), G%areaT(i+1,j))
     enddo ; enddo
 !$OMP end do nowait
 !$OMP do
     do J=jsd,jed-1 ; do i=isd,ied
-      vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j),G%areaT(i,j+1))
+      vh_neglect(i,J) = h_neglect*MIN(G%areaT(i,j), G%areaT(i,j+1))
     enddo ; enddo
 !$OMP end parallel
 
@@ -519,7 +519,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
         call pass_var(hprev, G%Domain)
         call cpu_clock_end(id_clock_pass)
 
-        nsten_halo = min(is-isd,ied-ie,js-jsd,jed-je)/stencil
+        nsten_halo = min(is-isd, ied-ie, js-jsd, jed-je) / stencil
         isv = is-nsten_halo*stencil ; jsv = js-nsten_halo*stencil
         iev = ie+nsten_halo*stencil ; jev = je+nsten_halo*stencil
         ! Reevaluate domore_u & domore_v unless the valid range is the same size as
@@ -996,10 +996,10 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
       domore_u = .true.
     elseif (uhr(I,j) < 0.0) then
       hup = hprev(i+1,j)
-      hlos = MAX(0.0,uhr(I+1,j))
+      hlos = MAX(0.0, uhr(I+1,j))
       if (((hup + uhr(I,j) - hlos) < 0.0) .and. &
           ((0.5*hup + uhr(I,j)) < 0.0)) then
-        uhh(I) = MIN(-0.5*hup,-hup+hlos,0.0)
+        uhh(I) = MIN(-0.5*hup, -hup+hlos, 0.0)
         domore_u = .true.
       else
         uhh(I) = uhr(I,j)
@@ -1013,10 +1013,10 @@ subroutine kernel_uhh_CFL_x(G, is, ie, j, hprev, uhr, uhh, CFL, domore_u, h_negl
       endif
     else
       hup = hprev(i,j)
-      hlos = MAX(0.0,-uhr(I-1,j))
+      hlos = MAX(0.0, -uhr(I-1,j))
       if (((hup - uhr(I,j) - hlos) < 0.0) .and. &
           ((0.5*hup - uhr(I,j)) < 0.0)) then
-        uhh(I) = MAX(0.5*hup,hup-hlos,0.0)
+        uhh(I) = MAX(0.5*hup, hup-hlos, 0.0)
         domore_u = .true.
       else
         uhh(I) = uhr(I,j)
@@ -1085,22 +1085,22 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
       ! Implementation of PPM-H3
       Tp = scalar(i+1,j) ; Tc = scalar(i,j) ; Tm = scalar(i-1,j)
       aL = ( 5.*Tc + ( 2.*Tm - Tp ) )/6. ! H3 estimate
-      aL = max( min(Tc,Tm), aL) ; aL = min( max(Tc,Tm), aL) ! Bound
+      aL = max( min(Tc, Tm), aL) ; aL = min( max(Tc, Tm), aL) ! Bound
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
-      aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
+      aR = max( min(Tc, Tp), aR) ; aR = min( max(Tc, Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
 
       ! These expressions are uglier than they might be, but they are less
       ! sensitive to underflow than the alternatives would be.
       if ((uMask(I,j)*uMask(I-1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
-          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+          (sign(1., Tp-Tc)*sign(1., Tc-Tm) <= 0.)) then
         aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
-      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( 6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
         aL = Tc + 2.*(Tc - aR)
         a6 = 3.*(aR - Tc) ! Curvature
-      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( -6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aR = 3.*Tc - 2.*aL
         aR = Tc + 2.*(Tc - aL)
         a6 = 3.*(aL - Tc) ! Curvature
@@ -1115,20 +1115,20 @@ subroutine kernel_PPMH3_Tr_x(G, is, ie, j, scalar, uMask, uhh, CFL, Tr_x)
       ! Implementation of PPM-H3
       Tp = scalar(i+2,j) ; Tc = scalar(i+1,j) ; Tm = scalar(i,j)
       aL = ( 5.*Tc + ( 2.*Tm - Tp ) )/6. ! H3 estimate
-      aL = max( min(Tc,Tm), aL) ; aL = min( max(Tc,Tm), aL) ! Bound
+      aL = max( min(Tc, Tm), aL) ; aL = min( max(Tc, Tm), aL) ! Bound
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
-      aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
+      aR = max( min(Tc, Tp), aR) ; aR = min( max(Tc, Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
 
       if ((uMask(I,j)*uMask(I+1,j) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
-          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+          (sign(1., Tp-Tc)*sign(1., Tc-Tm) <= 0.)) then
         aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
-      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( 6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
         aL = Tc + 2.*(Tc - aR)
         a6 = 3.*(aR - Tc) ! Curvature
-      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( -6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aR = 3.*Tc - 2.*aL
         aR = Tc + 2.*(Tc - aL)
         a6 = 3.*(aL - Tc) ! Curvature
@@ -1555,10 +1555,10 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
       domore_v(J) = .true.
     elseif (vhr(i,J) < 0.0) then
       hup = hprev(i,j+1)
-      hlos = MAX(0.0,vhr(i,J+1))
+      hlos = MAX(0.0, vhr(i,J+1))
       if ((((hup - hlos) + vhr(i,J)) < 0.0) .and. &
           ((0.5*hup + vhr(i,J)) < 0.0)) then
-        vhh(i,J) = MIN(-0.5*hup,-hup+hlos,0.0)
+        vhh(i,J) = MIN(-0.5*hup, -hup+hlos, 0.0)
         domore_v(J) = .true.
       else
         vhh(i,J) = vhr(i,J)
@@ -1572,10 +1572,10 @@ subroutine kernel_vhh_CFL_y(G, is, ie, J, hprev, vhr, vhh, CFL, domore_v, h_negl
       endif
     else
       hup = hprev(i,j)
-      hlos = MAX(0.0,-vhr(i,J-1))
+      hlos = MAX(0.0, -vhr(i,J-1))
       if ((((hup - hlos) - vhr(i,J)) < 0.0) .and. &
           ((0.5*hup - vhr(i,J)) < 0.0)) then
-        vhh(i,J) = MAX(0.5*hup,hup-hlos,0.0)
+        vhh(i,J) = MAX(0.5*hup, hup-hlos, 0.0)
         domore_v(J) = .true.
       else
         vhh(i,J) = vhr(i,J)
@@ -1644,22 +1644,22 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       ! Implementation of PPM-H3
       Tp = scalar(i,j+1) ; Tc = scalar(i,j) ; Tm = scalar(i,j-1)
       aL = ( 5.*Tc + ( 2.*Tm - Tp ) )/6. ! H3 estimate
-      aL = max( min(Tc,Tm), aL) ; aL = min( max(Tc,Tm), aL) ! Bound
+      aL = max( min(Tc, Tm), aL) ; aL = min( max(Tc, Tm), aL) ! Bound
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
-      aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
+      aR = max( min(Tc, Tp), aR) ; aR = min( max(Tc, Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
 
       ! These expressions are uglier than they might be, but they are less
       ! sensitive to underflow than the alternatives would be.
       if ((vMask(i,J)*vMask(i,J-1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
-          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+          (sign(1., Tp-Tc)*sign(1., Tc-Tm) <= 0.)) then
         aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
-      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( 6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
         aL = Tc + 2.*(Tc - aR)
         a6 = 3.*(aR - Tc) ! Curvature
-      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( -6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aR = 3.*Tc - 2.*aL
         aR = Tc + 2.*(Tc - aL)
         a6 = 3.*(aL - Tc) ! Curvature
@@ -1674,21 +1674,21 @@ subroutine kernel_PPMH3_Tr_y(G, is, ie, J, scalar, vMask, vhh, CFL, Tr_y)
       ! Implementation of PPM-H3
       Tp = scalar(i,j+2) ; Tc = scalar(i,j+1) ; Tm = scalar(i,j)
       aL = ( 5.*Tc + ( 2.*Tm - Tp ) )/6. ! H3 estimate
-      aL = max( min(Tc,Tm), aL) ; aL = min( max(Tc,Tm), aL) ! Bound
+      aL = max( min(Tc, Tm), aL) ; aL = min( max(Tc, Tm), aL) ! Bound
       aR = ( 5.*Tc + ( 2.*Tp - Tm ) )/6. ! H3 estimate
-      aR = max( min(Tc,Tp), aR) ; aR = min( max(Tc,Tp), aR) ! Bound
+      aR = max( min(Tc, Tp), aR) ; aR = min( max(Tc, Tp), aR) ! Bound
       dA = aR - aL ; mA = 0.5*( aR + aL )
       ! These expressions are uglier than they might be, but they are less
       ! sensitive to underflow than the alternatives would be.
       if ((vMask(i,J)*vMask(i,J+1) == 0.0) .or. (Tp == Tc) .or. (Tc == Tm) .or. &
-          (sign(1.,Tp-Tc)*sign(1.,Tc-Tm) <= 0.)) then
+          (sign(1., Tp-Tc)*sign(1., Tc-Tm) <= 0.)) then
         aL = Tc ; aR = Tc ! PCM for local extrema and boundary cells
         a6 = 0.0 ! Curvature
-      elseif ( 6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( 6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aL = 3.*Tc - 2.*aR
         aL = Tc + 2.*(Tc - aR)
         a6 = 3.*(aR - Tc) ! Curvature
-      elseif ( -6.*sign(1.,dA)*(Tc-mA) > abs(dA) ) then
+      elseif ( -6.*sign(1., dA)*(Tc-mA) > abs(dA) ) then
         ! aR = 3.*Tc - 2.*aL
         aR = Tc + 2.*(Tc - aL)
         a6 = 3.*(aL - Tc) ! Curvature

@@ -160,11 +160,11 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
                  "boundary in calculating stresses.", &
                  units="degrees", default=0.0)
 
-  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,     &
+  CS%id_sigi  = register_diag_field('ice_model', 'SIGI', diag%axesT1, Time,     &
             'first stress invariant', units='nondim')
-  CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
+  CS%id_sigii = register_diag_field('ice_model', 'SIGII', diag%axesT1, Time,    &
             'second stress invariant', units='nondim')
-  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
+  CS%id_stren = register_diag_field('ice_model', 'STRENGTH', diag%axesT1, Time, &
             'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesB1, Time,    &
             'ice internal stress - x component', units='Pa', conversion=US%RLZ_T2_to_Pa, &
@@ -543,8 +543,8 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
     do J=jsc-1,jec ; do I=isc-1,iec
       if( (G%mask2dBu(i,j)>0.0) .and. (miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
-        rr = CS%cdw*US%L_to_Z*CS%Rho_ocean * abs(cmplx(ui(i,j)-uo(i,j),vi(i,j)-vo(i,j))) * &
-             exp(sign(CS%blturn*pi/180, G%CoriolisBu(i,j)) * (0.0,1.0))
+        rr = CS%cdw*US%L_to_Z*CS%Rho_ocean * abs(cmplx(ui(i,j)-uo(i,j), vi(i,j)-vo(i,j))) * &
+             exp(sign(CS%blturn*pi/180, G%CoriolisBu(i,j)) * (0.0, 1.0))
         !
         ! first, timestep explicit parts (ice, wind & ocean part of water stress)
         !
@@ -565,15 +565,15 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
         !### REWRITE TO AVOID COMPLEX EXPRESSIONS.
         ui(I,J) = ui(I,J) + (fxic_now + civ(I,J)*fxat(I,J) + &
-             real(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
+             real(civ(I,J)*rr*cmplx(uo(I,J), vo(I,J)))) * dtmiv(I,J) + sldx(I,J)
         vi(I,J) = vi(I,J) + (fyic_now + civ(I,J)*fyat(I,J) + &
-             aimag(civ(I,J)*rr*cmplx(uo(I,J),vo(I,J)))) * dtmiv(I,J) + sldy(I,J)
+             aimag(civ(I,J)*rr*cmplx(uo(I,J), vo(I,J)))) * dtmiv(I,J) + sldy(I,J)
 
         !
         ! second, timestep implicit parts (Coriolis and ice part of water stress)
         !
-        newuv = cmplx(ui(I,J),vi(I,J)) / &
-             (1 + dt_Rheo*(0.0,1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
+        newuv = cmplx(ui(I,J), vi(I,J)) / &
+             (1 + dt_Rheo*(0.0, 1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
         ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
 
         if (abs(ui(I,J)) < CS%vel_underflow) ui(I,J) = 0.0
@@ -586,8 +586,8 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         fyic(I,J) = fyic(I,J) + fyic_now
         fxoc(I,J) = fxoc(I,J) + real( civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
-        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
-        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0,1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J),vi(I,J)))
+        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0, 1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J), vi(I,J)))
+        fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0, 1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J), vi(I,J)))
 
       endif
     enddo ; enddo
@@ -607,7 +607,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
       call Bchksum(vi, "vi in SIS_B_dynamics", G%HI, symmetric=.true., unscale=US%L_T_to_m_s)
     endif
     if (CS%debug_redundant) then
-      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps",fxic, fyic, G, unscale=US%RLZ_T2_to_Pa)
+      call check_redundant_B("fxic/fyic in SIS_B_dynamics steps", fxic, fyic, G, unscale=US%RLZ_T2_to_Pa)
       call check_redundant_B("fxco in SIS_B_dynamics steps", fxco, fyco, G, unscale=US%RLZ_T2_to_Pa)
       call check_redundant_B("fxoc in SIS_B_dynamics steps", fxoc, fyoc, G, unscale=US%RLZ_T2_to_Pa)
       call check_redundant_B("ui/vi in SIS_B_dynamics steps", ui, vi, G, unscale=US%L_T_to_m_s)

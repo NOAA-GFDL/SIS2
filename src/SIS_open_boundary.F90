@@ -684,7 +684,7 @@ subroutine setup_u_point_obc(OBC, G, US, segment_str, l_seg, PF, reentrant_y)
   ! This returns the global indices for the segment
   call parse_segment_str(G%ieg, G%jeg, segment_str, I_obc, Js_obc, Je_obc, action_str, reentrant_y)
 
-  call setup_segment_indices(G, OBC%segment(l_seg),I_obc,I_obc,Js_obc,Je_obc)
+  call setup_segment_indices(G, OBC%segment(l_seg), I_obc, I_obc, Js_obc, Je_obc)
 
   I_obc = I_obc - G%idg_offset ! Convert to local tile indices on this tile
   Js_obc = Js_obc - G%jdg_offset ! Convert to local tile indices on this tile
@@ -808,7 +808,7 @@ subroutine setup_v_point_obc(OBC, G, US, segment_str, l_seg, PF, reentrant_x)
   ! This returns the global indices for the segment
   call parse_segment_str(G%ieg, G%jeg, segment_str, J_obc, Is_obc, Ie_obc, action_str, reentrant_x)
 
-  call setup_segment_indices(G, OBC%segment(l_seg),Is_obc,Ie_obc,J_obc,J_obc)
+  call setup_segment_indices(G, OBC%segment(l_seg), Is_obc, Ie_obc, J_obc, J_obc)
   J_obc = J_obc - G%jdg_offset ! Convert to local tile indices on this tile
   Is_obc = Is_obc - G%idg_offset ! Convert to local tile indices on this tile
   Ie_obc = Ie_obc - G%idg_offset ! Convert to local tile indices on this tile

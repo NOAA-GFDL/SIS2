@@ -2817,15 +2817,15 @@ subroutine ice_model_end(Ice)
       call dealloc_simple_OSS(Ice%fCS%sOSS)
       call SIS_hor_grid_end(Ice%fCS%G)
     else
-      if (.not.associated(Ice%fCS%IST,Ice%sCS%IST)) then
+      if (.not.associated(Ice%fCS%IST, Ice%sCS%IST)) then
         call dealloc_IST_arrays(Ice%fCS%IST)
         deallocate(Ice%fCS%IST)
       endif
-      if (.not.associated(Ice%fCS%FIA,Ice%sCS%FIA)) &
+      if (.not.associated(Ice%fCS%FIA, Ice%sCS%FIA)) &
         call dealloc_fast_ice_avg(Ice%fCS%FIA)
-      if (.not.associated(Ice%fCS%sOSS,Ice%sCS%sOSS)) &
+      if (.not.associated(Ice%fCS%sOSS, Ice%sCS%sOSS)) &
         call dealloc_simple_OSS(Ice%fCS%sOSS)
-      if (.not.associated(Ice%fCS%G,Ice%sCS%G)) &
+      if (.not.associated(Ice%fCS%G, Ice%sCS%G)) &
         call SIS_hor_grid_end(Ice%fCS%G)
     endif
 
