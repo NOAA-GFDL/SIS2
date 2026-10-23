@@ -102,7 +102,7 @@ type, public :: OBC_segment_type
                                               !! OB segment [L T-1 ~> m s-1].
   real, allocatable :: normal_trans(:,:,:)    !< The layer transport normal to the OB
                                               !! segment [H L2 T-1 ~> m3 s-1].
-  type(segment_tracer_registry_type), pointer  :: tr_Reg=> NULL()!< A pointer to the tracer registry for the segment.
+  type(segment_tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the tracer registry for the segment.
   type(hor_index_type) :: HI !< Horizontal index ranges
   real :: Tr_InvLscale_out                                  !< An effective inverse length scale for restoring
                                                             !! the tracer concentration in a fictitious
@@ -970,7 +970,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
   enddo
 
   do n=1,OBC%number_of_segments
-    segment=>OBC%segment(n)
+    segment => OBC%segment(n)
     if (.not. segment%on_pe .or. .not. segment%specified) cycle
     if (segment%is_E_or_W) then
       ! Sweep along u-segments and for %specified BC points reset the u-point area which was masked out
@@ -1004,7 +1004,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
   any_U = .false.
   any_V = .false.
   do n=1,OBC%number_of_segments
-    segment=>OBC%segment(n)
+    segment => OBC%segment(n)
     if (.not. segment%on_pe) cycle
     if (segment%is_E_or_W) then
       I=segment%HI%IsdB

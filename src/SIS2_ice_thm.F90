@@ -50,7 +50,7 @@ type, public :: ice_thermo_type ; private
   logical :: sublimation_bug = .false.  !< If true use an older calculation that omits the
                             !! latent heat of fusion from the latent heat of sublimation.
                             !! This variable should be obsoleted.
-  type(EOS_type), pointer :: EOS=>NULL() !< A pointer to the shared MOM6/SIS2
+  type(EOS_type), pointer :: EOS => NULL() !< A pointer to the shared MOM6/SIS2
                             !! equation-of-state type. This is here to encourage the use of
                             !! common and consistent thermodynamics between the ice and ocean.
 end type ice_thermo_type

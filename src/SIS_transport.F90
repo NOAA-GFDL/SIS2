@@ -1258,10 +1258,10 @@ subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
 
   ! Local variables
   real, dimension(:,:,:,:), &
-    pointer :: heat_ice=>NULL() ! Pointer to the enth_ice array from the SIS tracer registry.
+    pointer :: heat_ice => NULL() ! Pointer to the enth_ice array from the SIS tracer registry.
                         ! Enth_ice is the enthalpy of the ice in each category and layer [Q ~> J kg-1].
   real, dimension(:,:,:,:), &
-    pointer :: heat_snow=>NULL() ! Pointer to the enth_snow array from the SIS tracer registry.
+    pointer :: heat_snow => NULL() ! Pointer to the enth_snow array from the SIS tracer registry.
                         ! Enth_snow is the enthalpy of the snow atop the ice in each category [Q ~> J kg-1].
   real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
   real :: H_to_units ! A conversion factor from H to the desired output units.

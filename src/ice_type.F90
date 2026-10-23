@@ -54,10 +54,10 @@ type ice_data_type !  ice_public_type
   logical  :: shared_slow_fast_PEs = .true. !< If true, the fast and slow ice use the same processors
                                     !! and domain decomposition
   integer  :: xtype          !< An integer specifying the type for the exchange
-  integer, pointer, dimension(:)   :: slow_pelist =>NULL() !< Used for flux-exchange with slow processes.
-  integer, pointer, dimension(:)   :: fast_pelist =>NULL() !< Used for flux-exchange with fast processes.
-  integer, pointer, dimension(:)   :: pelist   =>NULL() !< Used for flux-exchange.
-  logical, pointer, dimension(:,:) :: ocean_pt =>NULL() !< An array that indicates ocean points as true.
+  integer, pointer, dimension(:)   :: slow_pelist => NULL() !< Used for flux-exchange with slow processes.
+  integer, pointer, dimension(:)   :: fast_pelist => NULL() !< Used for flux-exchange with fast processes.
+  integer, pointer, dimension(:)   :: pelist   => NULL() !< Used for flux-exchange.
+  logical, pointer, dimension(:,:) :: ocean_pt => NULL() !< An array that indicates ocean points as true.
 
   ! These fields are used to provide information about the ice surface to the
   ! atmosphere, and contain separate values for each ice thickness category.
@@ -87,7 +87,7 @@ type ice_data_type !  ice_public_type
     u_surf      => NULL(), &  !< The eastward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
     v_surf      => NULL()     !< The northward surface velocities of the ocean (:,:,1) or sea-ice [m s-1].
   real, pointer, dimension(:,:)   :: &
-    s_surf         =>NULL()   !< The ocean's surface salinity [gSalt kg-1].
+    s_surf      => NULL()     !< The ocean's surface salinity [gSalt kg-1].
 
   ! These arrays will be used to set the forcing for the ocean.
   real, pointer, dimension(:,:) :: &

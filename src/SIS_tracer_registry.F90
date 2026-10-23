@@ -161,7 +161,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
 
   ! Local variables
   logical :: snow_tr
-  type(SIS_tracer_type), pointer :: Tr_here=>NULL()
+  type(SIS_tracer_type), pointer :: Tr_here => NULL()
   character(len=256) :: mesg    ! Message for error messages.
 
   if (.not. associated(TrReg)) call SIS_tracer_registry_init(param_file, TrReg)
@@ -521,7 +521,7 @@ subroutine add_SIS_tracer_OBC_values(name, TrReg, OBC_inflow, OBC_in_u, OBC_in_v
 ! This subroutine adds open boundary condition concentrations for a tracer that
 ! has previously been registered by a call to register_SIS_tracer.
 
-  type(SIS_tracer_type), pointer :: Tr_here=>NULL()
+  type(SIS_tracer_type), pointer :: Tr_here => NULL()
   integer :: m
 
   if (.not. associated(TrReg)) call SIS_error(FATAL, "add_SIS_tracer_OBC_values :"// &
@@ -575,7 +575,7 @@ subroutine add_SIS_tracer_diagnostics(name, TrReg, ad_2d_x, ad_2d_y, ad_3d_x, &
 ! This subroutine adds diagnostic arrays for a tracer that has previously been
 ! registered by a call to register_SIS_tracer.
 
-  type(SIS_tracer_type), pointer :: Tr_here=>NULL()
+  type(SIS_tracer_type), pointer :: Tr_here => NULL()
   integer :: m
 
   if (.not. associated(TrReg)) call SIS_error(FATAL, "add_SIS_tracer_diagnostics: "// &

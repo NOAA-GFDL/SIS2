@@ -44,7 +44,7 @@ type ocean_ice_boundary_type
     calving => NULL(), &   !< The mass flux per unit area of the ice shelf to convert to
                            !!bergs [RZ_T ~> kg m-2 s-1].
     calving_hflx => NULL() !< Calving heat flux [Q R Z T-1 ~> W m-2].
-  real, dimension(:,:,:), pointer :: data =>NULL() !< S collective field for "named" fields above
+  real, dimension(:,:,:), pointer :: data => NULL() !< S collective field for "named" fields above
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and is used by coupler
@@ -106,15 +106,15 @@ end type atmos_ice_boundary_type
 !> A type for exchange between the land and the sea ice
 type land_ice_boundary_type
   real, dimension(:,:),   pointer :: &
-    runoff  =>NULL(), &  !< The liquid runoff into the ocean [kg m-2].
-    runoff_carbon =>NULL(), &  !< The carbon content of liquid runoff into the ocean [kg m-2].
-    calving =>NULL(), &  !< The frozen runoff into each cell, that is offered
+    runoff  => NULL(), &  !< The liquid runoff into the ocean [kg m-2].
+    runoff_carbon => NULL(), &  !< The carbon content of liquid runoff into the ocean [kg m-2].
+    calving => NULL(), &  !< The frozen runoff into each cell, that is offered
                          !! first to the icebergs (if any), where it might be
                          !! used or modified before being passed to the ocean [kg m-2].
-    runoff_hflx  =>NULL(), & !< The heat flux associated with the temperature of
+    runoff_hflx  => NULL(), & !< The heat flux associated with the temperature of
                          !! of the liquid runoff, relative to liquid water
                          !! at 0 degC [W m-2].
-    calving_hflx =>NULL() !< The heat flux associated with the temperature of
+    calving_hflx => NULL() !< The heat flux associated with the temperature of
                          !! of the frozen runoff, relative to liquid? (or frozen?) water
                          !! at 0 degC [W m-2].
   real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above
