@@ -1125,7 +1125,7 @@ subroutine mask_outside_OBCs(G, US, param_file, OBC)
       fatal_error = .True.
       write(mesg,'("SIS_open_boundary: problem with OBC segments specification at ",I5,",",I5," during\n", &
           "the masking of the outside grid points.")') i, j
-      call MOM_error(WARNING,"SIS mask_outside_OBCs: "//mesg, all_print=.true.)
+      call MOM_error(WARNING, "SIS mask_outside_OBCs: "//mesg, all_print=.true.)
     endif
     if (color(i,j) == cout) G%bathyT(i,j) = min_depth
   enddo ; enddo

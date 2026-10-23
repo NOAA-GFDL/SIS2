@@ -98,7 +98,7 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   call get_param(PF, mdl, "ICEPACK_REBIN", CS%do_rebin, &
                  "Tell icepack_step_ridge to call rebin for us.", default=.false.)
   if (.not. CS%do_cleanup .and. CS%do_rebin) then
-    call SIS_error(WARNING,"ICEPACK_REBIN needs ICEPACK_CLEANUP")
+    call SIS_error(WARNING, "ICEPACK_REBIN needs ICEPACK_CLEANUP")
     CS%do_cleanup = .true.
   endif
 
@@ -421,7 +421,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         trcr_depend(ntrcr) = 0; ! 0 means ice area-based tracer
         trcr_base(ntrcr,:) = 0.0; trcr_base(ntrcr,1) = 1.0; ! 1st index for ice area
 
-        if (ntrcr .ne. ntrcr_out ) call SIS_error(FATAL,'ntrcr mismatch with Icepack')
+        if (ntrcr .ne. ntrcr_out ) call SIS_error(FATAL, 'ntrcr mismatch with Icepack')
 
         dardg1dt = 0.0
         dardg2dt = 0.0
@@ -475,7 +475,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         if ( icepack_warnings_aborted() ) then
           call icepack_warnings_flush(0);
           call icepack_warnings_setabort(.false.)
-          call SIS_error(WARNING,'icepack_step_ridge error');
+          call SIS_error(WARNING, 'icepack_step_ridge error');
         endif
 
         ! pop pond off top of stack

@@ -198,7 +198,7 @@ subroutine check_redundant_vC2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
     u_nonsym(i,j) = u_comp(i,j) ; v_nonsym(i,j) = v_comp(i,j)
   enddo ; enddo
 
-  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL," check_redundant"//&
+  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL, " check_redundant"//&
     " called with a non-associated auxiliary domain the grid type.")
   call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, direction)
 
@@ -304,7 +304,7 @@ subroutine check_redundant_sB2d(mesg, array, G, is, ie, js, je, unscale)
     a_nonsym(i,j) = array(i,j)
   enddo ; enddo
 
-  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL," check_redundant"//&
+  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL, " check_redundant"//&
     " called with a non-associated auxiliary domain the grid type.")
   call pass_vector(a_nonsym, a_nonsym, G%Domain_aux, &
                    direction=To_All+Scalar_Pair, stagger=BGRID_NE)
@@ -413,7 +413,7 @@ subroutine check_redundant_vB2d(mesg, u_comp, v_comp, G, is, ie, js, je, &
     u_nonsym(i,j) = u_comp(i,j) ; v_nonsym(i,j) = v_comp(i,j)
   enddo ; enddo
 
-  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL," check_redundant"//&
+  if (.not.associated(G%Domain_aux)) call MOM_error(FATAL, " check_redundant"//&
     " called with a non-associated auxiliary domain the grid type.")
   call pass_vector(u_nonsym, v_nonsym, G%Domain_aux, direction, stagger=BGRID_NE)
 

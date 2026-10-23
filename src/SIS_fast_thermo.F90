@@ -237,7 +237,7 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, US, IG)
   !
   ! compute average fluxes
   !
-  if (FIA%avg_count == 0) call SIS_error(FATAL,'avg_top_quantities: '//&
+  if (FIA%avg_count == 0) call SIS_error(FATAL, 'avg_top_quantities: '//&
        'no ocean model fluxes have been averaged')
 
   ! Rotate the stress from lat/lon to ocean coordinates and possibly change the

@@ -189,7 +189,7 @@ subroutine SIS_initialize_topography(D, max_depth, G, PF, US)
     case ("spoon");     call initialize_topography_named(D, G, PF, config, max_depth, US)
     case ("bowl");      call initialize_topography_named(D, G, PF, config, max_depth, US)
     case ("halfpipe");  call initialize_topography_named(D, G, PF, config, max_depth, US)
-    case default ;      call MOM_error(FATAL,"SIS_initialize_topography: "// &
+    case default ;      call MOM_error(FATAL, "SIS_initialize_topography: "// &
       "Unrecognized topography setup '"//trim(config)//"'")
   end select
 

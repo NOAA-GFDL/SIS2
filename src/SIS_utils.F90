@@ -160,7 +160,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
     elseif (ni == G%ied-(G%isd-1)+1) then ! Symmetric arrays with halos.
       is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1) + 1
     else
-      call SIS_error(FATAL,"post_avg: peculiar size in i-direction")
+      call SIS_error(FATAL, "post_avg: peculiar size in i-direction")
     endif
 
     if ((nj == G%jsc-G%jec + 1) .or. (nj == G%jsc-G%jec + 2)) then
@@ -170,7 +170,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
     elseif (nj == G%jed-(G%jsd-1)+1) then ! Symmetric arrays with halos.
       js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1) + 1
     else
-      call SIS_error(FATAL,"post_avg: peculiar size in j-direction")
+      call SIS_error(FATAL, "post_avg: peculiar size in j-direction")
     endif
   else
     is = 1; ie = ni ; js = 1 ; je = nj
@@ -244,7 +244,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
     elseif (ni == G%ied-(G%isd-1)+1) then ! Symmetric arrays with halos.
       is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1) + 1
     else
-      call SIS_error(FATAL,"post_avg: peculiar size in i-direction")
+      call SIS_error(FATAL, "post_avg: peculiar size in i-direction")
     endif
 
     if ((nj == G%jsc-G%jec + 1) .or. (nj == G%jsc-G%jec + 2)) then
@@ -254,7 +254,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
     elseif (nj == G%jed-(G%jsd-1)+1) then ! Symmetric arrays with halos.
       js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1) + 1
     else
-      call SIS_error(FATAL,"post_avg: peculiar size in j-direction")
+      call SIS_error(FATAL, "post_avg: peculiar size in j-direction")
     endif
   else
     is = 1; ie = ni ; js = 1 ; je = nj
