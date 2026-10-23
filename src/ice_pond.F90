@@ -206,7 +206,7 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
 
 !  call IST_chksum('before ice ponds ', IST, G, US, IG)
 
-  do j=jsc,jec; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec
   if ((G%mask2dT(i,j) .gt. 0.0) .and. (sum(IST%part_size(i,j,1:nCat)) .gt. 0.0)) then
   ! feed locations to Icepack's ridge_ice
 
@@ -323,7 +323,7 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
     IST%enth_snow_to_ocn(i,j) = IST%enth_snow_to_ocn(i,j) - sum(mca_snow(i,j,:)*TrReg%Tr_snow(1)%t(i,j,:,1))
     IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) - sum(mca_pond(i,j,:))
 
-  endif; enddo; enddo ! part_sz, j, i
+  endif ; enddo ; enddo ! part_sz, j, i
 
 !  call IST_chksum('after ice ponds ', IST, G, US, IG)
 

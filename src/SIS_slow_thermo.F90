@@ -971,7 +971,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
         mass_prev = mass_prev + IST%mH_ice(i,j,k)
       endif
 
- !     evap_from_ocn = 0.0; h2o_ice_to_ocn = 0.0; heat_to_ocn = 0.0
+ !     evap_from_ocn = 0.0 ; h2o_ice_to_ocn = 0.0 ; heat_to_ocn = 0.0
 
       if (IST%mH_snow(i,j,k) == 0.0) IST%enth_snow(i,j,k,1) = &
           enth_from_TS(Temp_from_En_S(IST%enth_ice(i,j,k,1), S_col0(1), IST%ITV), &

@@ -1600,7 +1600,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
           siv(i,j) = (vi(i,J-1) + vi(i,J))/2
           sispeed(i,j) = (siu(i,j)*siu(i,j)+siv(i,j)*siv(i,j))**0.5
         else
-          siu(i,j) = 0.0; siv(i,j) = 0.0; sispeed(i,j) = 0.0;
+          siu(i,j) = 0.0 ; siv(i,j) = 0.0 ; sispeed(i,j) = 0.0;
         endif
       enddo ; enddo
       if (CS%id_siu>0) call post_SIS_data(CS%id_siu, siu, CS%diag)

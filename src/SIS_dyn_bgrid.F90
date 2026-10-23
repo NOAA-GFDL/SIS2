@@ -574,7 +574,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         !
         newuv = cmplx(ui(I,J), vi(I,J)) / &
              (1 + dt_Rheo*(0.0, 1.0)*G%CoriolisBu(I,J) + civ(I,J)*rr*dtmiv(I,J))
-        ui(I,J) = real(newuv); vi(I,J) = aimag(newuv)
+        ui(I,J) = real(newuv) ; vi(I,J) = aimag(newuv)
 
         if (abs(ui(I,J)) < CS%vel_underflow) ui(I,J) = 0.0
         if (abs(vi(I,J)) < CS%vel_underflow) vi(I,J) = 0.0
