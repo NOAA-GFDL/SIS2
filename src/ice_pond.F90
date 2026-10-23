@@ -311,11 +311,11 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
           IST%mH_ice(i,j,k) = 0.0
           mca_snow(i,j,k) = 0.0
           IST%mH_snow(i,j,k) = 0.0
-       endif
+        endif
 
-     enddo
+      enddo
 
-     IST%part_size(i,j,0) = 1.0 - sum(IST%part_size(i,j,1:nCat))
+      IST%part_size(i,j,0) = 1.0 - sum(IST%part_size(i,j,1:nCat))
 
     endif
     ! subtract new snow/pond mass and energy on ice to sum net fluxes to ocean

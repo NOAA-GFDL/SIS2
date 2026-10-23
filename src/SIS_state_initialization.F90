@@ -241,7 +241,7 @@ subroutine ice_state_thermo_init(IST, Ice, G, IG, US, PF, init_Time, just_read_p
   type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice specific grid type
   type(unit_scale_type),   intent(in)    :: US   !< A structure with unit conversion factors
   type(param_file_type),   intent(in)    :: PF   !< A structure to parse for run-time parameters
-   type(time_type),        intent(in)    :: init_Time      !< The initialization time of the run segment
+  type(time_type),         intent(in)    :: init_Time      !< The initialization time of the run segment
   logical,       optional, intent(in)    :: just_read_params !< If true only read parameters, but
                                                  !! do not log them or change the ice state.
 !

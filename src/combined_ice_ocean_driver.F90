@@ -392,16 +392,16 @@ subroutine direct_flux_ocn_to_OIB(Time, Ocean, OIB, Ice, do_thermo)
   if (ASSOCIATED(OIB%sea_level)) OIB%sea_level = Ocean%sea_lev
 
   if (do_therm) then
-   if (ASSOCIATED(OIB%t)) OIB%t = Ocean%t_surf
-   if (ASSOCIATED(OIB%s)) OIB%s = Ocean%s_surf
-   if (ASSOCIATED(OIB%frazil)) then
-!   if(do_area_weighted_flux) then
-!     OIB%frazil = Ocean%frazil * Ocean%area
-!     call divide_by_area(OIB%frazil, Ice%area)
-!   else
-     OIB%frazil = Ocean%frazil
-!   endif
-   endif
+    if (ASSOCIATED(OIB%t)) OIB%t = Ocean%t_surf
+    if (ASSOCIATED(OIB%s)) OIB%s = Ocean%s_surf
+    if (ASSOCIATED(OIB%frazil)) then
+!     if (do_area_weighted_flux) then
+!       OIB%frazil = Ocean%frazil * Ocean%area
+!       call divide_by_area(OIB%frazil, Ice%area)
+!     else
+      OIB%frazil = Ocean%frazil
+!     endif
+    endif
   endif
 
   ! Extra fluxes

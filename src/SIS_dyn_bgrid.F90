@@ -265,7 +265,7 @@ end subroutine find_ice_strength
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_B_dynamics takes a single dynamics timestep with EVP subcycles
 subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
-     fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, US, CS)
+        fxat, fyat, sea_lev, fxoc, fyoc, do_ridging, rdg_rate, dt_slow, G, US, CS)
 
   type(SIS_hor_grid_type),            intent(inout) :: G   !< The horizontal grid type
   real, dimension(SZI_(G),SZJ_(G)),   intent(in   ) :: ci  !< Sea ice concentration [nondim]
