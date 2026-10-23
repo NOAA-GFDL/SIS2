@@ -932,7 +932,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
     if (segment%is_E_or_W) then
       ! Sweep along u-segments and delete the OBC for blocked points.
       ! Also, mask all points outside.
-      I=segment%HI%IsdB
+      I = segment%HI%IsdB
       do j=segment%HI%jsd,segment%HI%jed
         if (G%mask2dCu(I,j) == 0) OBC%segnum_u(I,j) = 0 ! Same as OBC_NONE
         if (segment%direction == OBC_DIRECTION_W) then
@@ -950,7 +950,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
       enddo
     else
       ! Sweep along v-segments and delete the OBC for blocked points.
-      J=segment%HI%JsdB
+      J = segment%HI%JsdB
       do i=segment%HI%isd,segment%HI%ied
         if (G%mask2dCv(i,J) == 0) OBC%segnum_v(i,J) = 0 ! Same as OBC_NONE
         if (segment%direction == OBC_DIRECTION_S) then
@@ -974,7 +974,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
     if (.not. segment%on_pe .or. .not. segment%specified) cycle
     if (segment%is_E_or_W) then
       ! Sweep along u-segments and for %specified BC points reset the u-point area which was masked out
-      I=segment%HI%IsdB
+      I = segment%HI%IsdB
       do j=segment%HI%jsd,segment%HI%jed
         if (segment%direction == OBC_DIRECTION_E) then
           areaCu(I,j) = G%areaT(i,j)   ! Both of these are in [L2 ~> m2]
@@ -984,7 +984,7 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
       enddo
     else
       ! Sweep along v-segments and for %specified BC points reset the v-point area which was masked out
-      J=segment%HI%JsdB
+      J = segment%HI%JsdB
       do i=segment%HI%isd,segment%HI%ied
         if (segment%direction == OBC_DIRECTION_S) then
           areaCv(i,J) = G%areaT(i,j+1) ! Both of these are in [L2 ~> m2]
@@ -1007,12 +1007,12 @@ subroutine open_boundary_impose_land_mask(OBC, G, areaCu, areaCv, US)
     segment => OBC%segment(n)
     if (.not. segment%on_pe) cycle
     if (segment%is_E_or_W) then
-      I=segment%HI%IsdB
+      I = segment%HI%IsdB
       do j=segment%HI%jsd,segment%HI%jed
         if (OBC%segnum_u(I,j) /= 0) any_U = .true.
       enddo
     else
-      J=segment%HI%JsdB
+      J = segment%HI%JsdB
       do i=segment%HI%isd,segment%HI%ied
         if (OBC%segnum_v(i,J) /= 0) any_V = .true.
       enddo

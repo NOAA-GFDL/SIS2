@@ -381,7 +381,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   IDs%id_sisnconc_CMOR = register_diag_field('ice_model', 'sisnconc_CMOR', diag%axesT1, Time, &
                'Snow Area Percentage', units='%', conversion=100.0, missing_value=missing, &
                standard_name="SurfaceSnowAreaFraction")
-  IDs%id_sisnthick= register_diag_field('ice_model', 'sisnthick', diag%axesT1, Time, &
+  IDs%id_sisnthick = register_diag_field('ice_model', 'sisnthick', diag%axesT1, Time, &
                'snow thickness', units='m', conversion=US%Z_to_m)
 
   IDs%id_t_iceav = register_diag_field('ice_model', 'T_bulkice', diag%axesT1, Time, &

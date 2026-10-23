@@ -131,7 +131,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
 !           error to roughly match supersource behavior.
 !           5/22/01; 8/23/01
 
-    where (iceh < 0.01) iceh=0.0
+    where (iceh < 0.01) iceh = 0.0
     where (iceh > 0.0)
       icec = 1.0
     end where

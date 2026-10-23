@@ -224,19 +224,19 @@ subroutine set_SIS_axes_info(G, IG, diag_cs, set_vertical, axes_set_name)
   if (diag_cs%index_space_axes) then
     allocate(IaxB(G%IsgB:G%IegB))
     do i=G%IsgB, G%IegB
-      Iaxb(i)=real(i)
+      Iaxb(i) = real(i)
     enddo
     allocate(iax(G%isg:G%ieg))
     do i=G%isg, G%ieg
-      iax(i)=real(i)-0.5
+      iax(i) = real(i)-0.5
     enddo
     allocate(JaxB(G%JsgB:G%JegB))
     do j=G%JsgB, G%JegB
-      JaxB(j)=real(j)
+      JaxB(j) = real(j)
     enddo
     allocate(jax(G%jsg:G%jeg))
     do j=G%jsg, G%jeg
-      jax(j)=real(j)-0.5
+      jax(j) = real(j)-0.5
     enddo
   endif
 
@@ -1377,16 +1377,16 @@ subroutine attach_cell_methods(id, axes, ostring, cell_methods, x_cell_method, y
         call get_MOM_diag_axis_name(axes%handles(1), axis_name)
         call MOM_diag_field_add_attribute(id, 'cell_methods', trim(axis_name)//':'//trim(x_cell_method))
         ostring = trim(adjustl(ostring))//' '//trim(axis_name)//':'//trim(x_cell_method)
-        if (trim(x_cell_method)=='mean') x_mean=.true.
-        if (trim(x_cell_method)=='sum') x_sum=.true.
+        if (trim(x_cell_method)=='mean') x_mean = .true.
+        if (trim(x_cell_method)=='sum') x_sum = .true.
       endif
     else
       if (len(trim(axes%x_cell_method))>0) then
         call get_MOM_diag_axis_name(axes%handles(1), axis_name)
         call MOM_diag_field_add_attribute(id, 'cell_methods', trim(axis_name)//':'//trim(axes%x_cell_method))
         ostring = trim(adjustl(ostring))//' '//trim(axis_name)//':'//trim(axes%x_cell_method)
-        if (trim(axes%x_cell_method)=='mean') x_mean=.true.
-        if (trim(axes%x_cell_method)=='sum') x_sum=.true.
+        if (trim(axes%x_cell_method)=='mean') x_mean = .true.
+        if (trim(axes%x_cell_method)=='sum') x_sum = .true.
       endif
     endif
     if (present(y_cell_method)) then
@@ -1394,16 +1394,16 @@ subroutine attach_cell_methods(id, axes, ostring, cell_methods, x_cell_method, y
         call get_MOM_diag_axis_name(axes%handles(2), axis_name)
         call MOM_diag_field_add_attribute(id, 'cell_methods', trim(axis_name)//':'//trim(y_cell_method))
         ostring = trim(adjustl(ostring))//' '//trim(axis_name)//':'//trim(y_cell_method)
-        if (trim(y_cell_method)=='mean') y_mean=.true.
-        if (trim(y_cell_method)=='sum') y_sum=.true.
+        if (trim(y_cell_method)=='mean') y_mean = .true.
+        if (trim(y_cell_method)=='sum') y_sum = .true.
       endif
     else
       if (len(trim(axes%y_cell_method))>0) then
         call get_MOM_diag_axis_name(axes%handles(2), axis_name)
         call MOM_diag_field_add_attribute(id, 'cell_methods', trim(axis_name)//':'//trim(axes%y_cell_method))
         ostring = trim(adjustl(ostring))//' '//trim(axis_name)//':'//trim(axes%y_cell_method)
-        if (trim(axes%y_cell_method)=='mean') y_mean=.true.
-        if (trim(axes%y_cell_method)=='sum') y_sum=.true.
+        if (trim(axes%y_cell_method)=='mean') y_mean = .true.
+        if (trim(axes%y_cell_method)=='sum') y_sum = .true.
       endif
     endif
     if (x_mean .and. y_mean) then

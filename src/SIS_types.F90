@@ -2374,7 +2374,7 @@ subroutine OSS_chksum(mesg, OSS, G, US, haloshift)
   ! Note that for the chksum calls to be useful for reproducing across PE
   ! counts, there must be no redundant points, so all variables use is..ie
   ! and js...je as their extent.
-  hs=0 ; if (present(haloshift)) hs=haloshift
+  hs = 0 ; if (present(haloshift)) hs = haloshift
 
   call hchksum(OSS%s_surf, trim(mesg)//" OSS%s_surf", G%HI, haloshift=hs, unscale=US%S_to_ppt)
   call hchksum(OSS%SST_C, trim(mesg)//" OSS%SST_C", G%HI, haloshift=hs, unscale=US%C_to_degC)
@@ -2410,7 +2410,7 @@ subroutine TSF_chksum(mesg, TSF, G, US, haloshift)
   ! Note that for the chksum calls to be useful for reproducing across PE
   ! counts, there must be no redundant points, so all variables use is..ie
   ! and js...je as their extent.
-  hs=0 ; if (present(haloshift)) hs=haloshift
+  hs = 0 ; if (present(haloshift)) hs = haloshift
 
   call hchksum(TSF%flux_sh, trim(mesg)//" TSF%flux_sh", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
   ! call hchksum(TSF%flux_sw, trim(mesg)//" TSF%flux_sw", G%HI, haloshift=hs, unscale=US%QRZ_T_to_W_m2)
@@ -2441,7 +2441,7 @@ subroutine IST_chksum(mesg, IST, G, US, IG, haloshift)
   ! Note that for the chksum calls to be useful for reproducing across PE
   ! counts, there must be no redundant points, so all variables use is..ie
   ! and js...je as their extent.
-  hs=0; if (present(haloshift)) hs=haloshift
+  hs = 0 ; if (present(haloshift)) hs = haloshift
 
   call hchksum(IST%part_size(:,:,0), trim(mesg)//" IST%part_size(0)", G%HI, haloshift=hs)
   call hchksum(IST%part_size(:,:,1:), trim(mesg)//" IST%part_size", G%HI, haloshift=hs)
@@ -2561,7 +2561,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
   endif ; enddo ; enddo ; enddo ; enddo
 
   if (n_bad > 0) then
-    i = i_bad ; j=j_bad ; k = k_bad
+    i = i_bad ; j = j_bad ; k = k_bad
     write(mesg1,'(" at ", 2(F6.1)," or i,j,k = ",3i4,"; nbad = ",i6," on pe ",i4)') &
            G%geolonT(i,j), G%geolatT(i,j), i_bad, j_bad, k_bad, n_bad, pe_here()
     if (k_bad > 0) then

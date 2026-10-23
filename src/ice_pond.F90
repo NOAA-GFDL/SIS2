@@ -196,7 +196,7 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
 
   ! set category limits; Icepack has a max on the largest, unlimited, category (why?)
 
-  hin_max(0)=0.0
+  hin_max(0) = 0.0
   do k=1,nCat
     hin_max(k) = US%Z_to_m * IG%mH_cat_bound(k) / Rho_ice
   end do
@@ -286,7 +286,7 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
       endif
 
       ! pop pond off top of stack
-      tr_tmp(1:nCat)=trcrn(ntrcr,1:nCat)
+      tr_tmp(1:nCat) = trcrn(ntrcr,1:nCat)
 
       do k=1,nCat
         IST%mH_pond(i,j,k) = tr_tmp(k)
@@ -296,8 +296,8 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
       ! ! output: snow/ice masses/thicknesses
       do k=1,nCat
         if (aicen(k) < CS%area_underflow) then
-           aicen(k)=0.0
-           vicen(k)=0.0
+          aicen(k) = 0.0
+          vicen(k) = 0.0
         endif
         if (aicen(k) > 0.0) then
           IST%part_size(i,j,k)  = aicen(k)

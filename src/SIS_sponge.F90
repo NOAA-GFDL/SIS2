@@ -504,7 +504,7 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
     ! Remove all snow if ice conc or thickness = 0
     do k=1,IG%CatIce
       do m=1,CS%fldno
-        if (CS%var(m)%p(i,j,k) < 1.e-10) IST%mH_snow(i,j,k)=0.0
+        if (CS%var(m)%p(i,j,k) < 1.e-10) IST%mH_snow(i,j,k) = 0.0
       enddo
     enddo
   enddo
@@ -592,7 +592,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
 
   hLim_vals(:) = IG%cat_thick_lim(:)  !< ice thkn cats are not scaled [m]
 
-  cice2d=0.0 ; hice2d=0.0
+  cice2d = 0.0 ; hice2d = 0.0
   do m=1,CS%fldno
     scale_cf = CS%Ref_val(m)%scale
     Iscale = 1.0
@@ -644,7 +644,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
 
     ! Adjust min conc in cats for low partial areas
     rmm = 1./float(icat0)
-    if (cice < ck_min*float(icat0)) ck_min=cice*rmm
+    if (cice < ck_min*float(icat0)) ck_min = cice*rmm
 
     ! Check if there is enough ice for distribution:
     htot_min = sum(ck_min*hLim_vals(1:icat0))
@@ -761,8 +761,8 @@ subroutine check_hcice(hcat, ccat, hice, cice, iG, jG, str)
   call partial_area_total(ccat(1:CatIce), cice_tot)
   call ice_thkn_total(ccat(1:CatIce), hcat, hice_tot)
 
-  if (abs(hice_tot-hice) > eps_err) err_hice=.true.
-  if (abs(cice_tot-cice) > eps_err) err_cice=.true.
+  if (abs(hice_tot-hice) > eps_err) err_hice = .true.
+  if (abs(cice_tot-cice) > eps_err) err_cice = .true.
 
   ! Provide Error information
   msg_info = "check_hcice "
@@ -794,7 +794,7 @@ function find_icat(hice_k, hLim_vals) result (icat0)
   if (hice_k  >=  hLim_vals(CatIce)) then
     icat0 = CatIce
   elseif (hice_k  <  hLim_vals(1)) then
-    icat0=1
+    icat0 = 1
   else
     do k=1,CatIce
       if (hice_k  >=  hLim_vals(k) .and. hice_k  <  hLim_vals(k+1)) then
