@@ -881,7 +881,7 @@ subroutine convert_IST_to_simple_state(IST, DS2d, CAS, G, US, IG, CS)
   enddo ; enddo ; enddo
   do j=jsd,jed ; do i=isd,ied
     DS2d%mca_step(i,j,0) = DS2d%mca_step(i,j,0) + DS2d%mi_sum(i,j)
-!    if ((abs(max(1.0-DS2d%ice_cover(i,j),0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.0)) then
+!    if ((abs(max(1.0-DS2d%ice_cover(i,j), 0.0) - IST%part_size(i,j,0)) > 5.0e-15) .and. (G%mask2dT(i,j)>0.0)) then
 !      write(mesg, '(3(ES13.5))') max(1.0 - DS2d%ice_cover(i,j), 0.0) - IST%part_size(i,j,0), &
 !         max(1.0 - DS2d%ice_cover(i,j), 0.0), IST%part_size(i,j,0)
 !      call SIS_error(FATAL, "Mismatch in ice_free values exceeding roundoff: "//trim(mesg))
@@ -2452,7 +2452,7 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   CS%complete_ice_cover = 1.0 - 2.0*epsilon(CS%complete_ice_cover)
 
   if (.not.(do_slab_ice)) then
-    CS%complete_ice_cover = 1.0 - 2.0*max(1,IG%CatIce)*epsilon(CS%complete_ice_cover)
+    CS%complete_ice_cover = 1.0 - 2.0*max(1, IG%CatIce)*epsilon(CS%complete_ice_cover)
     if (CS%Cgrid_dyn) then
       call SIS_C_dyn_init(CS%Time, G, US, param_file, CS%diag, CS%SIS_C_dyn_CSp, CS%ntrunc)
     else
@@ -2552,10 +2552,10 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
   real, allocatable :: tmp_array(:,:,:)
   integer :: nts_prev
 
-  if (DS2d%max_nts >= max(max_nts,1)) return
+  if (DS2d%max_nts >= max(max_nts, 1)) return
 
   nts_prev = DS2d%nts
-  DS2d%max_nts = max(max_nts,1)
+  DS2d%max_nts = max(max_nts, 1)
 
   if (allocated(DS2d%mca_step)) then
     allocate(tmp_array(G%isd:G%ied, G%jsd:G%jed, 0:nts_prev))

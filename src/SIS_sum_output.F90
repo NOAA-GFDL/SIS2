@@ -676,14 +676,14 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
     if (abs(mass_imb) > CS%imb_tol*abs(Mass) .and. (abs(Mass) > 0.0)) then
       write(mesg,'("Mass imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
                   &" Lon/Lat = ",2(f8.2))') &
-                  mass_imb, mass_imb/max(abs(mass),abs(mass_imb)), &
+                  mass_imb, mass_imb / max(abs(mass), abs(mass_imb)), &
                   i, j, G%geolonT(i,j), G%geolatT(i,j)
       call SIS_error(WARNING, mesg, all_print=.true.)
     endif
     if (abs(heat_imb) > CS%imb_tol*abs(Heat) .and. (abs(Heat) > 0.0)) then
       write(mesg,'("Heat imbalance of ",ES11.4," (",ES8.1,") detected at i,j=",2(i4), &
                   &" Lon/Lat = ",2(f8.2))') &
-                  heat_imb, heat_imb/max(abs(heat),abs(heat_imb)), i, j, &
+                  heat_imb, heat_imb / max(abs(heat), abs(heat_imb)), i, j, &
                   G%geolonT(i,j), G%geolatT(i,j)
       call SIS_error(WARNING, mesg, all_print=.true.)
     endif

@@ -77,8 +77,8 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
 
   if (.not.module_is_initialized) then
   read (input_nml_file, nml=ice_spec_nml, iostat=io)
-    ierr = check_nml_error(io,'ice_spec_nml')
-    write (stdout(),'(/)')
+    ierr = check_nml_error(io, 'ice_spec_nml')
+    write (stdout(), '(/)')
     write (stdout(), ice_spec_nml)
     write (stdlog(), ice_spec_nml)
 
@@ -93,8 +93,8 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
 
 ! modify time repeating single day option
   if (all(repeat_date>0)) then
-    call get_date(Time,dum1,dum2,dum3,tod(1),tod(2),tod(3))
-    Spec_Time = set_date(repeat_date(1),repeat_date(2),repeat_date(3),tod(1),tod(2),tod(3))
+    call get_date(Time, dum1, dum2, dum3, tod(1), tod(2), tod(3))
+    Spec_Time = set_date(repeat_date(1), repeat_date(2), repeat_date(3), tod(1), tod(2), tod(3))
   else
     Spec_Time = Time
   endif

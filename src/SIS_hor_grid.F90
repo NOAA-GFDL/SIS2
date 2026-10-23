@@ -258,8 +258,8 @@ subroutine set_hor_grid(G, param_file, HI, global_indexing)
        "nblocks(=NI_BLOCK*NJ_BLOCK) must be no less than 1")
 
   allocate(ibegin(niblock), iend(niblock), jbegin(njblock), jend(njblock))
-  call compute_block_extent(G%HI%isc,G%HI%iec,niblock,ibegin,iend)
-  call compute_block_extent(G%HI%jsc,G%HI%jec,njblock,jbegin,jend)
+  call compute_block_extent(G%HI%isc, G%HI%iec, niblock, ibegin, iend)
+  call compute_block_extent(G%HI%jsc, G%HI%jec, njblock, jbegin, jend)
   !-- make sure the last block is the largest.
   do i = 1, niblock-1
     if (iend(i)-ibegin(i) > iend(niblock)-ibegin(niblock) ) call SIS_error(FATAL, &
@@ -397,8 +397,8 @@ logical function isPointInCell(G, i, j, x, y)
   xNW = G%geoLonBu(i-1,j  ) ; yNW = G%geoLatBu(i-1,j  )
   xSE = G%geoLonBu(i  ,j-1) ; ySE = G%geoLatBu(i  ,j-1)
   xSW = G%geoLonBu(i-1,j-1) ; ySW = G%geoLatBu(i-1,j-1)
-  if (x<min(xNE,xNW,xSE,xSW) .or. x>max(xNE,xNW,xSE,xSW) .or. &
-      y<min(yNE,yNW,ySE,ySW) .or. y>max(yNE,yNW,ySE,ySW) ) then
+  if (x < min(xNE, xNW, xSE, xSW) .or. x > max(xNE, xNW, xSE, xSW) .or. &
+      y < min(yNE, yNW, ySE, ySW) .or. y > max(yNE, yNW, ySE, ySW) ) then
     return ! Avoid the more complicated calculation
   endif
   l0 = (x-xSW)*(ySE-ySW) - (y-ySW)*(xSE-xSW)

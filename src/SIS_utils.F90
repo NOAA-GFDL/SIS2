@@ -99,9 +99,9 @@ subroutine ice_line(Time, cn_ocn, sst, G)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   call get_date(Time, year, mon, day, hr, min, second)
-  call get_time(Time-set_date(year,1,1,0,0,0), second, day)
+  call get_time(Time-set_date(year, 1, 1, 0, 0, 0), second, day)
 
-  if (.not.(second==0 .and. mod(day,5)==0) ) return
+  if (.not.(second == 0 .and. mod(day, 5) == 0) ) return
 
   do n=-1,1,2
     do j=jsc,jec ; do i=isc,iec
@@ -116,7 +116,7 @@ subroutine ice_line(Time, cn_ocn, sst, G)
   !
   ! print info every 5 days
   !
-  if ( is_root_pe() .and. second==0 .and. mod(day,5)==0 ) &
+  if ( is_root_pe() .and. second == 0 .and. mod(day, 5) == 0 ) &
     print '(a,2I4,3F10.5)','ICE y/d (SH_ext NH_ext SST):', year, day, gx
 end subroutine ice_line
 

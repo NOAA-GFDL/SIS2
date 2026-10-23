@@ -72,10 +72,10 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
 10 call close_file(unit)
   if (present(dirs)) then
     if (present(ensemble_num)) then
-      dirs%output_directory = trim(slasher(ensembler(output_directory,ensemble_num)))
-      dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir,ensemble_num)))
-      dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir,ensemble_num)))
-      dirs%input_filename = trim(ensembler(input_filename,ensemble_num))
+      dirs%output_directory = trim(slasher(ensembler(output_directory, ensemble_num)))
+      dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir, ensemble_num)))
+      dirs%restart_input_dir = trim(slasher(ensembler(restart_input_dir, ensemble_num)))
+      dirs%input_filename = trim(ensembler(input_filename, ensemble_num))
     else
       dirs%output_directory = trim(slasher(ensembler(output_directory)))
       dirs%restart_output_dir = trim(slasher(ensembler(restart_output_dir)))
@@ -91,7 +91,7 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
     valid_param_files = 0
     do io = 1, npf  
       if (len_trim(trim(parameter_filename(io))) > 0) then
-        call open_param_file(trim(ensembler(parameter_filename(io),ensemble_num)), param_file, &
+        call open_param_file(trim(ensembler(parameter_filename(io), ensemble_num)), param_file, &
                              check_params, component=comp, &
                              doc_file_dir=output_dir)
         valid_param_files = valid_param_files + 1

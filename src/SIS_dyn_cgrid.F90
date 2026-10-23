@@ -394,13 +394,13 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
 !  endif
   CS%u_file = -1 ; CS%v_file = -1 ; CS%cols_written = 0
 
-  CS%id_sigi  = register_diag_field('ice_model','SIGI' ,diag%axesT1, Time,     &
+  CS%id_sigi  = register_diag_field('ice_model', 'SIGI', diag%axesT1, Time,     &
             'first stress invariant', units='nondim')
-  CS%id_sigii = register_diag_field('ice_model','SIGII' ,diag%axesT1, Time,    &
+  CS%id_sigii = register_diag_field('ice_model', 'SIGII', diag%axesT1, Time,    &
             'second stress invariant', units='nondim')
-  CS%id_stren = register_diag_field('ice_model','STRENGTH' ,diag%axesT1, Time, &
+  CS%id_stren = register_diag_field('ice_model', 'STRENGTH', diag%axesT1, Time, &
             'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
-  CS%id_stren0 = register_diag_field('ice_model','STREN_0' ,diag%axesT1, Time, &
+  CS%id_stren0 = register_diag_field('ice_model', 'STREN_0', diag%axesT1, Time, &
             'ice strength at start of rheology', &
             units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m)
   CS%id_fix   = register_diag_field('ice_model', 'FI_X', diag%axesCu1, Time,   &
@@ -560,7 +560,7 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
             cmor_long_name='Maximum Shear Stress in Sea Ice')
   CS%id_ci_hifreq  = register_diag_field('ice_model', 'CI_hf', diag%axesT1, Time, &
             'Summed concentration of ice at t-points', units='nondim')
-  CS%id_stren_hifreq = register_diag_field('ice_model','STRENGTH_hf' ,diag%axesT1, Time, &
+  CS%id_stren_hifreq = register_diag_field('ice_model', 'STRENGTH_hf', diag%axesT1, Time, &
             'ice strength', units='Pa m', conversion=US%RLZ_T2_to_Pa*US%L_to_m, &
             cmor_field_name='sicompstren', &
             cmor_standard_name='compressive_strength_of_sea_ice', &
@@ -593,7 +593,7 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS, halo_sz) ! ??? may
   isc = G%isc-halo ; iec = G%iec+halo ; jsc = G%jsc-halo ; jec = G%jec+halo
 
   do j=jsc,jec ; do i=isc,iec
-    ice_strength(i,j) = CS%p0_rho*mi(i,j)*exp(-CS%c0*max(1.0-ci(i,j),0.0))
+    ice_strength(i,j) = CS%p0_rho*mi(i,j) * exp(-CS%c0 * max(1.0-ci(i,j), 0.0))
   enddo ; enddo
 
 end subroutine find_ice_strength
@@ -875,7 +875,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     ci_proj(i,j) = ci(i,j)
 
     ! Precompute pres_mice and the minimum value of del_sh for stability.
-    pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
+    pres_mice(i,j) = CS%p0_rho * exp(-CS%c0*  max(1.0-ci(i,j), 0.0))
 
     dxharm = 2.0*G%dxT(i,j)*G%dyT(i,j) / (G%dxT(i,j) + G%dyT(i,j))
     !   Setting a minimum value of del_sh is sufficient to guarantee numerical
@@ -1072,7 +1072,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
        ! ice convergence.
        ci_proj(i,j) = ci(i,j) * exp(-dt_cumulative*sh_Dd(i,j))
        ! Recompute pres_mice.
-       pres_mice(i,j) = CS%p0_rho*exp(-CS%c0*max(1.0-ci_proj(i,j),0.0))
+       pres_mice(i,j) = CS%p0_rho * exp(-CS%c0 * max(1.0-ci_proj(i,j), 0.0))
      enddo ; enddo
    endif
 
@@ -1790,7 +1790,7 @@ subroutine find_sigII(mi, ci, str_t, str_s, sigII, G, US, CS)
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-    strength(i,j) = mi(i,j) * CS%p0_rho*exp(-CS%c0*max(1.0-ci(i,j),0.0))
+    strength(i,j) = mi(i,j) * CS%p0_rho * exp(-CS%c0 * max(1.0-ci(i,j), 0.0))
   enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
@@ -2045,7 +2045,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
           ! calculate Tb factor at t-location
           do n=1, CS%ncat_i
             gt(:) = (y_n(:) <= rho_ice*x_k(n)/rho_water)
-            tmp(:) = merge(1,0,gt(:))
+            tmp(:) = merge(1, 0, gt(:))
             ii = sum(tmp)
             if (ii == 0) then
               tb_tmp(n) = 0.0
@@ -2065,13 +2065,13 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   do j=jsc,jec
     do I=isc-1,iec
       ! convert quantities to u-location
-      CS%Tb_u(I,j)  = max(Tbt(i,j),Tbt(i+1,j))
+      CS%Tb_u(I,j)  = max(Tbt(i,j), Tbt(i+1,j))
     enddo
   enddo
   do J=jsc-1,jec
     do i=isc,iec
       ! convert quantities to v-location
-      CS%Tb_v(i,J)  = max(Tbt(i,j),Tbt(i,j+1))
+      CS%Tb_v(i,J)  = max(Tbt(i,j), Tbt(i,j+1))
     enddo
   enddo
 

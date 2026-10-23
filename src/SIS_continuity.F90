@@ -113,7 +113,7 @@ subroutine ice_continuity(u, v, hin, h, uh, vh, dt, G, US, IG, CS, use_h_neg, ma
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_continuity: Module must be initialized before it is used.")
-  x_first = (MOD(G%first_direction,2) == 0)
+  x_first = (MOD(G%first_direction, 2) == 0)
 
   apply_h_neg = .false.
   if (present(use_h_neg)) then
@@ -299,7 +299,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_continuity: Module must be initialized before it is used.")
-  x_first = (MOD(G%first_direction,2) == 0)
+  x_first = (MOD(G%first_direction, 2) == 0)
 
   stencil = 3 ; if (CS%simple_2nd) stencil = 2 ; if (CS%upwind_1st) stencil = 1
 
@@ -430,7 +430,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_continuity: Module must be initialized before it is used.")
-  x_first = (MOD(G%first_direction,2) == 0)
+  x_first = (MOD(G%first_direction, 2) == 0)
 
   stencil = 3 ; if (CS%simple_2nd) stencil = 2 ; if (CS%upwind_1st) stencil = 1
 
@@ -682,7 +682,7 @@ subroutine proportionate_continuity(h_tot_in, uh_tot, vh_tot, dt, G, US, IG, CS,
 
   if (.not.associated(CS)) call SIS_error(FATAL, &
          "SIS_continuity: Module must be initialized before it is used.")
-  x_first = (MOD(G%first_direction,2) == 0)
+  x_first = (MOD(G%first_direction, 2) == 0)
 
   do_mask = ((CS%h_neglect_cont > 0.0) .or. (CS%frac_neglect > 0.0))
 
@@ -1435,13 +1435,13 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   if ((isl-stencil < G%isd) .or. (iel+stencil > G%ied)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_x called with a ", &
                & "x-halo that needs to be increased by ",i2,".")') &
-               stencil + max(G%isd-isl,iel-G%ied)
+               stencil + max(G%isd-isl, iel-G%ied)
     call SIS_error(FATAL, mesg)
   endif
   if ((jsl < G%jsd) .or. (jel > G%jed)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_x called with a ", &
                & "y-halo that needs to be increased by ",i2,".")') &
-               max(G%jsd-jsl,jel-G%jed)
+               max(G%jsd-jsl, jel-G%jed)
     call SIS_error(FATAL, mesg)
   endif
 
@@ -1465,7 +1465,7 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
           ! Monotonic constraint, see Eq. B2 in Lin 1994, MWR (132)
           dMx = max(h_in(i+1,j), h_in(i-1,j), h_in(i,j)) - h_in(i,j)
           dMn = h_in(i,j) - min(h_in(i+1,j), h_in(i-1,j), h_in(i,j))
-          slp(i,j) = sign(1.,slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
+          slp(i,j) = sign(1., slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
                   ! * (G%mask2dT(i-1,j) * G%mask2dT(i,j) * G%mask2dT(i+1,j))
         endif
       enddo
@@ -1527,13 +1527,13 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
   if ((isl < G%isd) .or. (iel > G%ied)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_y called with a ", &
                & "x-halo that needs to be increased by ",i2,".")') &
-               max(G%isd-isl,iel-G%ied)
+               max(G%isd-isl, iel-G%ied)
     call SIS_error(FATAL, mesg)
   endif
   if ((jsl-stencil < G%jsd) .or. (jel+stencil > G%jed)) then
     write(mesg,'("In SIS_continuity, PPM_reconstruction_y called with a ", &
                  & "y-halo that needs to be increased by ",i2,".")') &
-                 stencil + max(G%jsd-jsl,jel-G%jed)
+                 stencil + max(G%jsd-jsl, jel-G%jed)
     call SIS_error(FATAL, mesg)
   endif
 
@@ -1556,7 +1556,7 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
         ! Monotonic constraint, see Eq. B2 in Lin 1994, MWR (132)
         dMx = max(h_in(i,j+1), h_in(i,j-1), h_in(i,j)) - h_in(i,j)
         dMn = h_in(i,j) - min(h_in(i,j+1), h_in(i,j-1), h_in(i,j))
-        slp(i,j) = sign(1.,slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
+        slp(i,j) = sign(1., slp(i,j)) * min(abs(slp(i,j)), 2. * min(dMx, dMn))
                 ! * (G%mask2dT(i,j-1) * G%mask2dT(i,j) * G%mask2dT(i,j+1))
       endif
     enddo ; enddo

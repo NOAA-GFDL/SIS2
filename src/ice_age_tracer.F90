@@ -181,7 +181,7 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice
     ! Register the tracer for horizontal advection & diffusion. Note that the argument
     ! of nLTr is IG%NkIce
     call register_SIS_tracer(CS%tr(:,:,:,:,m), G, IG, IG%NkIce, var_name, param_file, &
-        TrReg, snow_tracer=.false.,ad_3d_x=CS%tr_adx(m)%p, &
+        TrReg, snow_tracer=.false., ad_3d_x=CS%tr_adx(m)%p, &
         ad_3d_y=CS%tr_ady(m)%p, ocean_BC=ocean_BC_ptr, snow_BC=snow_BC_ptr, is_passive=.true.)
 
     ! Set boundary conditions
@@ -254,7 +254,7 @@ subroutine initialize_ice_age_tracer( day, G, IG, CS, is_restart )
     call query_vardesc(CS%tr_desc(tr), name, units=units, longname=longname, &
         caller="initialize_ice_age_tracer")
     CS%id_tracer(tr) = register_SIS_diag_field("ice_model", trim(name), CS%diag%axesTc, &
-        CS%Time, trim(longname) , trim(units),missing_value = missing)
+        CS%Time, trim(longname), trim(units), missing_value=missing)
     CS%id_tr_adx(tr) = register_SIS_diag_field("ice_model", trim(name)//"_adx", &
         CS%diag%axesCuc, CS%Time, trim(longname)//" advective zonal flux" , &
         trim(flux_units))
@@ -266,8 +266,8 @@ subroutine initialize_ice_age_tracer( day, G, IG, CS, is_restart )
         trim(units))
 
 
-    if (CS%id_tr_adx(tr) > 0) call safe_alloc_ptr(CS%tr_adx(tr)%p,IscB,IecB,jsc,jec,CS%nlevels(tr))
-    if (CS%id_tr_ady(tr) > 0) call safe_alloc_ptr(CS%tr_ady(tr)%p,isc,iec,JscB,JecB,CS%nlevels(tr))
+    if (CS%id_tr_adx(tr) > 0) call safe_alloc_ptr(CS%tr_adx(tr)%p, IscB, IecB, jsc, jec, CS%nlevels(tr))
+    if (CS%id_tr_ady(tr) > 0) call safe_alloc_ptr(CS%tr_ady(tr)%p, isc, iec, JscB, JecB, CS%nlevels(tr))
 
   enddo
 
@@ -357,11 +357,11 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     enddo ; enddo ; enddo
 
     if (CS%id_tracer(tr)>0) &
-        call post_data(CS%id_tracer(tr),CS%tr(:,:,:,1,tr),CS%diag)
+        call post_data(CS%id_tracer(tr), CS%tr(:,:,:,1,tr), CS%diag)
     if (CS%id_tr_adx(tr)>0) &
-        call post_data(CS%id_tr_adx(tr),CS%tr_adx(tr)%p(:,:,:),CS%diag)
+        call post_data(CS%id_tr_adx(tr), CS%tr_adx(tr)%p(:,:,:), CS%diag)
     if (CS%id_tr_ady(tr)>0) &
-        call post_data(CS%id_tr_ady(tr),CS%tr_ady(tr)%p(:,:,:),CS%diag)
+        call post_data(CS%id_tr_ady(tr), CS%tr_ady(tr)%p(:,:,:), CS%diag)
     if (CS%id_avg(tr)>0) then
       call post_avg(CS%id_avg(tr), tr_avg, mi, CS%diag, G=G, wtd=.true.)
     endif

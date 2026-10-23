@@ -59,15 +59,15 @@ subroutine initialize_ice_categories(IG, Rho_ice, US, PF, hLim_vals)
   list_size = -1
   if (present(hLim_vals)) then ; if (size(hLim_vals(:)) > 1) then
     list_size = size(hlim_vals(:))
-    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_vals(k) ; enddo
+    do k = 1, min(CatIce+1, list_size) ; IG%cat_thick_lim(k) = hlim_vals(k) ; enddo
   endif ; endif
   if (list_size < 2) then  ! Use the default categories.
     list_size = size(hlim_dflt(:))
-    do k=1,min(CatIce+1,list_size) ; IG%cat_thick_lim(k) = hlim_dflt(k) ; enddo
+    do k = 1, min(CatIce+1, list_size) ; IG%cat_thick_lim(k) = hlim_dflt(k) ; enddo
   endif
 
   if ((CatIce+1 > list_size) .and. (list_size > 1)) then
-    do k=list_size+1, CatIce+1
+    do k = list_size+1, CatIce+1
       IG%cat_thick_lim(k) =  2.0*IG%cat_thick_lim(k-1) - IG%cat_thick_lim(k-2)
     enddo
   endif

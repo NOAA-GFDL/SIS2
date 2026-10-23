@@ -251,7 +251,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
     call register_restart_field(Ice_restart, 'runoff',      Ice%runoff)
     call register_restart_field(Ice_restart, 'calving',     Ice%calving)
     call register_restart_field(Ice_restart, 'runoff_hflx', Ice%runoff_hflx, mandatory=.false.)
-    call register_restart_field(Ice_restart, 'calving_hflx',Ice%calving_hflx, mandatory=.false.)
+    call register_restart_field(Ice_restart, 'calving_hflx', Ice%calving_hflx, mandatory=.false.)
     call register_restart_field(Ice_restart, 'p_surf',      Ice%p_surf)
     call register_restart_field(Ice_restart, 'flux_sw_vis_dir', Ice%flux_sw_vis_dir)
     call register_restart_field(Ice_restart, 'flux_sw_vis_dif', Ice%flux_sw_vis_dif)

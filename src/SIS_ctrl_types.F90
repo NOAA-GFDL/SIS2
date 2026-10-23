@@ -212,7 +212,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   id_sin_rot   = register_static_field('ice_model', 'SINROT', diag%axesT1, &
                  '-SINROT,COSROT points north', 'none')
   id_cos_rot   = register_static_field('ice_model', 'COSROT', diag%axesT1, &
-                 'COSROT,SINROT points east','none')
+                 'COSROT,SINROT points east', 'none')
   id_geo_lon   = register_static_field('ice_model', 'GEOLON', diag%axesT1, 'longitude', &
                  'degrees')
   id_geo_lat   = register_static_field('ice_model', 'GEOLAT', diag%axesT1, 'latitude', &
@@ -244,7 +244,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'liquid runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_calving_hflx = register_SIS_diag_field('ice_model', 'CALVING_HFLX', diag%axesT1, Time, &
                'frozen runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
-  FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP',diag%axesT1, Time, &
+  FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP', diag%axesT1, Time, &
                'evaporation', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
   
   !CMOR evaporation diagnostics
@@ -460,13 +460,13 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   call safe_alloc_ids_1d(Rad%id_sw_abs_ice, nLay)
   do n=1,nLay
     write(nstr, '(I4)') n ; nstr = adjustl(nstr)
-    Rad%id_sw_abs_ice(n) = register_SIS_diag_field(trim(comp_name),'sw_abs_ice'//trim(nstr), &
+    Rad%id_sw_abs_ice(n) = register_SIS_diag_field(trim(comp_name), 'sw_abs_ice'//trim(nstr), &
                  diag%axesT1, Time, 'SW fraction absorbed in ice layer '//trim(nstr)//' [0,1]', &
                  units="nondim" )
   enddo
-  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name),'sw_pen', diag%axesT1, Time, &
+  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name), 'sw_pen', diag%axesT1, Time, &
                'SW fraction penetrating the ice surface [0,1]', units="nondim" )
-  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name),'sw_abs_ocn', diag%axesT1, Time, &
+  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name), 'sw_abs_ocn', diag%axesT1, Time, &
                'SW fraction sent to the ocean [0,1]', units="nondim" )
 
   Rad%id_alb_vis_dir = register_SIS_diag_field(trim(comp_name), 'alb_vis_dir', diag%axesT1, Time, &
@@ -477,11 +477,11 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
                'ice surface albedo nir_dir [0,1]', units="nondim" )
   Rad%id_alb_nir_dif = register_SIS_diag_field(trim(comp_name), 'alb_nir_dif', diag%axesT1, Time, &
                'ice surface albedo nir_dif [0,1]', units="nondim" )
-  Rad%id_tskin = register_SIS_diag_field(trim(comp_name),'Tskin', diag%axesTc, Time, &
+  Rad%id_tskin = register_SIS_diag_field(trim(comp_name), 'Tskin', diag%axesTc, Time, &
                'Skin temperature', units='degC', conversion=G%US%C_to_degC)
-  Rad%id_cn = register_SIS_diag_field(trim(comp_name),'CN_fast', diag%axesTc, Time, &
+  Rad%id_cn = register_SIS_diag_field(trim(comp_name), 'CN_fast', diag%axesTc, Time, &
                'Category concentration [0,1]', units="nondim" )
-  Rad%id_mi = register_SIS_diag_field(trim(comp_name),'MI_fast', diag%axesTc, Time, &
+  Rad%id_mi = register_SIS_diag_field(trim(comp_name), 'MI_fast', diag%axesTc, Time, &
                'Category concentration [0,1]', units="nondim" )
 
 end subroutine ice_diags_fast_init
