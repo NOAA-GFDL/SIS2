@@ -339,7 +339,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
     write(mesg,'("Increase MAX_FIELDS_RLX_ to at least ",I3," in SIS_memory.h or decrease &
            &the number of fields to be damped in the call to &
            &initialize_sponge." )') CS%fldno
-    call SIS_error(FATAL,"set_up_isponge_field: "//mesg)
+    call SIS_error(FATAL, "set_up_isponge_field: "//mesg)
   endif
   ! get a unique time interp id for this field. Ice relax target fields are on-grid
   if (CS%spongeDataOngrid) then
@@ -347,7 +347,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
     CS%Ref_val(CS%fldno)%field = init_external_field(filename, fieldname, MOM_domain=G%Domain, &
                verbose=.true.)
   else
-    call SIS_error(FATAL,"set_up_isponge_field: SIS2 relaxation fields on a not-native grid not implemented")
+    call SIS_error(FATAL, "set_up_isponge_field: SIS2 relaxation fields on a not-native grid not implemented")
   endif
   CS%Ref_val(CS%fldno)%name = rlxfld_name
   CS%Ref_val(CS%fldno)%long_name = long_name
@@ -368,7 +368,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
     case default
       write(mesg,'(A," Unknown relaxation field: ",A," setting default pointer dimensions =",2(i5,1x))') &
            trim(mdl),trim(rlxfld_name),CS%num_col,CatIce
-      call SIS_error(WARNING,trim(mesg))
+      call SIS_error(WARNING, trim(mesg))
       allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,CatIce), source=0.0)
   end select
   allocate(CS%Old_val(CS%fldno)%fld(CS%num_col,CatIce), source=0.0)

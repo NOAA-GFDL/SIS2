@@ -353,7 +353,7 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
           call SIS_mesg("SIS_restart: SIS run restarted using : "//trim(filepath))
       else
         if (present(IO_handles)) &
-          call SIS_error(WARNING,"SIS_restart: Unable to find restart file : "//trim(filepath))
+          call SIS_error(WARNING, "SIS_restart: Unable to find restart file : "//trim(filepath))
       endif
 
     endif
@@ -968,11 +968,11 @@ subroutine restart_error(CS)
 
   if (CS%novars > CS%max_fields) then
     write(num,'(I0)') CS%novars
-    call SIS_error(FATAL,"SIS_restart: Too many fields registered for " // &
+    call SIS_error(FATAL, "SIS_restart: Too many fields registered for " // &
            "restart.  Set MAX_FIELDS to be at least " // &
            trim(adjustl(num)) // " in the MOM input file.")
   else
-    call SIS_error(FATAL,"SIS_restart: Unspecified fatal error.")
+    call SIS_error(FATAL, "SIS_restart: Unspecified fatal error.")
   endif
 end subroutine restart_error
 
@@ -1418,7 +1418,7 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
     if (.not.(CS%restart_field(m)%initialized)) then
       CS%restart = .false.
       if (CS%restart_field(m)%mand_var) then
-        call SIS_error(FATAL,"SIS_restart: Unable to find mandatory variable " &
+        call SIS_error(FATAL, "SIS_restart: Unable to find mandatory variable " &
                        //trim(CS%restart_field(m)%var_name)//" in restart files.")
       endif
     endif

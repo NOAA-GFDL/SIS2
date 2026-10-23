@@ -62,7 +62,7 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
   if (file_exists('input.nml')) then
     unit = open_namelist_file(file='input.nml')
   else
-    call SIS_error(FATAL,'Required namelist file input.nml does not exist.')
+    call SIS_error(FATAL, 'Required namelist file input.nml does not exist.')
   endif
 
   ierr=1 ; do while (ierr /= 0)

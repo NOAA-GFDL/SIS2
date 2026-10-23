@@ -171,7 +171,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   if (TrReg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
         &all the tracers being registered via register_SIS_tracer.")') TrReg%ntr+1
-    call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
+    call SIS_error(FATAL, "MOM register_SIS_tracer: "//mesg)
   endif
 
   TrReg%ntr = TrReg%ntr + 1
@@ -264,7 +264,7 @@ subroutine register_SIS_tracer_pair(ice_tr, nL_ice, name_ice, snow_tr, nL_snow, 
   if (TrReg%ntr>=MAX_FIELDS_) then
     write(mesg,'("Increase MAX_FIELDS_ in SIS_memory.h to at least ",I3," to allow for &
         &all the tracers being registered via register_SIS_tracer.")') TrReg%ntr+1
-    call SIS_error(FATAL,"MOM register_SIS_tracer: "//mesg)
+    call SIS_error(FATAL, "MOM register_SIS_tracer: "//mesg)
   endif
 
   TrReg%ntr = TrReg%ntr + 1
@@ -656,7 +656,7 @@ subroutine SIS_tracer_registry_init(param_file, TrReg)
   if (init_calls > 1) then
     write(mesg,'("SIS_tracer_registry_init called ",I3, &
       &" times with different registry pointers.")') init_calls
-    call SIS_error(WARNING,"SIS_tracer"//mesg)
+    call SIS_error(WARNING, "SIS_tracer"//mesg)
   endif
 
 end subroutine SIS_tracer_registry_init

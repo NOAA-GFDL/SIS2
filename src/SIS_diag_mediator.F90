@@ -639,7 +639,7 @@ subroutine post_data_2d_low(diag, field, diag_cs, is_static, mask)
   else
     write (mesg,*) " peculiar size ",size(field,1)," in i-direction\n"//&
        "does not match one of ", cszi, cszi+1, dszi, dszi+1
-    call SIS_error(FATAL,"post_SIS_data_2d_low: "//trim(diag%debug_str)//trim(mesg))
+    call SIS_error(FATAL, "post_SIS_data_2d_low: "//trim(diag%debug_str)//trim(mesg))
   endif
 
   if ( size(field,2) == dszj ) then
@@ -653,7 +653,7 @@ subroutine post_data_2d_low(diag, field, diag_cs, is_static, mask)
   else
     write (mesg,*) " peculiar size ",size(field,2)," in j-direction\n"//&
        "does not match one of ", cszj, cszj+1, dszj, dszj+1
-    call SIS_error(FATAL,"post_SIS_data_2d_low: "//trim(diag%debug_str)//trim(mesg))
+    call SIS_error(FATAL, "post_SIS_data_2d_low: "//trim(diag%debug_str)//trim(mesg))
   endif
 
   if ((diag%conversion_factor /= 0.) .and. (diag%conversion_factor /= 1.)) then
@@ -822,7 +822,7 @@ subroutine post_data_3d_low(diag, field, diag_cs, is_static, mask)
   else
     write (mesg,*) " peculiar size ",size(field,1)," in i-direction\n"//&
        "does not match one of ", cszi, cszi+1, dszi, dszi+1
-    call SIS_error(FATAL,"post_data_3d_low: "//trim(diag%debug_str)//trim(mesg))
+    call SIS_error(FATAL, "post_data_3d_low: "//trim(diag%debug_str)//trim(mesg))
   endif
 
   if ( size(field,2) == dszj ) then
@@ -836,7 +836,7 @@ subroutine post_data_3d_low(diag, field, diag_cs, is_static, mask)
   else
     write (mesg,*) " peculiar size ",size(field,2)," in j-direction\n"//&
        "does not match one of ", cszj, cszj+1, dszj, dszj+1
-    call SIS_error(FATAL,"post_data_3d_low: "//trim(diag%debug_str)//trim(mesg))
+    call SIS_error(FATAL, "post_data_3d_low: "//trim(diag%debug_str)//trim(mesg))
   endif
 
   ks = lbound(field,3) ; ke = ubound(field,3)

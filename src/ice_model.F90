@@ -2022,7 +2022,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                  "If =1, write the geometry and vertical grid files only for "//&
                  "a new simulation. If =2, always write the geometry and "//&
                  "vertical grid files. Other values are invalid.", default=1)
-  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL,"SIS2: "//&
+  if (write_geom<0 .or. write_geom>2) call SIS_error(FATAL, "SIS2: "//&
          "WRITE_GEOM must be equal to 0, 1 or 2.")
   call get_param(param_file, "MOM", "INTERPOLATE_FLUXES", interp_fluxes, &
                  "If true, interpolate a linearized version of the fast "//&
@@ -2073,7 +2073,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   if (uppercase(stagger(1:1)) == 'A') then ; Ice%flux_uv_stagger = AGRID
   elseif (uppercase(stagger(1:1)) == 'B') then ; Ice%flux_uv_stagger = BGRID_NE
   elseif (uppercase(stagger(1:1)) == 'C') then ; Ice%flux_uv_stagger = CGRID_NE
-  else ; call SIS_error(FATAL,"ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
+  else ; call SIS_error(FATAL, "ice_model_init: ICE_OCEAN_STRESS_STAGGER = "//&
                         trim(stagger)//" is invalid.") ; endif
   Ice%Time = Time
 
