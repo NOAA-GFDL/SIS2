@@ -193,7 +193,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
 !$OMP                               h_neglect,vh_neglect,ntr,Tr,domore_u,domore_v)
 !$OMP do
   do k=1,ncat
-    domore_k(k)=1
+    domore_k(k) = 1
     ! Put the remaining (total) mass fluxes into uhr and vhr.
     do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
     do J=js-1,je ; do i=is,ie ; vhr(i,J,k) = dt*vhtr(i,J,k) ; enddo ; enddo
@@ -475,7 +475,7 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
 !$OMP                               h_neglect,vh_neglect,domore_u,domore_v)
 !$OMP do
     do k=1,ncat
-      domore_k(k)=1
+      domore_k(k) = 1
 
       ! Put the remaining (total) mass fluxes into uhr and vhr.
       do j=js,je ; do I=is-1,ie ; uhr(I,j,k) = dt*uhtr(I,j,k) ; enddo ; enddo
@@ -1053,7 +1053,7 @@ subroutine kernel_PLM_slope_x(G, is, ie, j, scalar, uMask, slope_x)
   do i = is, ie
     Tp = scalar(i+1,j) ; Tc = scalar(i,j) ; Tm = scalar(i-1,j)
     dMx = max( Tp, Tc, Tm ) - Tc
-    dMn= Tc - min( Tp, Tc, Tm )
+    dMn = Tc - min( Tp, Tc, Tm )
     slope_x(i) = uMask(I,j)*uMask(I-1,j) * &
         sign( min(0.5*abs(Tp-Tm), 2.0*dMx, 2.0*dMn), Tp-Tm )
   enddo
@@ -1612,7 +1612,7 @@ subroutine kernel_PLM_slope_y(G, is, ie, j, scalar, vMask, slope_y)
   do i = is, ie
     Tp = scalar(i,j+1) ; Tc = scalar(i,j) ; Tm = scalar(i,j-1)
     dMx = max( Tp, Tc, Tm ) - Tc
-    dMn= Tc - min( Tp, Tc, Tm )
+    dMn = Tc - min( Tp, Tc, Tm )
     slope_y(i) = vMask(i,J)*vMask(i,J-1) * &
         sign( min(0.5*abs(Tp-Tm), 2.0*dMx, 2.0*dMn), Tp-Tm )
   enddo

@@ -320,7 +320,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
     FIA%id_dshdt = register_SIS_diag_field('ice_model', 'dSH_dT', diag%axesTc0, Time, &
                'partial derivative of sensible heat flux with ice skin temperature', &
                units='W m-2 K-1', conversion=US%QRZ_T_to_W_m2*US%degC_to_C)
-    FIA%id_tsfc_cat =register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
+    FIA%id_tsfc_cat = register_SIS_diag_field('ice_model', 'TS_CAT', diag%axesTc0, Time, &
                'surface temperature by category', units='degC', conversion=US%C_to_degC)
   endif
   FIA%id_evap_cat  = register_SIS_diag_field('ice_model', 'EVAP_CAT', diag%axesTc0, Time, &
@@ -333,7 +333,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
   FIA%id_tsfc     = register_SIS_diag_field('ice_model', 'TS', diag%axesT1, Time, &
                'surface temperature', units='degC', conversion=US%C_to_degC)
-  FIA%id_sitemptop= register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
+  FIA%id_sitemptop = register_SIS_diag_field('ice_model', 'sitemptop', diag%axesT1, Time, &
                'surface temperature', units='degC', conversion=US%C_to_degC)
   FIA%id_sitemptop_CMOR = register_SIS_diag_field('ice_model', 'sitemptop_CMOR', diag%axesT1, Time, &
                'Surface Temperature of Sea ice', units='Kelvin', conversion=US%C_to_degC, &
@@ -452,9 +452,9 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
   Rad%id_coszen   = register_SIS_diag_field(trim(comp_name), 'coszen', diag%axesT1, Time, &
                'cosine of the solar zenith angle for the next radiation step [-1,1]', &
                units="nondim" )
-  Rad%id_sw_abs_sfc= register_SIS_diag_field(trim(comp_name), 'sw_abs_sfc', diag%axesT1, Time, &
+  Rad%id_sw_abs_sfc = register_SIS_diag_field(trim(comp_name), 'sw_abs_sfc', diag%axesT1, Time, &
                'SW frac. abs. at the ice surface [0,1]', units="nondim" )
-  Rad%id_sw_abs_snow= register_SIS_diag_field(trim(comp_name), 'sw_abs_snow', diag%axesT1, Time, &
+  Rad%id_sw_abs_snow = register_SIS_diag_field(trim(comp_name), 'sw_abs_snow', diag%axesT1, Time, &
                'SW frac. abs. in snow [0,1]', units="nondim" )
 
   call safe_alloc_ids_1d(Rad%id_sw_abs_ice, nLay)
@@ -464,9 +464,9 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
                  diag%axesT1, Time, 'SW fraction absorbed in ice layer '//trim(nstr)//' [0,1]', &
                  units="nondim" )
   enddo
-  Rad%id_sw_pen= register_SIS_diag_field(trim(comp_name), 'sw_pen', diag%axesT1, Time, &
+  Rad%id_sw_pen = register_SIS_diag_field(trim(comp_name), 'sw_pen', diag%axesT1, Time, &
                'SW fraction penetrating the ice surface [0,1]', units="nondim" )
-  Rad%id_sw_abs_ocn= register_SIS_diag_field(trim(comp_name), 'sw_abs_ocn', diag%axesT1, Time, &
+  Rad%id_sw_abs_ocn = register_SIS_diag_field(trim(comp_name), 'sw_abs_ocn', diag%axesT1, Time, &
                'SW fraction sent to the ocean [0,1]', units="nondim" )
 
   Rad%id_alb_vis_dir = register_SIS_diag_field(trim(comp_name), 'alb_vis_dir', diag%axesT1, Time, &

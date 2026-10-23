@@ -1976,12 +1976,12 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
 ! Also note that the upper limit on the thickest category
 ! is only used for the linear remapping scheme
 ! and it is not a true upper limit on the thickness
-  hin_max(0)=0.0
+  hin_max(0) = 0.0
   do k=1,nCat
     hin_max(k) = IG%mH_cat_bound(k)/rho_ice
   end do
 
-  Tbt=0.0
+  Tbt = 0.0
 
   do j=jsc-1,jec+1
     do i=isc-1,iec+1
@@ -2002,7 +2002,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
         y_n(:) = (/( ( mu_b - 3.0*CS%sigma_b(i,j) ) + (real(ii) - 0.5) * (6.0*CS%sigma_b(i,j)/CS%ncat_b), &
                          ii=1, CS%ncat_b )/)
 
-        v_i=0.0
+        v_i = 0.0
         do n =1, ncat
           v_i = v_i + vcat(n)**2 / (max(acat(n), CS%puny))
         enddo
@@ -2039,7 +2039,7 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
           P_y(:) = b_n(:) * wid_b
 
           do n =1, CS%ncat_i
-            if (x_k(n) > x_kmax) P_x(n)=0.0
+            if (x_k(n) > x_kmax) P_x(n) = 0.0
           enddo
 
           ! calculate Tb factor at t-location

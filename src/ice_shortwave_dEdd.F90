@@ -93,7 +93,7 @@ module ice_shortwave_dEdd
         puny   = eps11               !< A very small value.
 
       real (kind=dbl_kind) :: &
-         exp_min= exp(-c10)    !< The minimum exponential value
+         exp_min = exp(-c10)    !< The minimum exponential value
 
       ! melt pond tuning parameters, set in namelist
       real (kind=dbl_kind) :: &

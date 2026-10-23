@@ -798,7 +798,7 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
 
   dir = "./INPUT/" ; if (present(directory)) dir = trim(directory)
 
-  if (present(success)) success=.false.
+  if (present(success)) success = .false.
 
   num_files = get_num_restart_files('r', directory, domain, CS)
   if (num_files == 0) return
@@ -808,7 +808,7 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
     call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
                        scale=scale, global_file=global_file(n))
-    if (present(success)) success=.true.
+    if (present(success)) success = .true.
     exit
   endif ; enddo
 
@@ -836,7 +836,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
 
   dir = "./INPUT/" ; if (present(directory)) dir = trim(directory)
 
-  if (present(success)) success=.false.
+  if (present(success)) success = .false.
 
   num_files = get_num_restart_files('r', directory, domain, CS)
   if (num_files == 0) return
@@ -846,7 +846,7 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
     call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
                        scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
-    if (present(success)) success=.true.
+    if (present(success)) success = .true.
     exit
   endif ; enddo
 
@@ -874,7 +874,7 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directo
 
   dir = "./INPUT/" ; if (present(directory)) dir = trim(directory)
 
-  if (present(success)) success=.false.
+  if (present(success)) success = .false.
 
   num_files = get_num_restart_files('r', directory, domain, CS)
   if (num_files == 0) return
@@ -884,7 +884,7 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directo
   do n=1,num_files ; if (field_exists(file_paths(n), name, MOM_Domain=domain)) then
     call MOM_read_data(file_paths(n), name, f_ptr, domain, timelevel=1, position=position, &
                        scale=scale, global_file=global_file(n), file_may_be_4d=.true.)
-    if (present(success)) success=.true.
+    if (present(success)) success = .true.
     exit
   endif ; enddo
 

@@ -168,8 +168,8 @@ subroutine ice_cat_transport(CAS, TrReg, dt_slow, nsteps, G, US, IG, CS, uc, vc,
   character(len=200) :: mesg
   integer :: i, j, k, n, isc, iec, jsc, jec, isd, ied, jsd, jed, nCat
   logical :: h_neg_fix
-  h_neg_fix=.false.
-  if (CS%mass_neglect_ice_snow_pond) h_neg_fix=.true.
+  h_neg_fix = .false.
+  if (CS%mass_neglect_ice_snow_pond) h_neg_fix = .true.
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -1060,7 +1060,7 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
         !$OMP END CRITICAL (safepointer)
       endif
 
-      k=nCat
+      k = nCat
       do i=isc,iec
         if (excess_cover(i,j) > 0.0) then
           if ((part_sz(i,j,k) <= 1.0) .and. &

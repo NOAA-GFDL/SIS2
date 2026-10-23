@@ -400,7 +400,7 @@ subroutine update_SIS_tracer_halos(TrReg, G, complete)
   logical :: do_complete, comp_here
   integer :: m, n, last_ice_tr
 
-  do_complete = .true. ; if (present(complete)) do_complete=complete
+  do_complete = .true. ; if (present(complete)) do_complete = complete
   if (TrReg%ntr==0) return
 
   last_ice_tr = -1

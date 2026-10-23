@@ -98,7 +98,7 @@ subroutine ice_ocean_driver_init(CS, Time_init, Time_in)
     call MOM_error(FATAL, 'Required namelist file input.nml does not exist.')
   endif
 
-  ierr=1 ; do while (ierr /= 0)
+  ierr = 1 ; do while (ierr /= 0)
     read(unit, nml=ice_ocean_driver_nml, iostat=io, end=10)
     ierr = check_nml_error(io, 'ice_ocean_driver_nml')
   enddo
