@@ -154,7 +154,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
 
   if (present(G)) then  ! Account for the fact that arrays here start at 1.
     if ((ni == G%isc-G%iec + 1) .or. (ni == G%isc-G%iec + 2)) then
-      is = 1; ie = ni  ! These arrays have no halos.
+      is = 1 ; ie = ni  ! These arrays have no halos.
     elseif (ni == G%ied-(G%isd-1)) then  ! Arrays have halos.
       is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1)
     elseif (ni == G%ied-(G%isd-1)+1) then ! Symmetric arrays with halos.
@@ -164,7 +164,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
     endif
 
     if ((nj == G%jsc-G%jec + 1) .or. (nj == G%jsc-G%jec + 2)) then
-      js = 1; je = nj  ! These arrays have no halos.
+      js = 1 ; je = nj  ! These arrays have no halos.
     elseif (nj == G%jed-(G%jsd-1)) then  ! Arrays have halos
       js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1)
     elseif (nj == G%jed-(G%jsd-1)+1) then ! Symmetric arrays with halos.
@@ -173,7 +173,7 @@ subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
       call SIS_error(FATAL, "post_avg: peculiar size in j-direction")
     endif
   else
-    is = 1; ie = ni ; js = 1 ; je = nj
+    is = 1 ; ie = ni ; js = 1 ; je = nj
   endif
 
   scl = 1.0 ; if (present(scale)) scl = scale
@@ -238,7 +238,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
 
   if (present(G)) then  ! Account for the fact that arrays here start at 1.
     if ((ni == G%isc-G%iec + 1) .or. (ni == G%isc-G%iec + 2)) then
-      is = 1; ie = ni  ! These arrays have no halos.
+      is = 1 ; ie = ni  ! These arrays have no halos.
     elseif (ni == G%ied-(G%isd-1)) then  ! Arrays have halos.
       is = G%isc - (G%isd-1) ; ie = G%iec - (G%isd-1)
     elseif (ni == G%ied-(G%isd-1)+1) then ! Symmetric arrays with halos.
@@ -248,7 +248,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
     endif
 
     if ((nj == G%jsc-G%jec + 1) .or. (nj == G%jsc-G%jec + 2)) then
-      js = 1; je = nj  ! These arrays have no halos.
+      js = 1 ; je = nj  ! These arrays have no halos.
     elseif (nj == G%jed-(G%jsd-1)) then  ! Arrays have halos
       js = G%jsc - (G%jsd-1) ; je = G%jec - (G%jsd-1)
     elseif (nj == G%jed-(G%jsd-1)+1) then ! Symmetric arrays with halos.
@@ -257,7 +257,7 @@ subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
       call SIS_error(FATAL, "post_avg: peculiar size in j-direction")
     endif
   else
-    is = 1; ie = ni ; js = 1 ; je = nj
+    is = 1 ; ie = ni ; js = 1 ; je = nj
   endif
 
   scl = 1.0 ; if (present(scale)) scl = scale

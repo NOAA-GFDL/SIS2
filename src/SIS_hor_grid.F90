@@ -287,16 +287,16 @@ subroutine set_hor_grid(G, param_file, HI, global_indexing)
     G%Block(n)%jec = G%Block(n)%jsc + jend(j) - jbegin(j)
     G%Block(n)%ied = G%Block(n)%iec + nihalo
     G%Block(n)%jed = G%Block(n)%jec + njhalo
-    G%Block(n)%IscB = G%Block(n)%isc; G%Block(n)%IecB = G%Block(n)%iec
-    G%Block(n)%JscB = G%Block(n)%jsc; G%Block(n)%JecB = G%Block(n)%jec
+    G%Block(n)%IscB = G%Block(n)%isc ; G%Block(n)%IecB = G%Block(n)%iec
+    G%Block(n)%JscB = G%Block(n)%jsc ; G%Block(n)%JecB = G%Block(n)%jec
     !   For symmetric memory domains, the first block will have the extra point
     ! at the lower boundary of its computational domain.
     if (G%symmetric) then
       if (i==1) G%Block(n)%IscB = G%Block(n)%IscB-1
       if (j==1) G%Block(n)%JscB = G%Block(n)%JscB-1
     endif
-    G%Block(n)%IsdB = G%Block(n)%isd; G%Block(n)%IedB = G%Block(n)%ied
-    G%Block(n)%JsdB = G%Block(n)%jsd; G%Block(n)%JedB = G%Block(n)%jed
+    G%Block(n)%IsdB = G%Block(n)%isd ; G%Block(n)%IedB = G%Block(n)%ied
+    G%Block(n)%JsdB = G%Block(n)%jsd ; G%Block(n)%JedB = G%Block(n)%jed
     !--- For symmetric memory domain, every block will have an extra point
     !--- at the lower boundary of its data domain.
     if (G%symmetric) then

@@ -39,14 +39,14 @@ use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, cal
 use SIS_optics,        only : VIS_DIR, VIS_DIF, NIR_DIR, NIR_DIF    ! debugging only, delete later
 use SIS_utils,         only : is_NaN
 
-implicit none; private
+implicit none ; private
 
 #include <SIS2_memory.h>
 
 public initialize_icerelax_file, apply_isponge, set_up_isponge_field, SIS_sponge_end
 
 !> A structure for creating arrays of pointers to 3D arrays
-type, public :: p3d; private
+type, public :: p3d ; private
   integer :: nz_data                             !< The number of vertical levels in the input field.
   integer :: num_tlevs                           !< The number of time records contained in the file
   real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3D array [various]
@@ -54,7 +54,7 @@ type, public :: p3d; private
 end type p3d
 
 !> A structure for creating arrays of pointers to 2D arrays
-type, public :: p2d; private
+type, public :: p2d ; private
   type(external_field) :: field !< Time interpolator field handle
   integer :: ncat_data          !< The number of sea ice categories
   integer :: num_tlevs          !< The number of time records contained in the file
@@ -322,8 +322,8 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   character(len=256) :: unit         !< The unit of the tracer field
   character(len=40)  :: mdl          !< This module name
 
-  long_name = rlxfld_name; if (present(rlx_long_name)) long_name = rlx_long_name
-  unit = 'none'; if (present(rlx_unit)) unit = rlx_unit
+  long_name = rlxfld_name ; if (present(rlx_long_name)) long_name = rlx_long_name
+  unit = 'none' ; if (present(rlx_unit)) unit = rlx_unit
 
   CatIce = IG%CatIce
   mdl = 'set_up_isponge_field'
@@ -331,7 +331,7 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   if (.not.associated(CS)) return
   ! initialize time interpolator module
   call time_interp_external_init()
-  isd = G%isd; ied = G%ied; jsd = G%jsd; jed = G%jed
+  isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   CS%fldno = CS%fldno + 1
   write(mesg,'("set_up_isponge: fldno=",I0)') CS%fldno
   call SIS_mesg(mesg, verb_msg)
@@ -430,8 +430,8 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   isg = G%isg ; ieg = G%ieg ; jsg = G%jsg ; jeg = G%jeg
   nid  = G%ied - G%isd + 1
   njd  = G%jed - G%jsd + 1
-  isdG = G%isd_global; iedG = isdG + nid
-  jsdG = G%jsd_global; jedG = jsdG + njd
+  isdG = G%isd_global ; iedG = isdG + nid
+  jsdG = G%jsd_global ; jedG = jsdG + njd
 
   verbosity = MOM_get_verbosity()
 
@@ -584,7 +584,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   if (present(eps_err)) eps0 = eps_err
 
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
-  isdG = G%isd_global;   jsdG = G%jsd_global
+  isdG = G%isd_global ; jsdG = G%jsd_global
   CatIce = IG%CatIce
 
   allocate(cice2d(isd:ied,jsd:jed), hice2d(isd:ied,jsd:jed))

@@ -201,7 +201,7 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
     ! category is now dramatically thinner than it was previously, add a tiny
     ! bit of extra mass to avoid nonsensical tracer concentrations.  This will
     ! lead rarely to a very slight non-conservation of tracers, but not mass.
-    do j=js,je; do i=is,ie
+    do j=js,je ; do i=is,ie
       hprev(i,j,k) = G%areaT(i,j) * (h_prev(i,j,k) + &
                        max(0.0, 1.0e-13*h_prev(i,j,k) - h_end(i,j,k)))
       if (h_end(i,j,k) - h_prev(i,j,k) + ((uhr(I,j,k) - uhr(I-1,j,k)) + &
@@ -278,12 +278,12 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
 !$OMP                                  domore_u,uhr,vhr,domore_v)
         do k=1,ncat ; if (domore_k(k) > 0) then
           do j=jsv,jev ; if (.not.domore_u(j,k)) then
-            do i=isv+stencil-1,iev-stencil; if (uhr(I,j,k) /= 0.0) then
+            do i=isv+stencil-1,iev-stencil ; if (uhr(I,j,k) /= 0.0) then
               domore_u(j,k) = .true. ; exit
             endif ; enddo ! i-loop
           endif ; enddo
           do J=jsv+stencil-1,jev-stencil ; if (.not.domore_v(J,k)) then
-            do i=isv+stencil,iev-stencil; if (vhr(i,J,k) /= 0.0) then
+            do i=isv+stencil,iev-stencil ; if (vhr(i,J,k) /= 0.0) then
               domore_v(J,k) = .true. ; exit
             endif ; enddo ! i-loop
           endif ; enddo
@@ -529,12 +529,12 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
 !$OMP                                  stencil,uhr,vhr)
           do k=1,ncat ; if (domore_k(k) > 0) then
             do j=jsv,jev ; if (.not.domore_u(j,k)) then
-              do i=isv+stencil-1,iev-stencil; if (uhr(I,j,k) /= 0.0) then
+              do i=isv+stencil-1,iev-stencil ; if (uhr(I,j,k) /= 0.0) then
                 domore_u(j,k) = .true. ; exit
               endif ; enddo ! i-loop
             endif ; enddo
             do J=jsv+stencil-1,jev-stencil ; if (.not.domore_v(J,k)) then
-              do i=isv+stencil,iev-stencil; if (vhr(i,J,k) /= 0.0) then
+              do i=isv+stencil,iev-stencil ; if (vhr(i,J,k) /= 0.0) then
                 domore_v(J,k) = .true. ; exit
               endif ; enddo ! i-loop
             endif ; enddo

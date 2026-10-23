@@ -316,7 +316,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
         (year>=CS%tracer_start_year(tr))) then
         do j=jsc,jec ; do i=isc,iec
           if(G%mask2dT(i,j)>0.0) then
-            do k=1,IG%CatIce; do m=1,CS%nlevels(tr)
+            do k=1,IG%CatIce ; do m=1,CS%nlevels(tr)
               if(CS%tr(i,j,k,m,tr)<min_age) CS%tr(i,j,k,m,tr) = 0.0
 
               if(mi(i,j,k) > CS%min_mass) then
@@ -335,7 +335,7 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
     endif
 
     if (CS%uniform_vertical(tr)) then
-      do k=1,IG%CatIce; do j=jsc,jec ; do i=isc,iec
+      do k=1,IG%CatIce ; do j=jsc,jec ; do i=isc,iec
         max_age = maxval(CS%tr(i,j,k,:,tr))
         do m=1,CS%nlevels(tr)
           CS%tr(i,j,k,m,tr) = max_age

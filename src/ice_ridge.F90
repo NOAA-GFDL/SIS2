@@ -295,7 +295,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
     sh_Ds(I,J) = (2.0-G%mask2dBu(I,J)) * &
          (G%dxBu(I,J)*G%IdyBu(I,J)*(IST%u_ice_C(I,j+1)*G%IdxCu(I,j+1) - IST%u_ice_C(I,j)*G%IdxCu(I,j)) + &
          G%dyBu(I,J)*G%IdxBu(I,J)*(IST%v_ice_C(i+1,J)*G%IdyCv(i+1,J) - IST%v_ice_C(i,J)*G%IdyCv(i,J)))
-  enddo; enddo
+  enddo ; enddo
 
   ! set category limits; Icepack has a max on the largest, unlimited, category (why?)
 
@@ -307,7 +307,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   ! is thinner than hin_max(ncat).
   hin_max(nCat) = big
 
-  trcr_base = 0.0; n_trcr_strata = 0; nt_strata = 0 ! init some tracer vars
+  trcr_base = 0.0 ; n_trcr_strata = 0 ; nt_strata = 0 ! init some tracer vars
   ! When would we use icepack tracer "strata"?
 
   ! set icepack tracer index "nt_lvl" to (last) pond tracer so it gets dumped when
@@ -323,7 +323,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
 !  call IST_chksum('before ice ridging ', IST, G, US, IG)
 
   if (present(rdg_rate)) rdg_rate(:,:) = 0.0
-  do j=jsc,jec; do i=isc,iec
+  do j=jsc,jec ; do i=isc,iec
     if ((G%mask2dT(i,j) .gt. 0.0) .and. (sum(IST%part_size(i,j,1:nCat)) .gt. 0.0)) then
     ! feed locations to Icepack's ridge_ice
 
@@ -565,7 +565,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
       IST%water_to_ocn(i,j) = IST%water_to_ocn(i,j) - sum(mca_pond(i,j,:));
 
     endif ! part_sz
-  enddo; enddo ! j, i
+  enddo ; enddo ! j, i
 
 !  call IST_chksum('after ice ridging ', IST, G, US, IG)
 
