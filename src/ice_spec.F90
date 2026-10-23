@@ -88,7 +88,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
 
   if (present(ice_domain)) then
     call data_override_unset_domains(unset_Ice=.true., must_be_set=.false.)
-    call data_override_init(Ice_domain_in = Ice_domain)
+    call data_override_init(Ice_domain_in=Ice_domain)
   endif
 
 ! modify time repeating single day option
@@ -117,7 +117,7 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
     call data_override_unset_domains(unset_Ice=.true.)
 
     ! Reset the data_override ice domain back to the one expected by the coupler.
-    if (present(ice_domain_end)) call data_override_init(Ice_domain_in = Ice_domain_end)
+    if (present(ice_domain_end)) call data_override_init(Ice_domain_in=Ice_domain_end)
   endif
 
   if (mcm_ice) then
