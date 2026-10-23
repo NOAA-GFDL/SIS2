@@ -50,8 +50,8 @@ type, public :: ice_age_tracer_CS
       tr_adx, &                               !< Tracer zonal advective fluxes [g s-1].
       tr_ady                                  !< Tracer meridional advective fluxes [g s-1].
 
-  real, pointer :: ocean_BC(:,:,:,:)=>NULL()  !< Ocean boundary value of the tracer by category
-  real, pointer :: snow_BC(:,:,:,:)=>NULL()   !< Snow boundary value of the tracer by category
+  real, pointer :: ocean_BC(:,:,:,:) => NULL() !< Ocean boundary value of the tracer by category
+  real, pointer :: snow_BC(:,:,:,:) => NULL()  !< Snow boundary value of the tracer by category
 
   real, dimension(NTR_MAX) :: &
       IC_val = 0.0, &                         !< The (uniform) initial condition value.
@@ -80,7 +80,7 @@ type, public :: ice_age_tracer_CS
   !!@}
   integer, dimension(NTR_MAX) :: nlevels      !< The number of vertical levels
 
-  type(SIS_diag_ctrl), pointer :: diag=>NULL() !< A structure that is used to regulate the
+  type(SIS_diag_ctrl), pointer :: diag => NULL() !< A structure that is used to regulate the
                                                !! timing of diagnostic output.
 
   real :: min_mass                            !< Minimum mass of ice in thickness category for it

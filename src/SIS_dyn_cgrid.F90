@@ -137,11 +137,11 @@ type, public :: SIS_C_dyn_CS ; private
   integer :: ncat_b           !< number of bathymetry categories
   integer :: ncat_i           !< number of ice thickness categories (log-normal)
 
-  real, pointer, dimension(:,:) :: Tb_u=>NULL() !< Basal stress component at u-points
+  real, pointer, dimension(:,:) :: Tb_u => NULL() !< Basal stress component at u-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: Tb_v=>NULL() !< Basal stress component at v-points
+  real, pointer, dimension(:,:) :: Tb_v => NULL() !< Basal stress component at v-points
                                                 !! [R Z L T-2 -> kg m-1 s-2]
-  real, pointer, dimension(:,:) :: sigma_b=>NULL() !< Bottom depth variance [Z ~> m].
+  real, pointer, dimension(:,:) :: sigma_b => NULL() !< Bottom depth variance [Z ~> m].
 
   logical :: FirstCall = .true. !< If true, this module has not been called before
   !>@{ Diagnostic IDs

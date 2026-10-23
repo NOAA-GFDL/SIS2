@@ -1806,7 +1806,7 @@ subroutine advect_tracers_thicker(vol_start, vol_trans, G, IG, CS, &
 
   ! Local variables
   real, dimension(SZI_(G),SZCAT_(IG)) :: vol  ! The category mass at the start of a pass [R Z L2 ~> kg]
-  type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL()
+  type(SIS_tracer_type), dimension(:), pointer :: Tr => NULL()
   real :: Ivol_new  ! The inverse of the new category mass  [R-1 Z-1 L-2 ~> kg-1]
   integer :: i, k, m, n, ncat
 

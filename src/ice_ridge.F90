@@ -248,12 +248,12 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   logical, dimension(IG%CatIce) :: &
        first_ice    ! true until ice forms
 
-  type(SIS_tracer_type), dimension(:), pointer :: Tr=>NULL() ! SIS2 tracers
-  real, dimension(:,:,:,:),       pointer    :: Tr_ice_enth_ptr=>NULL()  !< A pointer to the named tracer
-  real, dimension(:,:,:,:),       pointer    :: Tr_snow_enth_ptr=>NULL() !< A pointer to the named tracer
-  real, dimension(:,:,:,:),       pointer    :: Tr_ice_salin_ptr=>NULL() !< A pointer to the named tracer
-  real, dimension(:,:,:),         pointer    :: Tr_ice_alvl_ptr=>NULL()  !< A pointer to the named tracer
-  real, dimension(:,:,:),         pointer    :: Tr_ice_mlvl_ptr=>NULL()  !< A pointer to the named tracer
+  type(SIS_tracer_type), dimension(:), pointer :: Tr => NULL() ! SIS2 tracers
+  real, dimension(:,:,:,:), pointer :: Tr_ice_enth_ptr => NULL()  !< A pointer to the named tracer
+  real, dimension(:,:,:,:), pointer :: Tr_snow_enth_ptr => NULL() !< A pointer to the named tracer
+  real, dimension(:,:,:,:), pointer :: Tr_ice_salin_ptr => NULL() !< A pointer to the named tracer
+  real, dimension(:,:,:),   pointer :: Tr_ice_alvl_ptr => NULL()  !< A pointer to the named tracer
+  real, dimension(:,:,:),   pointer :: Tr_ice_mlvl_ptr => NULL()  !< A pointer to the named tracer
 
   real :: rho_ice, rho_snow, rho_water ! Density of ice, snow and water [R ~> kg m-3]
   real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
@@ -378,7 +378,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         opening = closing + divu_adv
 
         ntrcr = 0
-  !      Tr_ptr=>NULL()
+  !      Tr_ptr => NULL()
         if (TrReg%ntr>0) then ! load tracer array
           ntrcr=ntrcr+1
           do k=1,ncat
