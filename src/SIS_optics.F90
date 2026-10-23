@@ -377,9 +377,9 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     fh = min(atan(5.0*US%Z_to_m*hi) / atan(5.0*0.5), 1.0) ! use this form from CSIM4 to
     ! reduce albedo for thin ice
     if (ts+CS%T_RANGE_MELT > temp_ice_freeze) then        ! reduce albedo for melting as in
-       ! CSIM4 assuming 0.53/0.47 vis/ir
-       as = as - 0.1235 * min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
-       ai = ai - 0.075 *  min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
+      ! CSIM4 assuming 0.53/0.47 vis/ir
+      as = as - 0.1235 * min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
+      ai = ai - 0.075 *  min((ts + CS%T_RANGE_MELT - temp_ice_freeze)/CS%T_RANGE_MELT, 1.0)
     endif
     ai = fh*ai+(1-fh)*0.06                 ! reduce albedo for thin ice
 

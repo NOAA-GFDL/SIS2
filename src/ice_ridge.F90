@@ -517,20 +517,20 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   !        tr_tmp(1:nCat) = trcrn(ntrcr-2,1:nCat)
   !        Tr_ice_alvl_ptr(i,j,1:nCat,1) = tr_tmp(1:nCat)
 
-           do k=1,nL_ice
-             tr_tmp(1:nCat) = trcrn(1+k,1:nCat)
-             Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_ice
-           enddo
+          do k=1,nL_ice
+            tr_tmp(1:nCat) = trcrn(1+k,1:nCat)
+            Tr_ice_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_ice
+          enddo
 
-           do k=1,nL_snow
-             tr_tmp(1:nCat) = trcrn(1+nl_ice+k,1:ncat)
-             Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_snow
-           enddo
+          do k=1,nL_snow
+            tr_tmp(1:nCat) = trcrn(1+nl_ice+k,1:ncat)
+            Tr_snow_enth_ptr(i,j,1:nCat,k) = tr_tmp(1:nCat) / rho_snow
+          enddo
 
-           do k=1,nL_ice
-             tr_tmp(1:nCat) = trcrn(1+k+nl_ice+nl_snow,1:nCat)
-             Tr_ice_salin_ptr(i,j,1:nCat,k) =  tr_tmp(1:nCat)
-           enddo
+          do k=1,nL_ice
+            tr_tmp(1:nCat) = trcrn(1+k+nl_ice+nl_snow,1:nCat)
+            Tr_ice_salin_ptr(i,j,1:nCat,k) =  tr_tmp(1:nCat)
+          enddo
 
         endif ! have tracers to unload
 

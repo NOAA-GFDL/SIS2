@@ -1061,20 +1061,20 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
                                    G%dxCv(i,J-1)*vi(i,J-1)))
     enddo ; enddo
 
-   if (CS%project_ci) then
+    if (CS%project_ci) then
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ci_proj,ci,dt_cumulative, &
 !$OMP                                  sh_Dd,pres_mice,CS)
-     do j=jsc-1,jec+1 ; do i=isc-1,iec+1
-       ! Estimate future ice concentrations from the approximate expression
-       !   d ci / dt = - ci * sh_Dt
-       ! The choice to base this on the final velocity, the initial concentration
-       ! and the elapsed time is because it is that final velocity that will drive
-       ! ice convergence.
-       ci_proj(i,j) = ci(i,j) * exp(-dt_cumulative*sh_Dd(i,j))
-       ! Recompute pres_mice.
-       pres_mice(i,j) = CS%p0_rho * exp(-CS%c0 * max(1.0-ci_proj(i,j), 0.0))
-     enddo ; enddo
-   endif
+      do j=jsc-1,jec+1 ; do i=isc-1,iec+1
+        ! Estimate future ice concentrations from the approximate expression
+        !   d ci / dt = - ci * sh_Dt
+        ! The choice to base this on the final velocity, the initial concentration
+        ! and the elapsed time is because it is that final velocity that will drive
+        ! ice convergence.
+        ci_proj(i,j) = ci(i,j) * exp(-dt_cumulative*sh_Dd(i,j))
+        ! Recompute pres_mice.
+        pres_mice(i,j) = CS%p0_rho * exp(-CS%c0 * max(1.0-ci_proj(i,j), 0.0))
+      enddo ; enddo
+    endif
 
    ! calculate viscosities - how often should we do this ?
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,del_sh,zeta,sh_Dd,sh_Dt, &
