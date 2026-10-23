@@ -236,7 +236,7 @@ subroutine ice_type_slow_reg_restarts(domain, CatIce, param_file, Ice, &
 
   if (present(gas_fluxes)) &
     call coupler_type_spawn(gas_fluxes, Ice%ocean_fluxes, (/isc,isc,iec,iec/), &
-                            (/jsc,jsc,jec,jec/),  suffix = '_ice')
+                            (/jsc,jsc,jec,jec/),  suffix='_ice')
 
   ! These are used by the ocean model, and need to be in the slow PE restarts.
   if (associated(Ice_restart)) then
@@ -316,7 +316,7 @@ subroutine ice_type_fast_reg_restarts(domain, CatIce, param_file, Ice, &
 
   if (present(gas_fields_ocn)) &
     call coupler_type_spawn(gas_fields_ocn, Ice%ocean_fields, (/isc,isc,iec,iec/), &
-                            (/jsc,jsc,jec,jec/), (/1, km/), suffix = '_ice')
+                            (/jsc,jsc,jec,jec/), (/1, km/), suffix='_ice')
 
   ! Now register some of these arrays to be read from the restart files.
   ! These are used by the atmospheric model, and need to be in the fast PE restarts.
