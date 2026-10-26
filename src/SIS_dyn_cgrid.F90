@@ -2241,21 +2241,21 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
 
     call get_date(CS%Time, yr, mo, day, hr, minute, sec)
     call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
-    write (file,'(/,"--------------------------")')
-    write (file,'("Time ",i5,i4,F6.2," U-trunc at ",I4,": ",2(I3), &
+    write(file,'(/,"--------------------------")')
+    write(file,'("Time ",i5,i4,F6.2," U-trunc at ",I4,": ",2(I3), &
         & " (",F7.2," E "F7.2," N) u = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
         yr, yearday, (REAL(sec)/3600.0), pe_here(), I, j, &
         G%geoLonCu(I,j), G%geoLatCu(I,j), u_scale*ui(I,j), CFL, u_scale*u_IC(I,j), US%T_to_s*dt_slow
 
     dt_mi = dt_usc / (0.5*(mis(i,j) + mis(i+1,j)) + m_neglect)
 
-    write (file, '("ui, uo, dui = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
+    write(file, '("ui, uo, dui = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
            u_scale*ui(I,j), u_scale*uo(I,j), u_scale*(ui(I,j) - u_IC(I,j)), &
            US%RZ_to_kg_m2*mis(i,j), US%RZ_to_kg_m2*mis(i+1,j)
 
-    write (file, '("U change due to fxat, fxoc, fxic, Cor_u, PFu = ", 5ES11.3, " sum = ",ES11.3)') &
-      fxat(I,j)*dt_mi, -fxoc(I,j)*dt_mi, fxic(I,j)*dt_mi, Cor_u(I,j)*dt_usc, PFu(I,j)*dt_usc, &
-      (fxat(I,j) - fxoc(I,j) + fxic(I,j))*dt_mi + (Cor_u(I,j) + PFu(I,j))*dt_usc
+    write(file, '("U change due to fxat, fxoc, fxic, Cor_u, PFu = ", 5ES11.3, " sum = ",ES11.3)') &
+        fxat(I,j)*dt_mi, -fxoc(I,j)*dt_mi, fxic(I,j)*dt_mi, Cor_u(I,j)*dt_usc, PFu(I,j)*dt_usc, &
+        (fxat(I,j) - fxoc(I,j) + fxic(I,j))*dt_mi + (Cor_u(I,j) + PFu(I,j))*dt_usc
 
     call flush(file)
   endif
@@ -2317,21 +2317,21 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
 
     call get_date(CS%Time, yr, mo, day, hr, minute, sec)
     call get_time((CS%Time - set_date(yr, 1, 1, 0, 0, 0)), sec, yearday)
-    write (file,'(/,"--------------------------")')
-    write (file,'("Time ",i5,i4,F6.2," V-trunc at ",I4,": ",2(I3), &
+    write(file,'(/,"--------------------------")')
+    write(file,'("Time ",i5,i4,F6.2," V-trunc at ",I4,": ",2(I3), &
         & " (",F7.2," E ",F7.2," N) v = ",ES10.3," (CFL ",ES9.2,") was ",ES10.3," dt = ",1PG10.4)') &
         yr, yearday, (REAL(sec)/3600.0), pe_here(), i, J, &
         G%geoLonCv(i,J), G%geoLatCv(i,J), u_scale*vi(i,J), CFL, u_scale*v_IC(i,J), US%T_to_s*dt_slow
 
     dt_mi = dt_usc / (0.5*(mis(i,j) + mis(i,j+1)) + m_neglect)
 
-    write (file, '("vi, vo, dvi = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
+    write(file, '("vi, vo, dvi = ", 3ES11.3, " ;  mice+snow = ",2ES11.3)') &
            u_scale*vi(i,J), u_scale*vo(i,J), u_scale*(vi(i,J) - v_IC(i,J)), &
            US%RZ_to_kg_m2*mis(i,j), US%RZ_to_kg_m2*mis(i,j+1)
 
-    write (file, '("V change due to fyat, fyoc, fyic, Cor_v, PFv = ", 5ES11.3, " sum = ",ES11.3)') &
-      fyat(i,J)*dt_mi, -fyoc(i,J)*dt_mi, fyic(i,J)*dt_mi, Cor_v(i,J)*dt_usc, PFv(i,J)*dt_usc, &
-      (fyat(i,J) - fyoc(i,J) + fyic(i,J))*dt_mi + (Cor_v(i,J) + PFv(i,J))*dt_usc
+    write(file, '("V change due to fyat, fyoc, fyic, Cor_v, PFv = ", 5ES11.3, " sum = ",ES11.3)') &
+        fyat(i,J)*dt_mi, -fyoc(i,J)*dt_mi, fyic(i,J)*dt_mi, Cor_v(i,J)*dt_usc, PFv(i,J)*dt_usc, &
+        (fyat(i,J) - fyoc(i,J) + fyic(i,J))*dt_mi + (Cor_v(i,J) + PFv(i,J))*dt_usc
 
     call flush(file)
   endif

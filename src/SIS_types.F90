@@ -136,7 +136,7 @@ type ocean_sfc_state_type
                 !! Sea-ice only contributes by applying pressure to the ocean that is then
                 !! (partially) converted back to its equivalent by the ocean.
 
-  type (coupler_2d_bc_type) :: &
+  type(coupler_2d_bc_type) :: &
     tr_fields   !< A structure of fields related to properties for additional tracers.
 
 !   type(coupler_3d_bc_type)   :: ocean_fields       ! array of fields used for additional tracers
@@ -169,7 +169,7 @@ type simple_OSS_type
   real, allocatable, dimension(:,:) :: bheat !< The upward diffusive heat flux
                 !! from the ocean to the ice at the base of the ice [Q R Z T-1 ~> W m-2].
 
-  type (coupler_2d_bc_type) :: &
+  type(coupler_2d_bc_type) :: &
     tr_fields   !< A structure of fields related to properties for additional tracers.
 end type simple_OSS_type
 
@@ -239,7 +239,7 @@ type fast_ice_avg_type
 
   integer :: copy_calls = 0 !< The number of times this structure has been
                     !! copied from the fast ice to the slow ice.
-  type (coupler_3d_bc_type) :: &
+  type(coupler_3d_bc_type) :: &
     tr_flux         !< A structure of additional tracer fluxes at the top of the sea-ice
 
   ! These are the arrays that are averaged over the fast thermodynamics and
@@ -299,7 +299,7 @@ type total_sfc_flux_type
                 !! from this module helping to distinguish them.
   integer :: copy_calls = 0  !< The number of times this structure has been
                 !! copied from the fast ice to the slow ice.
-  type (coupler_2d_bc_type) :: &
+  type(coupler_2d_bc_type) :: &
     tr_flux     !< A structure of additional tracer fluxes at the top of the sea-ice
 end type total_sfc_flux_type
 
@@ -420,7 +420,7 @@ type ice_ocean_flux_type
                         !! non-ice processors can be used to determine its value.
   logical :: slp2ocean  !< If true, apply sea level pressure to ocean surface.
 
-  type (coupler_2d_bc_type) :: &
+  type(coupler_2d_bc_type) :: &
     tr_flux_ocn_top !< A structure of additional tracer fluxes at the top of the ocean
 
   !>@{ diagnostic IDs for ice-to-ocean fluxes.

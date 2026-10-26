@@ -70,8 +70,8 @@ subroutine ice_ridging_init(G, IG, PF, CS, US)
   type(ice_ridging_CS),       pointer    :: CS     !< The ridging control structure.
   type(unit_scale_type),      intent(in) :: US     !< A structure with unit conversion factors.
 
-  integer (kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
-  integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
+  integer(kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
+  integer(kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
   integer :: &
        krdg_redist = 0, &
        krdg_partic = 0
@@ -444,7 +444,7 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
         Tf = T_freeze(OSS%s_surf(i,j), IST%ITV)
 
         ! call Icepack routine; how are ponds treated?
-        call icepack_step_ridge (dt_sec,       ndtd,          &
+        call icepack_step_ridge(dt_sec,        ndtd,          &
                                  hin_max,                     &
                                  rdg_conv,     rdg_shear,     &
                                  aicen,                       &

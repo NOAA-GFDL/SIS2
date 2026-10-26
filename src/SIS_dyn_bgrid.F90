@@ -586,7 +586,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         fyic(I,J) = fyic(I,J) + fyic_now
         fxoc(I,J) = fxoc(I,J) + real( civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
         fyoc(I,J) = fyoc(I,J) + aimag(civ(I,J)*rr*cmplx(ui(I,J)-uo(I,J), vi(I,J)-vo(I,J)))
-        fxco(I,J) = fxco(I,J) - miv(I,J)*real ((0.0, 1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J), vi(I,J)))
+        fxco(I,J) = fxco(I,J) - miv(I,J)*real( (0.0, 1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J), vi(I,J)))
         fyco(I,J) = fyco(I,J) - miv(I,J)*aimag((0.0, 1.0)*G%CoriolisBu(I,J) * cmplx(ui(I,J), vi(I,J)))
 
       endif

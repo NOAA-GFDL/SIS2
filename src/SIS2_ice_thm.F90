@@ -686,9 +686,9 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
         enddo
         new_temp = T_g ! Use the best guess.
 
-!        write (*,'("T_itt = ",8F14.8)') US%C_to_degC*T_itt(1:8)
-!        write (*,'("Err_itt = ",8(1PE14.6))') Err_itt(1:8)
-!        write (*,'("dTemp = ",8(1Pe12.4))') US%C_to_degC*dTemp(1:8)
+!        write(*,'("T_itt = ",8F14.8)') US%C_to_degC*T_itt(1:8)
+!        write(*,'("Err_itt = ",8(1PE14.6))') Err_itt(1:8)
+!        write(*,'("dTemp = ",8(1Pe12.4))') US%C_to_degC*dTemp(1:8)
       endif
 
     endif
@@ -986,18 +986,18 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
 
   if (bad>0) then
     mesg = "BAD ICE "//trim(msg_part)
-    write (msg2,'(" ms,mi=",2(ES11.3))') ms*RZ_scale*1e-3,mi*RZ_scale*1e-3 ; mesg = trim(mesg)//trim(msg2)
+    write(msg2,'(" ms,mi=",2(ES11.3))') ms*RZ_scale*1e-3,mi*RZ_scale*1e-3 ; mesg = trim(mesg)//trim(msg2)
     if (present(t_sfc)) then
-      write (msg2,'(" t_sfc,tsn,tice=",ES11.3)') US%C_to_degC*t_sfc ; mesg = trim(mesg)//trim(msg2)
+      write(msg2,'(" t_sfc,tsn,tice=",ES11.3)') US%C_to_degC*t_sfc ; mesg = trim(mesg)//trim(msg2)
     else
       mesg = trim(mesg)//"tsn,tice="
     endif
-    do k=0,NkIce ; write (msg2,'(ES11.3)') US%C_to_degC*t_col(k) ; mesg = trim(mesg)//trim(msg2) ; enddo
+    do k=0,NkIce ; write(msg2,'(ES11.3)') US%C_to_degC*t_col(k) ; mesg = trim(mesg)//trim(msg2) ; enddo
     if (present(bmelt)) then
-      write (msg2,'(" bmelt=",ES11.3)') QRZ_scale*bmelt ; mesg = trim(mesg)//trim(msg2)
+      write(msg2,'(" bmelt=",ES11.3)') QRZ_scale*bmelt ; mesg = trim(mesg)//trim(msg2)
     endif
     if (present(tmelt)) then
-      write (msg2,'(" tmelt=",ES11.3)') QRZ_scale*tmelt ; mesg = trim(mesg)//trim(msg2)
+      write(msg2,'(" tmelt=",ES11.3)') QRZ_scale*tmelt ; mesg = trim(mesg)//trim(msg2)
     endif
     call SIS_error(WARNING, mesg, all_print=.true.)
   endif
@@ -1927,8 +1927,8 @@ function Temp_from_En_S(En, Saln, ITV) result(Temp)
 
 !   These were used to debug this routine.
 !      if (itt > 5) then
-!        write (*,'("dTemp = ",8E12.4)') US%C_to_degC*dTemp(1:8)
-!        write (*,'("T_itt = ",8E14.6)') US%C_to_degC*T_itt(1:8)
+!        write(*,'("dTemp = ",8E12.4)') US%C_to_degC*dTemp(1:8)
+!        write(*,'("T_itt = ",8E14.6)') US%C_to_degC*T_itt(1:8)
 !      endif
     endif
   endif

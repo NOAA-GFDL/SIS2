@@ -60,8 +60,8 @@ subroutine ice_ponds_init(G, IG, PF, CS, US)
   type(ice_ponds_CS),       pointer    :: CS     !< The ponds control structure.
   type(unit_scale_type),      intent(in) :: US     !< A structure with unit conversion factors.
 
-  integer (kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
-  integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
+  integer(kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
+  integer(kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_alvl, nt_vlvl, nt_qsno
   character(len=40) :: mdl = "ice_ponds_init" ! This module's name.
 
   if (.not.associated(CS)) allocate(CS)
