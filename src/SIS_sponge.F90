@@ -360,10 +360,10 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
 
   ! initializes the target profile array for this field
   ! for all columns which will be masked
-  select case(trim(rlxfld_name))
-    case('part_size')
+  select case (trim(rlxfld_name))
+    case ('part_size')
       allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,0:CatIce), source=0.0)
-    case('mH_ice')
+    case ('mH_ice')
       allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,CatIce), source=0.0)
     case default
       write(mesg,'(A," Unknown relaxation field: ",A," setting default pointer dimensions =",2(i5,1x))') &
@@ -599,11 +599,11 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     if (abs(1.-scale_cf) > 1.e-10 .and. scale_cf > 0.) &
       Iscale = 1.0/scale_cf
     select case (trim(CS%var(m)%fld_name))
-      case('mH_ice')
+      case ('mH_ice')
         hice2d(:,:) = CS%Ref_orig(m)%fld(:,:)
         if (scaled_hice .and. abs(1.-scale_cf) > 1.e-10) &
             hice2d = CS%Ref_orig(m)%fld*Iscale  !< unscale input hice to original units (m) to find ice cat
-      case('part_size')
+      case ('part_size')
         cice2d = CS%Ref_orig(m)%fld             !< partial area (conc) is not scaled
     end select
   enddo
@@ -616,9 +616,9 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       hice = 0.0 ; cice = 0.0
       do m=1,CS%fldno ; do k=1,CatIce
         select case (trim(CS%var(m)%fld_name))
-          case('mH_ice')
+          case ('mH_ice')
             CS%Ref_val(m)%p(col,k) = 0.0
-          case('part_size')
+          case ('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
             if (k == 1) CS%Ref_val(m)%p(col,0) = 1.0     !< open water partial area
         end select
@@ -651,9 +651,9 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     if (hice < htot_min .or. cice < (ck_min*icat0) .or. (hice*cice) < 1.e-10) then
       do m=1,CS%fldno ; do k=1,CatIce
         select case (trim(CS%var(m)%fld_name))
-          case('mH_ice')
+          case ('mH_ice')
             CS%Ref_val(m)%p(col,k) = 0.0
-          case('part_size')
+          case ('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
             if (k == 1) CS%Ref_val(m)%p(col,0) = 1.0  ! open water fraction size
         end select
@@ -690,9 +690,9 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     ! Register fields into control structure:
     do m=1,CS%fldno ; do k=1,CatIce
       select case (trim(CS%var(m)%fld_name))
-        case('mH_ice')
+        case ('mH_ice')
           CS%Ref_val(m)%p(col,k) = hcat(k)*CS%Ref_val(m)%scale  !< scaled
-        case('part_size')
+        case ('part_size')
           CS%Ref_val(m)%p(col,k) = ccat(k)
       end select
     enddo ; enddo
@@ -700,7 +700,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     ! Partial area of open water:
     do m=1,CS%fldno
       select case (trim(CS%var(m)%fld_name))
-        case('part_size')
+        case ('part_size')
           part_water = 1.0 - sum(CS%Ref_val(m)%p(col,1:CatIce))
           part_water = max(0.0, part_water)
           part_water = min(1.0, part_water)
@@ -712,7 +712,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
     hcat = 0.0 ; ccat = 0.0
     do m=1,CS%fldno ; do k=1,CatIce
       select case (trim(CS%var(m)%fld_name))
-        case('mH_ice')
+        case ('mH_ice')
           if (abs(1.-CS%Ref_val(m)%scale) > 1.e-10 .and. &
               CS%Ref_val(m)%scale > 0.) then
             Iscale = 1./CS%Ref_val(m)%scale
@@ -720,7 +720,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
           else
             hcat(k) = CS%Ref_val(m)%p(col,k)
           endif
-        case('part_size')
+        case ('part_size')
           ccat(k) = CS%Ref_val(m)%p(col,k)
       end select
     enddo ; enddo

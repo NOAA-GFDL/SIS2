@@ -542,7 +542,7 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
     call pass_var(CS%sig12, G%Domain, complete=.true.)
 
     do J=jsc-1,jec ; do I=isc-1,iec
-      if( (G%mask2dBu(i,j)>0.0) .and. (miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
+      if ( (G%mask2dBu(i,j)>0.0) .and. (miv(i,j)>CS%MIV_MIN)) then ! timestep ice velocity (H&D eqn 22)
         rr = CS%cdw*US%L_to_Z*CS%Rho_ocean * abs(cmplx(ui(i,j)-uo(i,j), vi(i,j)-vo(i,j))) * &
              exp(sign(CS%blturn*pi/180, G%CoriolisBu(i,j)) * (0.0, 1.0))
         !
@@ -808,7 +808,7 @@ subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
     !
     ! timestep stress tensor (H&D eqn 21)
     !
-    if(ice_present(i,j)) then
+    if (ice_present(i,j)) then
  ! some helpful temporaries
       mp4z(i,j) = -prs(i,j)/(4*zeta)
       t0(i,j)   = 2*eta/(2*eta+edt(i,j))
@@ -873,7 +873,7 @@ subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
     else
       zeta = 2.5e8*prs(i,j)
     endif
-    if(zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
+    if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
     zeta = 2.*zeta
     eta = zeta*EC2I
 

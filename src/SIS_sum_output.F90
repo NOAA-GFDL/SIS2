@@ -658,7 +658,7 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
 !        write(*,'("      Total ",a,": ",ES24.16,X,a)') &
 !             trim(Tr_names(m)), Tr_stocks(m), trim(Tr_units(m))
 !
-!        if(Tr_minmax_got(m)) then
+!        if (Tr_minmax_got(m)) then
 !          write(*,'(64X,"Global Min:",ES24.16,X,"at: (", f7.2,","f7.2,","f8.2,")"  )') &
 !               Tr_min(m),Tr_min_x(m),Tr_min_y(m),Tr_min_z(m)
 !          write(*,'(64X,"Global Max:",ES24.16,X,"at: (", f7.2,","f7.2,","f8.2,")"  )') &
