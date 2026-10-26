@@ -947,7 +947,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
 
   ! Set up temporary tracer array
   npassive = SIS_count_passive_tracers(IST%TrReg)
-  if(npassive>0) allocate(TrLay(0:NkIce+1,npassive))
+  if (npassive>0) allocate(TrLay(0:NkIce+1,npassive))
 
 !$OMP parallel do default(none) shared(isc,iec,jsc,jec,ncat,G,US,IST,S_col0,NkIce,S_col,dt_slow, &
 !$OMP                                  snow_to_ice,heat_in,I_NK,enth_prev,enth_mass_in_col,bsnk, &
@@ -1542,7 +1542,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   enddo ; enddo
 
   ! Make sure TrLay is no longer allocated
-  if(allocated(TrLay)) deallocate(TrLay)
+  if (allocated(TrLay)) deallocate(TrLay)
 end subroutine SIS2_thermodynamics
 
 

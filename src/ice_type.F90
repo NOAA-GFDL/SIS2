@@ -566,7 +566,7 @@ subroutine ice_stock_pe(Ice, index, value)
   type(SIS_hor_grid_type), pointer :: G => NULL()
 
   value = 0.0
-  if(.not.Ice%pe) return
+  if (.not.Ice%pe) return
 
   if (associated(Ice%sCS)) then
     IST => Ice%sCS%IST

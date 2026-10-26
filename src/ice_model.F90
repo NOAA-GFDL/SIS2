@@ -1343,7 +1343,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
 
   ! coszen has changed if we are using the specified ice mode
   if (associated(Ice%sCS)) then
-    if(Ice%sCS%specified_ice) coszen_changed = .true.
+    if (Ice%sCS%specified_ice) coszen_changed = .true.
   endif
   ! set_ocean_albedo only needs to be called if do_sun_angle_for_alb is true or
   ! if the coupled model's radiation timestep is shorter than the slow coupling

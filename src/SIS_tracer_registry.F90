@@ -224,7 +224,7 @@ subroutine register_SIS_tracer(tr1, G, IG, nLtr, name, param_file, TrReg, snow_t
   ! This is set as the default to guard against operations being performed on
   ! active tracers twice
   TrReg%Tr_ice(TrReg%ntr)%is_passive = .false.
-  if(present(is_passive)) TrReg%Tr_ice(TrReg%ntr)%is_passive = is_passive
+  if (present(is_passive)) TrReg%Tr_ice(TrReg%ntr)%is_passive = is_passive
 
 end subroutine register_SIS_tracer
 
@@ -305,19 +305,19 @@ subroutine SIS_unpack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
 
   pass_idx = 0
   do tr=1,TrReg%ntr
-    if(TrReg%Tr_ice(tr)%is_passive) then
+    if (TrReg%Tr_ice(tr)%is_passive) then
       pass_idx = pass_idx + 1
       ! Copy from main tracer array
       do m=1,nkice ; TrLay(m,pass_idx) = TrReg%Tr_ice(tr)%t(i,j,cat,m) ; enddo
 
       ! Set snow and ice boundary conditions (if they exist)
-      if(associated(TrReg%Tr_ice(tr)%ocean_BC)) then
+      if (associated(TrReg%Tr_ice(tr)%ocean_BC)) then
         TrLay(NkIce+1,pass_idx) = TrReg%Tr_ice(tr)%ocean_BC(i,j,cat)
       else
         TrLay(NkIce+1,pass_idx) = 0.0
       endif
 
-      if(associated(TrReg%Tr_ice(tr)%snow_BC)) then
+      if (associated(TrReg%Tr_ice(tr)%snow_BC)) then
         TrLay(0,pass_idx) = TrReg%Tr_ice(tr)%snow_BC(i,j,cat)
       else
         TrLay(0,pass_idx) = 0.0
@@ -341,7 +341,7 @@ subroutine SIS_repack_passive_ice_tr(i, j, cat, nkice, TrReg, TrLay)
 
   pass_idx = 0
   do tr=1,TrReg%ntr
-    if(TrReg%Tr_ice(tr)%is_passive) then
+    if (TrReg%Tr_ice(tr)%is_passive) then
       pass_idx = pass_idx + 1
       ! Copy values back to tracer array
       do m=1,nkice ; TrReg%Tr_ice(tr)%t(i,j,cat,m) = TrLay(m,pass_idx) ; enddo
@@ -358,7 +358,7 @@ integer function SIS_count_passive_tracers(TrReg)
 
   SIS_count_passive_tracers = 0
   do tr=1,TrReg%ntr
-    if( TrReg%Tr_ice(tr)%is_passive ) then
+    if ( TrReg%Tr_ice(tr)%is_passive ) then
       SIS_count_passive_tracers = SIS_count_passive_tracers + 1
     endif
   enddo

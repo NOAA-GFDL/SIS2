@@ -311,7 +311,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
          fswthru(i,j)  = c0
       ! compute fraction of nir down direct to total over all points:
          fnidr(i,j) = c0
-         if( swidr(i,j) + swidf(i,j) > puny ) then
+         if ( swidr(i,j) + swidf(i,j) > puny ) then
             fnidr(i,j) = swidr(i,j)/(swidr(i,j)+swidf(i,j))
          endif
          albice(i,j)    = c0
@@ -339,7 +339,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
             hi(i,j)  = vice(i,j) / aice(i,j)
             fi(i,j)  = c1 - fs(i,j) - fp(i,j)
             ! bare sea ice points
-            if(fi(i,j) > c0) then
+            if (fi(i,j) > c0) then
               icells_DE = icells_DE + 1
               indxi_DE(icells_DE) = i
               indxj_DE(icells_DE) = j
@@ -390,7 +390,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
             ! evaluate snow thickness
             hs(i,j)  = vsno(i,j) / aice(i,j)
             ! snow-covered sea ice points
-            if(fs(i,j) > c0) then
+            if (fs(i,j) > c0) then
               icells_DE = icells_DE + 1
               indxi_DE(icells_DE) = i
               indxj_DE(icells_DE) = j
@@ -441,7 +441,7 @@ subroutine shortwave_dEdd0( nx_block, ny_block,   &
          if (aice(i,j) > puny .and. coszen(i,j) > puny) then
             hi(i,j)  = vice(i,j) / aice(i,j)
             ! if non-zero pond fraction and sufficient pond depth
-            if( fp(i,j) > puny .and. hp(i,j) > hpmin ) then
+            if ( fp(i,j) > puny .and. hp(i,j) > hpmin ) then
                icells_DE = icells_DE + 1
                indxi_DE(icells_DE) = i
                indxj_DE(icells_DE) = j
@@ -1060,7 +1060,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       ! R values of +1 correspond approximately to +1 sigma changes in albedo, and
       ! R values of -1 correspond approximately to -1 sigma changes in albedo
       ! Note: the albedo change becomes non-linear for R values > +1 or < -1
-      if( R_ice >= c0 ) then
+      if ( R_ice >= c0 ) then
         do ns = 1, nspint
           sigp       = ki_ssl_mn(ns)*wi_ssl_mn(ns)*(c1+fp_ice*R_ice)
           ki_ssl(ns) = sigp+ki_ssl_mn(ns)*(c1-wi_ssl_mn(ns))
@@ -1077,7 +1077,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           wi_int(ns) = sigp/ki_int(ns)
           gi_int(ns) = gi_int_mn(ns)
         enddo
-      else !if( R_ice < c0 ) then
+      else !if ( R_ice < c0 ) then
         do ns = 1, nspint
           sigp       = ki_ssl_mn(ns)*wi_ssl_mn(ns)*(c1+fm_ice*R_ice)
           sigp       = max(sigp, c0)
@@ -1100,7 +1100,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
       endif          ! adjust ice iops
 
       ! adjust ponded ice iops with tuning parameters
-      if( R_pnd >= c0 ) then
+      if ( R_pnd >= c0 ) then
         do ns = 1, nspint
           sigp         = ki_p_ssl_mn(ns)*wi_p_ssl_mn(ns)*(c1+fp_pnd*R_pnd)
           ki_p_ssl(ns) = sigp+ki_p_ssl_mn(ns)*(c1-wi_p_ssl_mn(ns))
@@ -1112,7 +1112,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           wi_p_int(ns) = sigp/ki_p_int(ns)
           gi_p_int(ns) = gi_p_int_mn(ns)
         enddo
-      else !if( R_pnd < c0 ) then
+      else !if ( R_pnd < c0 ) then
         do ns = 1, nspint
           sigp         = ki_p_ssl_mn(ns)*wi_p_ssl_mn(ns)*(c1+fm_pnd*R_pnd)
           sigp         = max(sigp, c0)
@@ -1138,14 +1138,14 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           i = indxi_DE(ij)
           j = indxj_DE(ij)
           ! air
-          if( srftyp(i,j) == 0 ) then
+          if ( srftyp(i,j) == 0 ) then
             do k=0,nslyr
               tau(k,ij) = c0
               w0(k,ij)  = c0
               g(k,ij)   = c0
             enddo
           ! snow
-          else if( srftyp(i,j) == 1 ) then
+          elseif ( srftyp(i,j) == 1 ) then
             dz_ssl = hs_ssl
             dz     = hs(i,j) / real(nslyr, kind=dbl_kind)
             ! for small enough snow thickness, ssl thickness half of snow layer
@@ -1160,20 +1160,20 @@ subroutine compute_dEdd0(nx_block, ny_block, &
             ksnow = 1
             do k=0,nslyr
               ! use top rsnw, rhosnw for snow ssl and rest of top layer
-              if( k > 1 ) ksnow = k
+              if ( k > 1 ) ksnow = k
               ! find snow iops using input snow density and snow grain radius:
-              if( fr*rsnw(i,j,ksnow) < rsnw_tab(1) ) then
+              if ( fr*rsnw(i,j,ksnow) < rsnw_tab(1) ) then
                 Qs(ns) = Qs_tab(ns,1)
                 ws(ns) = ws_tab(ns,1)
                 gs(ns) = gs_tab(ns,1)
-              else if( fr*rsnw(i,j,ksnow) >= rsnw_tab(nmbrad) ) then
+              elseif ( fr*rsnw(i,j,ksnow) >= rsnw_tab(nmbrad) ) then
                 Qs(ns) = Qs_tab(ns,nmbrad)
                 ws(ns) = ws_tab(ns,nmbrad)
                 gs(ns) = gs_tab(ns,nmbrad)
               else
                 ! linear interpolation in rsnw
                 do nr=2,nmbrad
-                  if( rsnw_tab(nr-1) <= fr*rsnw(i,j,ksnow) .and. &
+                  if ( rsnw_tab(nr-1) <= fr*rsnw(i,j,ksnow) .and. &
                       fr*rsnw(i,j,ksnow) < rsnw_tab(nr)) then
                         delr = (fr*rsnw(i,j,ksnow) - rsnw_tab(nr-1)) / &
                                (rsnw_tab(nr) - rsnw_tab(nr-1))
@@ -1188,18 +1188,18 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               endif
               ks(ns) = Qs(ns)*((rhosnw(i,j,ksnow)/rhoi)*3._dbl_kind / &
                        (4._dbl_kind*fr*rsnw(i,j,ksnow)*1.0e-6_dbl_kind))
-              if( k == 0 ) then
+              if ( k == 0 ) then
                 tau(k,ij) = ks(ns)*dz_ssl
-              else if( k == 1 ) then
+              elseif ( k == 1 ) then
                 tau(k,ij) = ks(ns)*(dz-dz_ssl)
-              else !if( k >= 2 ) then
+              else !if ( k >= 2 ) then
                 tau(k,ij) = ks(ns)*dz
               endif
               w0(k,ij)  = ws(ns)
               g(k,ij)   = gs(ns)
             enddo       ! k
           ! pond
-          else !if( srftyp(i,j) == 2 ) then
+          else !if ( srftyp(i,j) == 2 ) then
             ! pond water layers evenly spaced
             dz = hp(i,j) / real(nslyr+1, kind=dbl_kind)
             do k=0,nslyr
@@ -1219,11 +1219,11 @@ subroutine compute_dEdd0(nx_block, ny_block, &
           dz     = hi(i,j) / real(nilyr, kind=dbl_kind)
           ! empirical reduction in sea ice ssl thickness for ice thinner than 1.5m;
           ! factor of 30 selected to give best albedo comparison with limited observations
-          if( hi(i,j) < 1.5_dbl_kind ) dz_ssl = hi(i,j)/30._dbl_kind
+          if ( hi(i,j) < 1.5_dbl_kind ) dz_ssl = hi(i,j)/30._dbl_kind
           ! set sea ice ssl thickness to half top layer if sea ice thin enough
           dz_ssl = min(dz_ssl, dz/c2)
           ! bare or snow-covered sea ice layers
-          if( srftyp(i,j) <= 1 ) then
+          if ( srftyp(i,j) <= 1 ) then
               ! ssl
               k = kii
                 tau(k,ij) = ki_ssl(ns)*dz_ssl
@@ -1248,7 +1248,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               k = klev
                 ! add algae to lowest sea ice layer, visible only:
                 kabs       = ki_int(ns)*(c1-wi_int(ns))
-                if( ns == 1 ) then
+                if ( ns == 1 ) then
                   ! total layer absorption optical depth fixed at value
                   ! of kalg*0.50m, independent of actual layer thickness
                   kabs = kabs + kalg*(0.50_dbl_kind/dz)
@@ -1258,7 +1258,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
                 w0(k,ij)  = (sig/(sig+kabs))
                 g(k,ij)   = gi_int(ns)
           ! sea ice layers under ponds
-          else !if( srftyp(i,j) == 2 ) then
+          else !if ( srftyp(i,j) == 2 ) then
               k = kii
                 tau(k,ij) = ki_p_ssl(ns)*dz_ssl
                 w0(k,ij)  = wi_p_ssl(ns)
@@ -1275,7 +1275,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               enddo       ! k
               endif
             ! adjust pond iops if pond depth within specified range
-            if( hpmin <= hp(i,j) .and. hp(i,j) <= hp0 ) then
+            if ( hpmin <= hp(i,j) .and. hp(i,j) <= hp0 ) then
               k = kii
                   sig_i      = ki_ssl(ns)*wi_ssl(ns)
                   sig_p      = ki_p_ssl(ns)*wi_p_ssl(ns)
@@ -1310,14 +1310,14 @@ subroutine compute_dEdd0(nx_block, ny_block, &
         enddo          ! ij ... optical properties of sea ice set
 
         ! set reflectivities for ocean underlying sea ice
-        if(ns == 1) then
+        if (ns == 1) then
           do ij = 1, icells_DE
             i = indxi_DE(ij)
             j = indxj_DE(ij)
             albodr(ij) = cp01
             albodf(ij) = cp01
           enddo       ! ij
-        else !if(ns >= 2) then
+        else !if (ns >= 2) then
           do ij = 1, icells_DE
             i = indxi_DE(ij)
             j = indxj_DE(ij)
@@ -1378,7 +1378,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
         ! calculate final surface albedos and fluxes-
         ! all absorbed flux above ksrf is included in surface absorption
 
-        if( ns == 1) then      ! visible
+        if ( ns == 1) then      ! visible
 
           do ij = 1, icells_DE
             i = indxi_DE(ij)
@@ -1387,7 +1387,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
             avdf(ij)  = rupdif(0,ij)
 
             ! use srftyp to determine interface index of surface absorption
-            if( srftyp(i,j) == 1 ) then
+            if ( srftyp(i,j) == 1 ) then
               ! snow covered sea ice
               ksrf = 1
             else
@@ -1412,7 +1412,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
                (fdifdn(klevp,ij)-fdifup(klevp,ij))*swvdf(i,j)
 
             ! if snow covered ice, set snow internal absorption; else, Sabs=0
-            if( srftyp(i,j) == 1 ) then
+            if ( srftyp(i,j) == 1 ) then
               ksa = 0
               do k=1,nslyr
                 ! skip snow SSL, since SSL absorption included in the surface
@@ -1435,9 +1435,9 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               km = k
               kp = km + 1
               ! modify for top sea ice layer for snow over sea ice
-              if( srftyp(i,j) == 1 ) then
+              if ( srftyp(i,j) == 1 ) then
                 ! must add SSL and DL absorption for sea ice layer 1
-                if( k == nslyr+2 ) then
+                if ( k == nslyr+2 ) then
                   km = k  - 1
                   kp = km + 2
                 endif
@@ -1451,7 +1451,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
             enddo       ! k
           enddo        ! ij
 
-        else !if(ns > 1) then  ! near IR
+        else !if (ns > 1) then  ! near IR
 
           do ij = 1, icells_DE
             i = indxi_DE(ij)
@@ -1468,7 +1468,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
             aidf(ij)   = aidf(ij) + rupdif(0,ij)*wghtns(ij,ns)
 
             ! use srftyp to determine interface index of surface absorption
-            if( srftyp(i,j) == 1 ) then
+            if ( srftyp(i,j) == 1 ) then
               ! snow covered sea ice
               ksrf = 1
             else
@@ -1496,7 +1496,7 @@ subroutine compute_dEdd0(nx_block, ny_block, &
                *wghtns(ij,ns)
 
             ! if snow covered ice, set snow internal absorption; else, Sabs=0
-            if( srftyp(i,j) == 1 ) then
+            if ( srftyp(i,j) == 1 ) then
               ksa = 0
               do k=1,nslyr
                 ! skip snow SSL, since SSL absorption included in the surface
@@ -1520,9 +1520,9 @@ subroutine compute_dEdd0(nx_block, ny_block, &
               km = k
               kp = km + 1
               ! modify for top sea ice layer for snow over sea ice
-              if( srftyp(i,j) == 1 ) then
+              if ( srftyp(i,j) == 1 ) then
                 ! must add SSL and DL absorption for sea ice layer 1
-                if( k == nslyr+2 ) then
+                if ( k == nslyr+2 ) then
                   km = k  - 1
                   kp = km + 2
                 endif
@@ -1965,7 +1965,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
            ue   = u(ws,gs,lm)
 
            ! compute level of fresnel refraction
-           if( srftyp(i,j) < 2 ) then
+           if ( srftyp(i,j) < 2 ) then
              ! if snow over sea ice or bare sea ice, fresnel level is
              ! at base of sea ice SSL (and top of the sea ice DL); the
              ! snow SSL counts for one, then the number of snow layers,
@@ -1992,7 +1992,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
            ! if level k is above fresnel level and the cell is non-pond, use the
            ! non-refracted beam instead
 
-           if( srftyp(i,j) < 2 .and. k < kfrsnl ) mu0n = mu0
+           if ( srftyp(i,j) < 2 .and. k < kfrsnl ) mu0n = mu0
 
            extins = max(exp_min, exp(-lm*ts))
            ne = n(ue,extins)
@@ -2047,7 +2047,7 @@ subroutine solution_dEdd0(nx_block, ny_block, &
            ! air or snow overlies ice; we ignore refraction in ice
            ! if a melt pond overlies it:
 
-           if( k == kfrsnl ) then
+           if ( k == kfrsnl ) then
              ! compute fresnel reflection and transmission amplitudes
              ! for two polarizations: 1=perpendicular and 2=parallel to
              ! the plane containing incident, reflected and refracted rays.
@@ -2270,11 +2270,11 @@ subroutine shortwave_dEdd0_set_snow(nx_block, ny_block, &
          i = indxi(ij)
          j = indxj(ij)
          ! set snow horizontal fraction
-         if( aice(i,j) > puny ) then
+         if ( aice(i,j) > puny ) then
            hs = vsno(i,j) / aice(i,j)
-           if( hs < hsmin ) then
+           if ( hs < hsmin ) then
              fs(i,j) = c0
-           else if( hs <= hs0 ) then
+           elseif ( hs <= hs0 ) then
              fs(i,j) = hs/hs0
            else
              fs(i,j) = c1
