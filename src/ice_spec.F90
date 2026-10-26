@@ -76,11 +76,11 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
   integer :: tod(3), dum1, dum2, dum3
 
   if (.not.module_is_initialized) then
-  read (input_nml_file, nml=ice_spec_nml, iostat=io)
+  read(input_nml_file, nml=ice_spec_nml, iostat=io)
     ierr = check_nml_error(io, 'ice_spec_nml')
-    write (stdout(), '(/)')
-    write (stdout(), ice_spec_nml)
-    write (stdlog(), ice_spec_nml)
+    write(stdout(), '(/)')
+    write(stdout(), ice_spec_nml)
+    write(stdlog(), ice_spec_nml)
 
     call write_version_number(version, tagname)
     module_is_initialized = .true.

@@ -1322,8 +1322,8 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   io_I = LBOUND(Ice%t_surf,1) - G%isc
   jo_I = LBOUND(Ice%t_surf,2) - G%jsc
 
-  call compute_ocean_roughness (Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
-                                Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
+  call compute_ocean_roughness(Ice%ocean_pt, Atmos_boundary%u_star(:,:,1), Ice%rough_mom(:,:,1), &
+                               Ice%rough_heat(:,:,1), Ice%rough_moist(:,:,1)  )
 
   ! Update publicly visible ice_data_type variables..
   coszen_changed = .false.
@@ -1622,7 +1622,7 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
 
     call diurnal_solar(G%geoLatT(i,j)*rad, G%geoLonT(i,j)*rad, Time_start, cosz=cosz_dt, &
                        fracday=fracday_dt, rrsun=rrsun_dt, dt_time=dt_here)
-    call daily_mean_solar (G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
+    call daily_mean_solar(G%geoLatT(i,j)*rad, time_since_ae, cosz_day, fracday_day, rrsun_day)
     diurnal_factor = cosz_dt*fracday_dt*rrsun_dt / &
                      max(1e-30, cosz_day*fracday_day*rrsun_day)
 

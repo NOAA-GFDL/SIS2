@@ -1387,7 +1387,7 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
           endif
 
           if (is_root_pe() .and. is_there_a_checksum .and. (checksum_file /= checksum_data)) then
-             write (mesg,'(a,Z16,a,Z16,a)') "Checksum of input field "// trim(varname)//" ",checksum_data,&
+             write(mesg,'(a,Z16,a,Z16,a)') "Checksum of input field "// trim(varname)//" ",checksum_data,&
                                           " does not match value ", checksum_file, &
                                           " stored in "//trim(unit_path(n)//"." )
              call SIS_error(FATAL, "SIS_restart(restore_state): "//trim(mesg) )

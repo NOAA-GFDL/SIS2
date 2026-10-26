@@ -1845,7 +1845,7 @@ end subroutine SIS_slow_thermo_set_ptrs
 
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> SIS_slow_thermo_end deallocates any memory associated with this module.
-subroutine SIS_slow_thermo_end (CS)
+subroutine SIS_slow_thermo_end(CS)
   type(slow_thermo_CS), pointer :: CS   !< The control structure for the SIS_slow_thermo module
                                         !! that is deallocated here
 
