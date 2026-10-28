@@ -44,7 +44,7 @@ type ocean_ice_boundary_type
     calving => NULL(), &   !< The mass flux per unit area of the ice shelf to convert to
                            !!bergs [RZ_T ~> kg m-2 s-1].
     calving_hflx => NULL() !< Calving heat flux [Q R Z T-1 ~> W m-2].
-  real, dimension(:,:,:), pointer :: data => NULL() !< S collective field for "named" fields above
+  real, dimension(:,:,:), pointer :: data => NULL() !< S collective field for "named" fields above [various]
   integer   :: stagger = BGRID_NE  !< A flag indicating how the velocities are staggered.
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and is used by coupler
@@ -117,7 +117,7 @@ type land_ice_boundary_type
     calving_hflx => NULL() !< The heat flux associated with the temperature of
                          !! of the frozen runoff, relative to liquid? (or frozen?) water
                          !! at 0 degC [W m-2].
-  real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above
+  real, dimension(:,:,:), pointer :: data => NULL() !< A collective field for "named" fields above [various]
   integer   :: xtype     !< A flag indicating the exchange type, which may be set to
                          !! REGRID, REDIST or DIRECT and is used by coupler
 end type land_ice_boundary_type

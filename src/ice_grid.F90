@@ -54,7 +54,8 @@ subroutine set_ice_grid(IG, US, param_file, NCat_dflt, ocean_part_min_dflt)
   type(unit_scale_type), intent(in)    :: US  !< A structure with unit conversion factors
   type(param_file_type), intent(in)    :: param_file !< A structure to parse for run-time parameters
   integer,               intent(in)    :: NCat_dflt !< The default number of ice categories
-  real, optional,        intent(in)    :: ocean_part_min_dflt !< The default value for the minimum open water area
+  real, optional,        intent(in)    :: ocean_part_min_dflt !< The default value for the minimum
+                                              !! fractional open water area [nondim]
 !   This subroutine sets up the necessary domain types and the sea-ice grid.
 
 ! This include declares and sets the variable "version".
@@ -62,7 +63,7 @@ subroutine set_ice_grid(IG, US, param_file, NCat_dflt, ocean_part_min_dflt)
 
 ! character(len=200) :: mesg
   character(len=40)  :: mod_nm  = "ice_grid" ! This module's name.
-  real :: opm_dflt
+  real :: opm_dflt  ! The default minimum open ocean fractional area [nondim]
 
   opm_dflt = 0.0 ; if (present(ocean_part_min_dflt)) opm_dflt = ocean_part_min_dflt
 

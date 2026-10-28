@@ -45,7 +45,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
   character(len=*),        intent(in)    :: output_dir !< The directory into which to write files.
   type(ice_OBC_type),      pointer       :: OBC  !< Open boundary structure.
 
-  real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
+  real :: pi ! pi = 3.1415926... calculated as 4*atan(1) [nondim]
 
   character(len=200) :: inputdir   ! The directory where NetCDF input files are.
   character(len=200) :: config

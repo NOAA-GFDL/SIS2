@@ -42,11 +42,11 @@ end type OBC_segment_data_type
 
 !> Tracer on OBC segment data structure, for putting into a segment tracer registry.
 type, public :: OBC_segment_tracer_type
-  real, allocatable          :: t(:,:,:)              !< tracer concentration array
-  real                       :: OBC_inflow_conc = 0.0 !< tracer concentration for generic inflows
+  real, allocatable          :: t(:,:,:)              !< tracer concentration array [CU ~> conc]
+  real                       :: OBC_inflow_conc = 0.0 !< tracer concentration for generic inflows [CU ~> conc]
   character(len=32)          :: name                  !< tracer name used for error messages
 ! type(tracer_type), pointer :: Tr => NULL()          !< metadata describing the tracer
-  real, allocatable          :: tres(:,:,:)           !< tracer reservoir array
+  real, allocatable          :: tres(:,:,:)           !< tracer reservoir array [CU L ~> conc m]
   logical                    :: is_initialized        !< reservoir values have been set when True
 end type OBC_segment_tracer_type
 

@@ -36,27 +36,27 @@ public :: register_restart_field_as_obsolete, SIS_restart_init_end
 
 !> A type for making arrays of pointers to 4-d arrays
 type p4d
-  real, dimension(:,:,:,:), pointer :: p => NULL() !< A pointer to a 4d array
+  real, dimension(:,:,:,:), pointer :: p => NULL() !< A pointer to a 4d array in arbitrary rescaled units [A ~> a]
 end type p4d
 
 !> A type for making arrays of pointers to 3-d arrays
 type p3d
-  real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3d array
+  real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3d array in arbitrary rescaled units [A ~> a]
 end type p3d
 
 !> A type for making arrays of pointers to 2-d arrays
 type p2d
-  real, dimension(:,:), pointer :: p => NULL() !< A pointer to a 2d array
+  real, dimension(:,:), pointer :: p => NULL() !< A pointer to a 2d array in arbitrary rescaled units [A ~> a]
 end type p2d
 
 !> A type for making arrays of pointers to 1-d arrays
 type p1d
-  real, dimension(:), pointer :: p => NULL() !< A pointer to a 1d array
+  real, dimension(:), pointer :: p => NULL() !< A pointer to a 1d array in arbitrary rescaled units [A ~> a]
 end type p1d
 
 !> A type for making arrays of pointers to scalars
 type p0d
-  real, pointer :: p => NULL() !< A pointer to a scalar
+  real, pointer :: p => NULL() !< A pointer to a scalar in arbitrary rescaled units [A ~> a]
 end type p0d
 
 !> A structure with information about a single restart field
@@ -69,8 +69,8 @@ type field_restart
   character(len=32) :: var_name !< A name by which a variable may be queried.
   real    :: conv = 1.0         !< A factor by which a restart field should be multiplied before it
                                 !! is written to a restart file, usually to convert it to MKS or
-                                !! other standard units.  When read, the restart field is multiplied
-                                !! by the Adcroft reciprocal of this factor.
+                                !! other standard units [a A-1 ~> 1].  When read, the restart field
+                                !! is multiplied by the Adcroft reciprocal of this factor.
 end type field_restart
 
 !> A structure to store information about restart fields that are no longer used
@@ -453,10 +453,11 @@ subroutine register_restart_field_4d(CS, name, f_ptr, longname, units, conversio
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
+                                                      !! in arbitrary rescaled units [A ~> a]
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
   real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
-                                                      !! before it is written, 1 by default.
+                                                      !! before it is written [a A-1 ~> 1], 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   character(len=*), optional, intent(in) :: dim_3     !< The name of the 3rd dimension axis
@@ -504,10 +505,11 @@ subroutine register_restart_field_3d(CS, name, f_ptr, longname, units, conversio
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
+                                                      !! in arbitrary rescaled units [A ~> a]
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
   real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
-                                                      !! before it is written, 1 by default.
+                                                      !! before it is written [a A-1 ~> 1], 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   character(len=*), optional, intent(in) :: dim_3     !< The name of the 3rd dimension axis
@@ -553,10 +555,11 @@ subroutine register_restart_field_2d(CS, name, f_ptr, units, conversion, longnam
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:,:), &
                       target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
+                                                      !! in arbitrary rescaled units [A ~> a]
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
   real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
-                                                      !! before it is written, 1 by default.
+                                                      !! before it is written [a A-1 ~> 1], 1 by default.
   integer,          optional, intent(in) :: position  !< A coded integer indicating the horizontal
                                                       !! position of this variable
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
@@ -596,10 +599,11 @@ subroutine register_restart_field_1d(CS, name, f_ptr, longname, units, conversio
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real, dimension(:), target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
+                                                      !! in arbitrary rescaled units [A ~> a]
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
   real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
-                                                      !! before it is written, 1 by default.
+                                                      !! before it is written [a A-1 ~> 1], 1 by default.
   character(len=*), optional, intent(in) :: dim_name  !< The name of the axis
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
@@ -641,10 +645,11 @@ subroutine register_restart_field_0d(CS, name, f_ptr, longname, units, conversio
   type(SIS_restart_CS),       pointer    :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),           intent(in) :: name      !< The variable name to be used in the restart file
   real,               target, intent(in) :: f_ptr     !< A pointer to the field to be read or written
+                                                      !! in arbitrary rescaled units [A ~> a]
   character(len=*), optional, intent(in) :: longname  !< variable long name
   character(len=*), optional, intent(in) :: units     !< variable units
   real,             optional, intent(in) :: conversion !< A factor to multiply a restart field by
-                                                      !! before it is written, 1 by default.
+                                                      !! before it is written [a A-1 ~> 1], 1 by default.
   logical,          optional, intent(in) :: mandatory !< If true, the run will abort if this field is not
                                                       !! successfully read from the restart file.
 
@@ -783,12 +788,15 @@ subroutine only_read_restart_field_4d(CS, name, f_ptr, domain, position, directo
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:,:),        intent(inout) :: f_ptr     !< The array for the field to be read
+                                                              !! in arbitrary rescaled units [A ~> a]
   type(MOM_domain_type),           intent(in)    :: domain    !< The MOM domain descriptor being used
   integer,               optional, intent(in)    :: position  !< A coded integer indicating the horizontal
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
   real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
+                                                              !! [A a-1 ~> 1] to convert from the units in
+                                                              !! the file to the internal units of this field
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names.
@@ -821,12 +829,15 @@ subroutine only_read_restart_field_3d(CS, name, f_ptr, domain, position, directo
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in/out)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:,:),          intent(inout) :: f_ptr     !< The array for the field to be read
+                                                              !! in arbitrary rescaled units [A ~> a]
   type(MOM_domain_type),           intent(in)    :: domain    !< The MOM domain descriptor being used
   integer,               optional, intent(in)    :: position  !< A coded integer indicating the horizontal
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
   real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
+                                                              !! [A a-1 ~> 1] to convert from the units in
+                                                              !! the file to the internal units of this field
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names
@@ -859,12 +870,15 @@ subroutine only_read_restart_field_2d(CS, name, f_ptr, domain, position, directo
   type(SIS_restart_CS),            pointer       :: CS        !< A pointer to a SIS_restart_CS object (intent in)
   character(len=*),                intent(in)    :: name      !< The variable name to be used in the restart file
   real, dimension(:,:),            intent(inout) :: f_ptr     !< The array for the field to be read
+                                                              !! in arbitrary rescaled units [A ~> a]
   type(MOM_domain_type),           intent(in)    :: domain    !< The MOM domain descriptor being used
   integer,               optional, intent(in)    :: position  !< A coded integer indicating the horizontal
                                                               !! position of this variable
   character(len=*),      optional, intent(in)    :: directory !< The directory in which to seek restart files.
   logical,               optional, intent(out)   :: success   !< True if the field was read successfully
   real,                  optional, intent(in)    :: scale     !< A factor by which the field will be scaled
+                                                              !! [A a-1 ~> 1] to convert from the units in
+                                                              !! the file to the internal units of this field
 
   ! Local variables
   character(len=240), allocatable, dimension(:) :: file_paths ! The possible file names.
@@ -1059,8 +1073,8 @@ subroutine save_restart(directory, time, G, CS, IG, time_stamp)
   integer :: num_files                  ! The number of restart files that will be used.
   character(len=8) :: hor_grid, z_grid, t_grid ! Variable grid info.
   character(len=64) :: var_name         ! A variable's name.
-  real :: conv                          ! Shorthand for the conversion factor
-  real :: restart_time
+  real :: conv                          ! Shorthand for the conversion factor for writing a field [a A-1 ~> 1]
+  real :: restart_time                  ! The model time at which the restart file is being written [days]
   character(len=32), dimension(5) :: dim_names ! Non-time dimension names to use with this variable
   character(len=32) :: filename_appendix = '' ! Appendix to filename for ensemble runs
   integer :: length                     ! The length of a text string.
@@ -1232,8 +1246,8 @@ subroutine restore_SIS_state(CS, directory, filelist, G)
   type(SIS_hor_grid_type), intent(in)  :: G         !< The horizontal grid type
 
   ! Local variables
-  real :: scale  ! A scaling factor for reading a field
-  real :: conv   ! The output conversion factor for writing a field
+  real :: scale  ! A scaling factor for reading a field [A a-1 ~> 1]
+  real :: conv   ! The output conversion factor for writing a field [a A-1 ~> 1]
   character(len=200) :: filepath  ! The path (dir/file) to the file being opened.
   character(len=80)  :: fname     ! The name of the current file.
   character(len=8)   :: suffix    ! A suffix (like "_2") that is added to any

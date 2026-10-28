@@ -195,9 +195,10 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
   logical,          optional, intent(in)    :: Cgrid !< If true, use a C-grid discretization for the
                                                     !! sea ice velocities.  The default is true.
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp_diag ! A temporary diagnostic array
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: tmp_diag ! The local cell area normalized
+                                        !  by the area of the sphere [nondim]
   real                  :: I_area_Earth ! The inverse of the area of the sphere [L-2 ~> m-2].
-  real, parameter       :: missing = -1e34  ! The fill value for missing data.
+  real, parameter       :: missing = -1e34  ! The fill value for missing data [arbitrary]
   integer               :: id_geo_lon, id_geo_lat, id_sin_rot, id_cos_rot, id_cell_area
   logical               :: Cgrid_dyn
   logical               :: sent
@@ -426,7 +427,6 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
                                                     !! set with the current model time.
   character(len=*), optional, intent(in)    :: component !< An optional alternate component name
 
-  real, parameter       :: missing = -1e34  ! The fill value for missing data.
   integer :: i, j, k, isc, iec, jsc, jec, n, nLay
   character(len=8) :: nstr
   character(len=40) :: comp_name  ! The name for this component in the diag tables.

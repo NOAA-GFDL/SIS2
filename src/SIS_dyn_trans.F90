@@ -160,7 +160,7 @@ type, public :: dyn_state_2d ; private
   integer :: max_nts      !< The maximum number of transport steps that can be stored
                           !! before they are carried out.
   integer :: nts = 0      !< The number of accumulated transport steps since the last update.
-  real :: ridge_rate_count !< The number of contributions to avg_ridge_rate
+  real :: ridge_rate_count !< The number of contributions to avg_ridge_rate [nondim]
 
   real, allocatable, dimension(:,:) :: avg_ridge_rate !< The time average ridging rate in [T-1 ~> s-1].
 
@@ -347,8 +347,8 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
     ice_cover           ! The fractional ice coverage, summed across all
                         ! thickness categories [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      ! averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
+    WindStr_x_B, &      ! Zonal wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
+    WindStr_y_B, &      ! Meridional wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
     WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
@@ -362,15 +362,15 @@ subroutine SIS_dynamics_trans(IST, OSS, FIA, IOF, dt_slow, CS, icebergs_CS, G, U
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
-  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! The whole cell average zonal wind stress [R Z L T-2 ~> Pa]
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! The whole cell average meridional wind stress [R Z L T-2 ~> Pa]
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point [nondim]
 
   type(time_type) :: Time_cycle_start ! The model's time at the start of an advective cycle.
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   real :: dt_adv_cycle ! The length of the advective cycle timestep [T ~> s].
-  real :: wt_new, wt_prev ! Weights in an average.
+  real :: wt_new, wt_prev ! Weights in an average [nondim]
   real, dimension(SZI_(G),SZJ_(G)) :: &
     rdg_rate  ! A ridging rate [T-1 ~> s-1], calculated from the strain rates in the dynamics.
   type(dyn_state_2d), pointer :: DS2d => NULL()  ! A simplified 2-d description of the ice state
@@ -938,8 +938,8 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, IST, dt_cycle, Time_start, G
     rdg_rate            ! A ridging rate [T-1 ~> s-1], this will be calculated from the strain rates
                         ! in the dynamics.
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      ! averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
+    WindStr_x_B, &      ! Zonal wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
+    WindStr_y_B, &      ! Meridional wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
     WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
@@ -953,11 +953,11 @@ subroutine SIS_merged_dyn_cont(OSS, FIA, IOF, DS2d, IST, dt_cycle, Time_start, G
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! The whole cell average zonal wind stress [R Z L T-2 ~> Pa]
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! The whole cell average meridional wind stress [R Z L T-2 ~> Pa]
 
-  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
-  real :: wt_new, wt_prev ! Weights in an average.
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point [nondim]
+  real :: wt_new, wt_prev ! Weights in an average [nondim]
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   real :: dt_adv       ! The advective subcycle timestep [T ~> s].
@@ -1180,8 +1180,8 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     mi_sum, &           ! Masses of ice per unit total area [R Z ~> kg m-2].
     misp_sum            ! Combined mass of snow, ice and melt pond water per unit total area [R Z ~> kg m-2].
   real, dimension(SZIB_(G),SZJB_(G)) :: &
-    WindStr_x_B, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      ! averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
+    WindStr_x_B, &      ! Zonal wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
+    WindStr_y_B, &      ! Meridional wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
     WindStr_x_ocn_B, &  ! Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     WindStr_y_ocn_B, &  ! Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     str_x_ice_ocn_B, &  ! Zonal ice-ocean stress on a B-grid [R Z L T-2 ~> Pa].
@@ -1195,9 +1195,9 @@ subroutine slab_ice_dyn_trans(IST, OSS, FIA, IOF, dt_slow, CS, G, US, IG, tracer
     WindStr_y_ocn_Cv, & ! Meridional wind stress on the ice-free ocean on C-grid v-points [R Z L T-2 ~> Pa].
     str_y_ice_ocn_Cv  ! Meridional ice-ocean stress on C-grid v-points [R Z L T-2 ~> Pa].
 
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! A temporary array for diagnostics.
-  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! A temporary array for diagnostics.
-  real :: ps_vel   ! The fractional thickness category coverage at a velocity point.
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBx ! The whole cell average zonal wind stress [R Z L T-2 ~> Pa]
+  real, dimension(SZIB_(G),SZJB_(G)) :: diagVarBy ! The whole cell average meridional wind stress [R Z L T-2 ~> Pa]
+  real :: ps_vel   ! The fractional thickness category coverage at a velocity point [nondim]
   real :: dt_slow_dyn  ! The slow dynamics timestep [T ~> s].
   real :: dt_slow_dyn_sec ! The slow dynamics timestep [s].
   integer :: i, j, k, n, isc, iec, jsc, jec, ncat
@@ -1391,7 +1391,7 @@ subroutine finish_ocean_top_stresses(IOF, G, DS2d, IG)
                                                   !! integrated across thickness categories and layers.
   type(ice_grid_type), optional, intent(in)   :: IG  !< The sea-ice specific grid type
 
-  real :: I_count ! The number of times IOF has been incremented.
+  real :: I_count ! The invers of the number of times IOF has been incremented [nondim]
 
   integer :: i, j, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -2064,13 +2064,16 @@ subroutine set_wind_stresses_C(FIA, ice_cover, ice_free, WindStr_x_Cu, WindStr_y
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
-    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
-  real :: weights       ! A sum of the weights around a point.
+    WindStr_x_A, &      ! Zonal wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_y_A, &      ! Meridional wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_x_ocn_A, &  ! Zonal wind stress on the ice-free ocean on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_y_ocn_A     ! Meridional wind stress on the ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
+  real :: weights       ! A sum of the weights around a point [nondim]
   real :: I_wts         ! 1.0 / wts or 0 if wts is 0 [nondim].
-  real :: FIA_ice_cover, ice_cover_now
+  real :: FIA_ice_cover ! The bounded fractional ice coverage, summed across all thickness categories,
+                        ! as stored previously in the FIA type [nondim], between 0 & 1.
+  real :: ice_cover_now ! The bounded present fractional ice coverage, summed across all thickness
+                        ! categories [nondim], between 0 & 1.
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
   logical :: local_open_u_BC, local_open_v_BC
@@ -2179,8 +2182,8 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
                         !! thickness categories [nondim], between 0 & 1.
     ice_free            !< The fractional open water [nondim], between 0 & 1.
   real, dimension(SZIB_(G),SZJB_(G)), intent(out)  :: &
-    WindStr_x_B, &      !< Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_B, &      !< averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa].
+    WindStr_x_B, &      !< Zonal wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
+    WindStr_y_B, &      !< Meridional wind stress averaged over the ice categories on a B-grid [R Z L T-2 ~> Pa]
     WindStr_x_ocn_B, &  !< Zonal wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
     WindStr_y_ocn_B     !< Meridional wind stress on the ice-free ocean on a B-grid [R Z L T-2 ~> Pa].
   type(unit_scale_type),              intent(in)   :: US    !< A structure with unit conversion factors
@@ -2190,13 +2193,16 @@ subroutine set_wind_stresses_B(FIA, ice_cover, ice_free, WindStr_x_B, WindStr_y_
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
-    WindStr_x_A, &      ! Zonal (_x_) and meridional (_y_) wind stresses
-    WindStr_y_A, &      ! averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa].
-    WindStr_x_ocn_A, &  ! Zonal (_x_) and meridional (_y_) wind stresses on the
-    WindStr_y_ocn_A     ! ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
-  real :: weights       ! A sum of the weights around a point.
+    WindStr_x_A, &      ! Zonal wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_y_A, &      ! Meridional wind stress averaged over the ice categories on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_x_ocn_A, &  ! Zonal wind stress on the ice-free ocean on an A-grid [R Z L T-2 ~> Pa]
+    WindStr_y_ocn_A     ! Meridional wind stress on the ice-free ocean on an A-grid [R Z L T-2 ~> Pa].
+  real :: weights       ! A sum of the weights around a point [nondim]
   real :: I_wts         ! 1.0 / wts or 0 if wts is 0 [nondim].
-  real :: FIA_ice_cover, ice_cover_now
+  real :: FIA_ice_cover ! The bounded fractional ice coverage, summed across all thickness categories,
+                        ! as stored previously in the FIA type [nondim], between 0 & 1.
+  real :: ice_cover_now ! The bounded present fractional ice coverage, summed across all thickness
+                        ! categories [nondim], between 0 & 1.
   integer :: i, j, isc, iec, jsc, jec
   integer :: isd, ied, jsd, jed
 
@@ -2344,7 +2350,6 @@ subroutine SIS_dyn_trans_init(Time, G, US, IG, param_file, diag, CS, output_dir,
   integer :: max_nts
   logical :: do_slab_ice
   logical :: debug
-  real, parameter :: missing = -1e34
 
   do_slab_ice = .false. ; if (present(slab_ice)) do_slab_ice = slab_ice
 
@@ -2549,7 +2554,9 @@ subroutine increase_max_tracer_step_memory(DS2d, G, max_nts)
   integer,                 intent(in)    :: max_nts !< The new maximum number of masses and mass fluxes
                                                  !! that can be stored for tracer advection.
 
-  real, allocatable :: tmp_array(:,:,:)
+  real, allocatable :: tmp_array(:,:,:) ! A temporary array used to expand the number of time levels
+                                        ! of ice masses and advective fluxes, used with units of
+                                        ![R Z ~> kg m-2] or [R Z L2 T-1 ~> kg s-1]
   integer :: nts_prev
 
   if (DS2d%max_nts >= max(max_nts, 1)) return

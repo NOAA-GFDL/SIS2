@@ -176,7 +176,8 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
                                     intent(in)  :: mi  !< Mass of ice in a given category used for
                                                        !! summing [R Z ~> kg m-2]
-  real, dimension(:),               intent(out) :: stock_values !< The values of the summed tracer stocks.
+  real, dimension(:),               intent(out) :: stock_values !< The globally mass-integrated
+                                                       !! amount of a tracer [kg conc]
   character(len=*), dimension(:), &
                          optional,  intent(out) :: stock_names !< The names of the summed tracer stocks.
   character(len=*), dimension(:), &
@@ -186,7 +187,7 @@ subroutine SIS_call_tracer_stocks(G, IG, CS, mi, stock_values, stock_names, &
   ! Local variables
   character(len=200), dimension(MAX_FIELDS_) :: names, units
   character(len=200) :: set_pkg_name
-  real, dimension(MAX_FIELDS_) :: values
+  real, dimension(MAX_FIELDS_) :: values ! The globally mass-integrated amount of the tracers [kg conc]
   integer :: ns_tot, ns, index, m
 
   if (.not. associated(CS)) call SIS_error(FATAL, "SIS_call_tracer_stocks: "// &
@@ -216,8 +217,8 @@ subroutine SIS_store_stocks(pkg_name, ns, names, units, values, stock_values, &
                       intent(in)    :: names !< The tracer names in this package
   character(len=*), dimension(:), &
                       intent(in)    :: units !< The tracer units
-  real, dimension(:), intent(in)    :: values !< The values of the tracer stocks
-  real, dimension(:), intent(inout) :: stock_values !< The stored tracer stock values
+  real, dimension(:), intent(in)    :: values !< The globally mass-integrated amount of a tracer [kg conc]
+  real, dimension(:), intent(inout) :: stock_values !< The stored tracer stock values [kg conc]
   integer,            intent(inout) :: ns_tot !< The total number of tracer stocks across all packages
   character(len=*), dimension(:), &
             optional, intent(inout) :: stock_names !< The tracer names for use in the stock reporting

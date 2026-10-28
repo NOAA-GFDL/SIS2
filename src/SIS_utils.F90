@@ -30,13 +30,13 @@ contains
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
 !> get_avg calculates an area weighted average over some or all thickness categories
 subroutine get_avg(x, cn, avg, wtd)
-  real, dimension(:,:,:), intent(in)  :: x   !< The field to average
-  real, dimension(:,:,:), intent(in)  :: cn  !< The concentration of each thickness category
-  real, dimension(:,:),   intent(out) :: avg !< The area-weighted average of x
+  real, dimension(:,:,:), intent(in)  :: x   !< The field to average, in arbitrary units [A ~> a]
+  real, dimension(:,:,:), intent(in)  :: cn  !< The concentration of each thickness category [nondim]
+  real, dimension(:,:),   intent(out) :: avg !< The area-weighted average of x [A ~> a]
   logical,      optional, intent(in)  :: wtd !< Take a weighted average over the ice-covered area
                                              !! as opposed to averaging over the full cell areas
 
-  real, dimension(size(x,1),size(x,2)) :: wts
+  real, dimension(size(x,1),size(x,2)) :: wts ! The sum of weights in each cell [nondim]
   logical :: do_wt
   integer :: i, j, k, ni, nj, nk
 
@@ -89,8 +89,8 @@ subroutine ice_line(Time, cn_ocn, sst, G)
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
                            intent(in) :: sst  !< The sea surface temperature [C ~> degC].
 
-  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x
-  real :: gx(3)
+  real, dimension(G%isc:G%iec,G%jsc:G%jec) :: x ! The area of cells with more than 15% ice [m2]
+  real :: gx(3) ! The ice extent in the two hemispheres [1e-12 m2] and global mean SST [degC]
   integer :: year !< The current model year
   integer :: day  !< The current model year-day
   integer :: second !< The second of the day
@@ -125,22 +125,24 @@ end subroutine ice_line
 !!            and offers it for diagnostic output.
 subroutine post_avg_3d(id, val, part, diag, G, mask, scale, offset, wtd)
   integer,                 intent(in) :: id   !< The ID for this diagnostic
-  real, dimension(:,:,:),  intent(in) :: val  !< The field to average
-  real, dimension(:,:,:),  intent(in) :: part !< The fractional coverage of each category
+  real, dimension(:,:,:),  intent(in) :: val  !< The field to average, in arbitrary units [A ~> a]
+  real, dimension(:,:,:),  intent(in) :: part !< The fractional coverage of each category [nondim]
   type(SIS_diag_ctrl),     intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                  optional, intent(in) :: G   !< The horizontal grid type
   real, dimension(:,:), &
-                 optional, intent(in) :: mask !< A mask to use for the diagnostic
-  real,          optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
-  real,          optional, intent(in) :: offset !< An additive offset for the diagnostic
+                 optional, intent(in) :: mask !< A mask to use for the diagnostic [nondim]
+  real,          optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic [a A-1 ~> 1]
+  real,          optional, intent(in) :: offset !< An additive offset for the diagnostic [a]
   logical,       optional, intent(in) :: wtd !< Take a weighted average over the ice-covered area
                                              !! as opposed to averaging over the full cell areas
   ! This subroutine determines the average of a quantity across thickness
   ! categories and does a send data on it.
 
-  real :: avg(size(val,1),size(val,2)), wts(size(val,1),size(val,2))
-  real :: scl, off
+  real :: avg(size(val,1),size(val,2))  ! The running sum used for the mean value, then the mean [a]
+  real :: wts(size(val,1),size(val,2))  ! The sum of the fractional areas used for weighting the mean [nondim]
+  real :: scl   ! A multiplicative scaling factor for the diagnostic [a A-1 ~> 1]
+  real :: off   ! An additive offset for the diagnostic [a]
   logical :: do_wt
   integer :: i, j, k, ni, nj, nk, is, ie, js, je
 
@@ -209,22 +211,25 @@ end subroutine post_avg_3d
 !!            and offers it for diagnostic output.
 subroutine post_avg_4d(id, val, part, diag, G, mask, scale, offset, wtd)
   integer,                  intent(in) :: id   !< The ID for this diagnostic
-  real, dimension(:,:,:,:), intent(in) :: val  !< The field to average
-  real, dimension(:,:,:),   intent(in) :: part !< The fractional coverage of each category
+  real, dimension(:,:,:,:), intent(in) :: val  !< The field to average, in arbitrary units [A ~> a]
+  real, dimension(:,:,:),   intent(in) :: part !< The fractional coverage of each category [nondim]
   type(SIS_diag_ctrl),      intent(in) :: diag !< A structure that is used to regulate diagnostic output
   type(SIS_hor_grid_type), &
                   optional, intent(in) :: G   !< The horizontal grid type
   real, dimension(:,:), &
-                  optional, intent(in) :: mask !< A mask to use for the diagnostic
-  real,           optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic
-  real,           optional, intent(in) :: offset !< An additive offset for the diagnostic
+                  optional, intent(in) :: mask !< A mask to use for the diagnostic [nondim]
+  real,           optional, intent(in) :: scale !< A multiplicative scaling factor for the diagnostic [a A-1 ~> 1]
+  real,           optional, intent(in) :: offset !< An additive offset for the diagnostic [a]
   logical,        optional, intent(in) :: wtd !< Take a weighted average over the ice-covered area
                                               !! as opposed to averaging over the full cell areas
   ! This subroutine determines the average of a quantity across thickness
   ! categories and does a send data on it.
 
-  real :: avg(size(val,1),size(val,2)), wts(size(val,1),size(val,2))
-  real :: scl, off, I_nLay
+  real :: avg(size(val,1),size(val,2))  ! The running sum used for the mean value, then the mean [a]
+  real :: wts(size(val,1),size(val,2))  ! The sum of the fractional areas used for weighting the mean [nondim]
+  real :: scl   ! A multiplicative scaling factor for the diagnostic [a A-1 ~> 1]
+  real :: off   ! An additive offset for the diagnostic [a]
+  real :: I_nLay ! The inverse of the number of vertical layers [nondim]
   logical :: do_wt
   integer :: i, j, k, L, ni, nj, nk, nLay, is, ie, js, je
 
@@ -349,7 +354,7 @@ end subroutine ice_grid_chksum
 
 !> Return .true. if x is a NaN, and .false. otherwise.
 function is_NaN(x)
-  real, intent(in) :: x !< The number to evaluate if it is a NaN
+  real, intent(in) :: x !< The number to evaluate if it is a NaN [arbitrary]
   logical :: is_nan !< Returned as true if x is a NaN and false otherwise
 ! This subroutine returns .true. if x is a NaN, and .false. otherwise.
 

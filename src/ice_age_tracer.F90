@@ -34,7 +34,8 @@ integer, parameter :: NTR_MAX = 2 !< The maximum number of tracers
 
 !> A structure that can be used to create arrays of tracers
 type p3d
-  real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3-d array
+  real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3-d diagnostic array, used here in
+                                                 !! units of [years kg s-1] or other units
 end type p3d
 
 !> The control structure for the ice age tracer module
@@ -44,19 +45,19 @@ type, public :: ice_age_tracer_CS
                                               ! can be found, or an empty string for internal initialization.
   type(time_type), pointer :: Time            !< A pointer to the ocean model's clock.
   type(SIS_tracer_registry_type), pointer :: TrReg => NULL() !< A pointer to the tracer registry
-  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine [g kg-1].
-  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output [g kg-1].
+  real, pointer :: tr(:,:,:,:,:) => NULL()    !< The array of tracers used in this subroutine, in [years] or other units
+  real, pointer :: tr_aux(:,:,:,:,:) => NULL() !< The masked tracer concentration for output, in [years] or other units
   type(p3d), dimension(NTR_MAX) :: &
-      tr_adx, &                               !< Tracer zonal advective fluxes [g s-1].
-      tr_ady                                  !< Tracer meridional advective fluxes [g s-1].
+      tr_adx, &                               !< Tracer zonal advective fluxes [years kg s-1] or other units.
+      tr_ady                                  !< Tracer meridional advective fluxes [years kg s-1] or other units.
 
-  real, pointer :: ocean_BC(:,:,:,:) => NULL() !< Ocean boundary value of the tracer by category
-  real, pointer :: snow_BC(:,:,:,:) => NULL()  !< Snow boundary value of the tracer by category
+  real, pointer :: ocean_BC(:,:,:,:) => NULL() !< Ocean boundary value of the tracer by category, in [years] or other units
+  real, pointer :: snow_BC(:,:,:,:) => NULL()  !< Snow boundary value of the tracer by category, in [years] or other units
 
   real, dimension(NTR_MAX) :: &
-      IC_val = 0.0, &                         !< The (uniform) initial condition value.
-      young_val = 0.0, &                      !< The value assigned to tr at the surface.
-      land_val = -1.0                         !< The value of tr used where land is masked out.
+      IC_val = 0.0, &                         !< The (uniform) initial condition value, in [years] or other units.
+      young_val = 0.0, &                      !< The value assigned to tr at the surface, in [years] or other units.
+      land_val = -1.0                         !< The value of tr used where land is masked out, in [years] or other units.
   real, dimension(NTR_MAX) :: tracer_start_year = 0.0 !< The year in which tracers start aging, or at which the
                                               !! surface value equals young_val [year].
   logical :: mask_tracers                     !< If true, tracers are masked out in massless layers.
@@ -70,8 +71,6 @@ type, public :: ice_age_tracer_CS
                                               !! the maximum age at the grid point
   logical :: do_ice_age_areal                 !< If true, use the areal age tracer
   logical :: do_ice_age_mass                  !< If true, use the areal age tracer
-  real    :: min_thick_age                    !< The minimum thickness age
-  real    :: min_conc_age                     !< The minimum concentration age
 
   !>@{ Diagnostic IDs
   integer, dimension(NTR_MAX) :: &
@@ -108,7 +107,10 @@ logical function register_ice_age_tracer(G, IG, param_file, CS, diag, TrReg, Ice
   character(len=40)  :: mdl = "ice_age_tracer" ! This module's name.
   character(len=200) :: inputdir ! The directory where the input files are.
   character(len=48)  :: var_name ! The variable's name.
-  real, dimension(:,:,:), pointer :: ocean_BC_ptr => NULL(), snow_BC_ptr => NULL()
+  real, dimension(:,:,:), pointer :: ocean_BC_ptr => NULL()
+      ! A pointer to the ocean boundary values of the tracer, in [years] or other units
+  real, dimension(:,:,:), pointer :: snow_BC_ptr => NULL()
+      ! A pointer to the snow boundary values of the tracer, in [years] or other units
   integer :: isc, iec, jsc, jec, k, m, tr
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -218,7 +220,7 @@ subroutine initialize_ice_age_tracer( day, G, IG, CS, is_restart )
   ! and it sets up the tracer output.
 
   ! Local variables
-  real, parameter   :: missing = -1.0e34
+  real, parameter   :: missing = -1.0e34  ! A fill value for missing data, in [years] or other units
   character(len=24) :: name     ! A variable's name in a NetCDF file.
   character(len=72) :: longname ! The long name of that variable.
   character(len=48) :: units    ! The dimensions of the variable.
@@ -289,13 +291,11 @@ subroutine ice_age_tracer_column_physics(dt, G, IG, CS,  mi, mi_old)
 
   ! Local variables
   real :: Isecs_per_year  ! The inverse of the time in a year [T-1 ~> s-1].
-  real :: year            ! The time in years.
-  real :: dt_year         ! Timestep in units of years
-  real :: min_age         ! Minimum age of ice to avoid being set to 0
-  real :: mi_min          ! Minimum mass in ice category [kg m-2]
-  real :: max_age         ! Maximum age at a grid point
-  real, dimension(SZI_(G),SZJ_(G)) :: vertsum_mi, vertsum_mi_old
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)) :: tr_avg
+  real :: year            ! The time in [years]
+  real :: dt_year         ! Timestep in units of [years]
+  real :: min_age         ! Minimum age of ice to avoid being set to 0 [years]
+  real :: max_age         ! Maximum age at a grid point [years]
+  real :: tr_avg(SZI_(G),SZJ_(G),SZCAT_(IG))  ! The vertical average of the tracer [years]
   integer :: i, j, k, m, tr
   integer :: isc, iec, jsc, jec
 
@@ -371,7 +371,7 @@ end subroutine ice_age_tracer_column_physics
 
 !> Calculate stock amounts for the ice age tracers
 function ice_age_stock(mi, stocks, G, IG, CS, names, units)
-  real, dimension(:),             intent(out) :: stocks !< The volume integrated amounts of tracers
+  real, dimension(:),             intent(out) :: stocks !< The volume integrated amounts of tracers [kg years]
   type(sis_hor_grid_type),        intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),            intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
@@ -390,7 +390,7 @@ function ice_age_stock(mi, stocks, G, IG, CS, names, units)
   ! Local variables
   integer :: i, j, k, m, tr, nstocks
   integer :: isc, iec, jsc, jec
-  real :: avg_tr
+  real :: avg_tr  ! The vertical average of the tracer [years]
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   if (CS%ntr < 1) return

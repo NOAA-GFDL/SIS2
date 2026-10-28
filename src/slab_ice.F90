@@ -40,7 +40,7 @@ subroutine slab_ice_advect(uc, vc, trc, stop_lim, dt_slow, G, US, part_sz, nstep
   real,                              intent(in   ) :: dt_slow !< The time covered by this call [T ~> s].
   type(unit_scale_type),             intent(in)    :: US  !< A structure with unit conversion factors
   real, dimension(SZI_(G),SZJ_(G)), optional, intent(out) :: part_sz !< A part size that is set based on
-                                                          !! whether trc (which may be mass) exceeds 0.
+                                                          !! whether trc (which may be mass) exceeds 0 [nondim].
   integer,                          optional, intent(in ) :: nsteps !< The number of advective substeps.
 
   ! Local variables

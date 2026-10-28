@@ -140,9 +140,10 @@ subroutine advect_tracer(Tr, h_prev, h_end, uhtr, vhtr, ntr, dt, G, US, IG, CS) 
     uhr             ! The remaining zonal mass flux [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vhr             ! The remaining meridional mass fluxes [R Z L2 ~> kg].
-  real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
-  real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
-                                ! can be simply discarded [R Z L2 ~> kg].
+  real :: uh_neglect(SZIB_(G),SZJ_(G)) ! The magnitude of remaining zonal transports that
+                                       ! can be simply discarded [R Z L2 ~> kg].
+  real :: vh_neglect(SZI_(G),SZJB_(G)) ! The magnitude of remaining meridional transports that
+                                       ! can be simply discarded [R Z L2 ~> kg].
 
   real :: landvolfill         ! An arbitrary? nonzero cell mass [R Z L2 ~> kg].
   real :: Idt                 ! 1/dt [T-1 ~> s-1].
@@ -388,9 +389,10 @@ subroutine advect_scalar(scalar, h_prev, h_end, uhtr, vhtr, dt, G, US, IG, CS) !
     uhr             ! The remaining zonal mass flux [R Z L2 ~> kg].
   real, dimension(SZI_(G),SZJB_(G),SZCAT_(IG)) :: &
     vhr             ! The remaining meridional mass fluxes [R Z L2 ~> kg].
-  real :: uh_neglect(SZIB_(G),SZJ_(G)) ! uh_neglect and vh_neglect are the
-  real :: vh_neglect(SZI_(G),SZJB_(G)) ! magnitude of remaining transports that
-                                ! can be simply discarded [R Z L2 ~> kg].
+  real :: uh_neglect(SZIB_(G),SZJ_(G)) ! The magnitude of remaining zonal transports that
+                                       ! can be simply discarded [R Z L2 ~> kg].
+  real :: vh_neglect(SZI_(G),SZJB_(G)) ! The magnitude of remaining meridional transports that
+                                       ! can be simply discarded [R Z L2 ~> kg].
 
   real :: landvolfill   ! An arbitrary? nonzero cell mass [R Z L2 ~> kg].
   real :: Idt           ! 1/dt [T-1 ~> s-1].
@@ -656,7 +658,7 @@ subroutine advect_scalar_x(scalar, hprev, uhr, uh_neglect, domore_u, Idt, is, ie
                     ! across a zonal boundary [Conc].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
-                    ! both neighboring cells have any mass, and 0 otherwise.
+                    ! both neighboring cells have any mass, and 0 otherwise [nondim].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
@@ -820,7 +822,7 @@ subroutine advect_x(Tr, hprev, uhr, uh_neglect, domore_u, ntr, nL_max, Idt, is, 
                     ! across a zonal boundary [Conc].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
     mass_mask       ! A multiplicative mask at velocity points that is 1 if
-                    ! both neighboring cells have any mass, and 0 otherwise.
+                    ! both neighboring cells have any mass, and 0 otherwise [nondim].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
                     ! with monotonicity [Conc].
   real :: hup, hlos ! hup is the upwind mass, hlos is the part of that mass
@@ -1190,7 +1192,7 @@ subroutine advect_scalar_y(scalar, hprev, vhr, vh_neglect, domore_v, Idt, is, ie
                     ! across a meridional boundary [Conc].
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
-                    ! both neighboring cells have any mass, and 0 otherwise.
+                    ! both neighboring cells have any mass, and 0 otherwise [nondim].
     vhh             ! The meridional flux that occurs during the current
                     ! iteration [R Z L2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent
@@ -1359,7 +1361,7 @@ subroutine advect_y(Tr, hprev, vhr, vh_neglect, domore_v, ntr, nL_max, Idt, is, 
                     ! across a meridional boundary [Conc].
   real, dimension(SZI_(G),SZJB_(G)) :: &
     mass_mask, &    ! A multiplicative mask at velocity points that is 1 if
-                    ! both neighboring cells have any mass, and 0 otherwise.
+                    ! both neighboring cells have any mass, and 0 otherwise [nondim].
     vhh             ! The meridional flux that occurs during the current
                     ! iteration [R Z L2 ~> kg].
   real :: maxslope  ! The maximum concentration slope per grid point consistent

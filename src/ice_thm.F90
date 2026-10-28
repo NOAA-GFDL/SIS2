@@ -39,10 +39,10 @@ public :: get_thermo_coefs
 
 !>@{ salinities from S(z) = 0.5*3.2*(1.0-cos(3.1416*z**(0.407/(z+0.573))))
 ! z=[1 3 5 7]/8 ; ref: Hunke et al: CICE V. 4.0, 2008, p. 26
-real, parameter :: SI1   = 0.65      ! salinity of sea ice top layer
-real, parameter :: SI2   = 2.35      ! salinity of sea ice second layer
-real, parameter :: SI3   = 3.03      ! salinity of sea ice third layer
-real, parameter :: SI4   = 3.19      ! salinity of sea ice bottom layer
+real, parameter :: SI1   = 0.65      ! salinity of sea ice top layer [ppt]
+real, parameter :: SI2   = 2.35      ! salinity of sea ice second layer [ppt]
+real, parameter :: SI3   = 3.03      ! salinity of sea ice third layer [ppt]
+real, parameter :: SI4   = 3.19      ! salinity of sea ice bottom layer [ppt]
 !!@}
 
 contains
@@ -51,7 +51,7 @@ contains
 !> get_thermo_coefs returns various thermodynamic coefficients.
 subroutine get_thermo_coefs(ice_salinity)
   real, dimension(:), optional, intent(out) :: ice_salinity !< The specified salinity of each layer
-                                            !! when the thermodynamic salinities are pre-specified.
+                                            !! when the thermodynamic salinities are pre-specified [ppt].
   integer k, nk
 
   if (present(ice_salinity)) then

@@ -224,8 +224,9 @@ subroutine avg_top_quantities(FIA, Rad, IST, G, US, IG)
   type(unit_scale_type),   intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
 
-  real    :: u, v, divid, sign
-  real    :: I_avc    ! The inverse of the number of contributions.
+  real    :: u, v     ! The time mean true-zonal and true-meridional air-ice stresses [R Z L T-2 ~> Pa]
+  real    :: sign     ! Either 1 or -1 depending on the sign convention of the winds [nondim]
+  real    :: I_avc    ! The inverse of the number of contributions [nondim]
   real    :: I_wts    ! 1.0 / ice_cover or 0 if ice_cover is 0 [nondim].
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
   integer :: isd, ied, jsd, jed
@@ -474,14 +475,19 @@ subroutine infill_array(IST, ta_ocn, ta, G, IG)
   type(SIS_hor_grid_type), intent(in)    :: G    !< The sea-ice lateral grid type.
   type(ice_grid_type),     intent(in)    :: IG   !< The sea-ice grid type.
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: ta_ocn !< The value of the array for ocean partitions.
+                           intent(in)    :: ta_ocn !< The value of the array for ocean partitions,
+                                                 !! in the same units as ta [A ~> a]
   real, dimension(G%isd:G%ied, G%jsd:G%jed, IG%CatIce), &
-                           intent(inout) :: ta   !< The array that is being infilled.
+                           intent(inout) :: ta   !< The array that is being infilled, in arbitrary,
+                                                 !! possibly dimensionally rescaled, units [A ~> a]
 
   integer, dimension(G%isd:G%ied) :: k_thick, k_thin
-  real, dimension(G%isd:G%ied) :: &
-    ta_thick, ta_thin, mH_thin
-  real :: wt2, mH_cat_tgt
+  real :: ta_thick(G%isd:G%ied) ! The value of ta in the thickest ice category with any ice [A ~> a]
+  real :: ta_thin(G%isd:G%ied)  ! The value of ta in the thinest ice category with any ice [A ~> a]
+  real :: mH_thin(G%isd:G%ied)  ! The ice mass per unit area in the thinest ice category with any ice [R Z ~> kg m-2]
+  real :: wt2         ! A weight used when in-filling missing values [nondim]
+  real :: mH_cat_tgt  ! The arithmetic mean mass per unit area of the bounds for an ice category [R Z ~> kg m-2]
+
   logical, dimension(G%isd:G%ied) :: infill
   logical :: any_ice
   integer :: i, j, k, k2, k3, isc, iec, jsc, jec, ncat, NkIce
@@ -623,7 +629,12 @@ subroutine do_update_ice_model_fast(Atmos_boundary, IST, sOSS, Rad, FIA, &
   integer :: i, j, k, m, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off, NkIce, b, nb
   character(len=8) :: nstr
 
-  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb
+  ! These are calculated for use in debugging when CS%column_check is true, but do not actually
+  ! play a role in the solution.
+  real :: tot_heat_in  ! The total enthaly being added to a column from both heat and mass fluxes [Q R Z ~> J m-2]
+  real :: enth_here    ! The final column integrated enthalpy [Q R Z ~> J m-2]
+  real :: enth_imb     ! The difference between the final enthalpy and the expected value [Q R Z ~> J m-2]
+  real :: norm_enth_imb ! The enthalpy imbalance normalized by the absolute value of the sources [nondim]
   real :: SW_absorbed ! Absorbed shortwave heating [Q R Z T-1 ~> W m-2]
   real :: I_Nk     ! The inverse of the number of internal ice layers [nondim].
 
@@ -874,10 +885,10 @@ subroutine redo_update_ice_model_fast(IST, sOSS, Rad, FIA, TSF, optics_CSp, &
   real :: dhf_dt  ! The derivative of the upward surface heat flux with Ts [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real :: sw_tot  ! sum over dir/dif vis/nir components [Q R Z T-1 ~> W m-2]
   real, dimension(size(FIA%flux_sw_top,4)) :: &
-    albedos             ! The ice albedos by directional and wavelength band.
+    albedos             ! The ice albedos by directional and wavelength band [nondim]
   real, dimension(IG%NkIce) :: &
-    sw_abs_lay          ! The fractional shortwave absorption by each ice layer.
-  real :: snow_wt       ! A fractional weighting of snow in the category surface area.
+    sw_abs_lay          ! The fractional shortwave absorption by each ice layer [nondim]
+  real :: snow_wt       ! A fractional weighting of snow in the category surface area [nondim]
   real, dimension(G%isd:G%ied,size(FIA%flux_sw_top,4)) :: &
     sw_tot_ice_band     !   The total shortwave radiation by band, integrated
                         ! across the ice thickness partitions, but not the open
@@ -1185,7 +1196,7 @@ subroutine flux_redo_chksum(mesg, IST, Rad, FIA, TSF, G, US, IG)
   type(unit_scale_type),     intent(in)    :: US !< A structure with unit conversion factors
   type(ice_grid_type),       intent(in)    :: IG !< The ice vertical grid type
 
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,IG%CatIce) :: tmp_diag  ! A temporary diagnostic array
+  real :: tmp_diag(G%isd:G%ied,G%jsd:G%jed,IG%CatIce) ! A temporary diagnostic array [Q R Z T-1 ~> W m-2] or [nondim]
   character(len=8) :: nstr
   integer :: b, i, j, k, m
 
