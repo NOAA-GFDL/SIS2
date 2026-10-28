@@ -2078,7 +2078,7 @@ subroutine register_fast_to_slow_restarts(FIA, Rad, TSF, mpp_domain, US, Ice_res
   if (coupler_type_initialized(TSF%tr_flux) .and. &
       coupler_type_initialized(FIA%tr_flux)) then
     call register_restart_field(Ice_restart, TSF%tr_flux, "TSF_")
-    call register_restart_field(Ice_restart, FIA%tr_flux, "FIA_")
+    call register_restart_field(Ice_restart, FIA%tr_flux, "FIA_", dim_3="cat0")
   endif
 
 end subroutine register_fast_to_slow_restarts
