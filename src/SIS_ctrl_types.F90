@@ -246,7 +246,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
                'frozen runoff sensible heat flux', units='W m-2', conversion=US%QRZ_T_to_W_m2)
   FIA%id_evap     = register_SIS_diag_field('ice_model', 'EVAP', diag%axesT1, Time, &
                'evaporation', units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s)
-  
+
   !CMOR evaporation diagnostics
   FIA%id_evap_i   = register_SIS_diag_field('ice_model', 'EVAPi', diag%axesT1, Time, &
                'evaporation and sublimation of ice (negative corresponds to ice loss)', &
@@ -368,7 +368,7 @@ subroutine ice_diagnostics_init(IOF, OSS, FIA, G, US, IG, diag, Time, Cgrid)
 
   OSS%id_frazil   = register_SIS_diag_field('ice_model', 'FRAZIL', diag%axesT1, Time, &
                'energy flux of frazil formation', units='W m-2', conversion=US%QRZ_T_to_W_m2)
-  
+
   OSS%id_frazilmass   = register_SIS_diag_field('ice_model', 'FRAZILMASS', diag%axesT1, Time, &
                'mass flux of frazil formation', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &
@@ -446,7 +446,7 @@ subroutine ice_diags_fast_init(Rad, G, IG, diag, Time, component)
              cmor_field_name='sifllwdtop', &
              cmor_standard_name='surface_downwelling_longwave_flux_in_air', &
              cmor_long_name='Downwelling Longwave Flux over Sea Ice')
- 
+
   Rad%id_alb      = register_SIS_diag_field(trim(comp_name), 'ALB', diag%axesT1, Time, &
                'surface albedo [0,1]', units="nondim" )
   Rad%id_coszen   = register_SIS_diag_field(trim(comp_name), 'coszen', diag%axesT1, Time, &

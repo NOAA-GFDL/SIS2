@@ -89,7 +89,7 @@ subroutine Get_SIS_Input(param_file, dirs, check_params, component, ensemble_num
   if (present(param_file)) then
     output_dir = trim(slasher(ensembler(output_directory)))
     valid_param_files = 0
-    do io = 1, npf  
+    do io = 1, npf
       if (len_trim(trim(parameter_filename(io))) > 0) then
         call open_param_file(trim(ensembler(parameter_filename(io), ensemble_num)), param_file, &
                              check_params, component=comp, &
