@@ -52,7 +52,7 @@ type, public :: ice_ridging_CS ; private
                               !! itd_cleanup for us.
   do_rebin = .false.          !< .true. = call icepack_step_ridge such that it calls
                               !! rebin for us.
-  real :: mu_rdg = 3.0 !< e-folding scale of ridged ice, new_rdg_partic (m^0.5)
+  real :: mu_rdg = 3.0        !< e-folding scale of ridged ice, new_rdg_partic [m^0.5]
   real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
                                !! ridging scheme [nondim]. This is defaulted to zero, but a reasonable
                                !! value might be 10^-26 which for a km square grid cell
@@ -142,9 +142,9 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< G The ocean's grid structure.
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice-specific grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_ice  !< mass of ice?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_snow !< mass of snow?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water?
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_ice  !< mass of ice [R Z ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_snow !< mass of snow [R Z ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water [R Z ~> kg m-2]
   type(SIS_tracer_registry_type),    pointer       :: TrReg  !< TrReg - The registry of registered SIS ice and
                                                           !! snow tracers.
   type(ice_ridging_CS),              intent(in)    :: CS  !< The ridging control structure.
@@ -154,21 +154,21 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
   type(ocean_sfc_state_type), intent(in)           :: OSS !< A structure containing the arrays that describe
                                                           !! the ocean's surface state for the ice model.
   real, dimension(SZI_(G),SZJ_(G)), intent(out), optional :: rdg_rate !< Diagnostic of the rate of fractional
-                                                              !! area loss-gain due to ridging (1/s)
+                                                              !! area loss-gain due to ridging [s-1]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout), optional :: rdg_height !< A diagnostic of the ridged ice
                                                               !! height [Z ~> m]
 
 ! logical,                            intent(in)    :: dyn_Cgrid !<  True if using C-grid velocities, B-grid if False.
 
-  real :: dt_sec ! timestep in seconds
+  real :: dt_sec ! timestep in seconds [s]
   ! these strain metrics are calculated here from the velocities used for advection
   real :: sh_Dt ! sh_Dt is the horizontal tension (du/dx - dv/dy) including
-                ! all metric terms. [s-1]
+                ! all metric terms. [T-1 ~> s-1]
   real :: sh_Dd ! sh_Dd is the flow divergence (du/dx + dv/dy) including all
-                ! metric terms. [s-1]
+                ! metric terms. [T-1 ~> s-1]
   real, dimension(SZIB_(G),SZJB_(G)) :: &
     sh_Ds       ! sh_Ds is the horizontal shearing strain (du/dy + dv/dx)
-                ! including all metric terms. [s-1]
+                ! including all metric terms. [T-1 ~> s-1]
 
   integer :: i, j, k ! loop vars
   integer :: isc, iec, jsc, jec ! loop bounds
@@ -198,16 +198,16 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
        dardg1ndt  , & ! rate of fractional area loss by ridging ice [s-1]
        dardg2ndt  , & ! rate of fractional area gain by new ridges [s-1]
        dvirdgndt  , & ! rate of ice volume ridged [m s-1]
-       aparticn   , & ! participation function
-       krdgn      , & ! mean ridge thickness/thickness of ridging ice
-       araftn     , & ! rafting ice area
+       aparticn   , & ! participation function [nondim]
+       krdgn      , & ! mean ridge thickness/thickness of ridging ice [m]
+       araftn     , & ! rafting ice area [m2]
        vraftn     , & ! rafting ice volume [m]
-       aredistn   , & ! redistribution function: fraction of new ridge area
+       aredistn   , & ! redistribution function: fraction of new ridge area [nondim]
        vredistn       ! redistribution function: fraction of new ridge volume [m]
 
   real, dimension(IG%CatIce) :: &
        faero_ocn  , & ! aerosol flux to ocean [kg m-2 s-1]
-       flux_bio       ! all bio fluxes to ocean
+       flux_bio       ! all bio fluxes to ocean [various]
 
   real, dimension(IG%CatIce) :: &
        fiso_ocn       ! isotope flux to ocean [kg m-2 s-1]
@@ -218,28 +218,33 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
        ntrcr = 0     ! number of tracer level
 
   real :: &
-       del_sh        , & ! shear strain measure
+       del_sh        , & ! shear strain measure [s-1]
        rdg_conv = 0.0, & ! normalized energy dissipation from convergence [s-1]
        rdg_shear = 0.0   ! normalized energy dissipation from shear [s-1]
 
   real, dimension(IG%CatIce) :: &
-       aicen, & ! concentration of ice
-       vicen, & ! volume per unit area of ice          (m)
-       vsnon, & ! volume per unit area of snow         (m)
-       tr_tmp   ! for temporary storage
+       aicen, & ! concentration of ice [nondim]
+       vicen, & ! volume per unit area of ice          [m]
+       vsnon, & ! volume per unit area of snow         [m]
+       tr_tmp   ! Temporary storage for efficiently reordering indices [various]
+
   ! ice tracers; ntr*(NkIce+NkSnow) guaranteed to be enough for all (intensive)
   real, dimension(4+2*IG%NkIce+IG%NkSnow,IG%CatIce) :: trcrn
+      ! A vector combining the properties across categories and depths within a cell, including
+      ! enthalpies per unit volume [R Q ~> J m-3], salinities [S ~> gSalt kg-1], and pond
+      ! water mass per unit area [R Z ~> kg m-2], with commented out code that also adds
+      ! the level area [m2] and level mass [kg]?
 
   real :: &
-       aice,    & ! sea ice concentration
-       aice0      ! concentration of open water
+       aice,    & ! sea ice concentration [nondim]
+       aice0      ! concentration of open water [nondim]
 
   integer, dimension(4+2*IG%NkIce+IG%NkSnow) :: &
        trcr_depend, & ! = 0 for aicen tracers, 1 for vicen, 2 for vsnon (weighting to use)
        n_trcr_strata  ! number of underlying tracer layers
 
   real, dimension(4+2*IG%NkIce+IG%NkSnow,3) :: &
-       trcr_base    ! = 0 or 1 depending on tracer dependency
+       trcr_base    ! = 0 or 1 depending on tracer dependency [nondim]
                     ! argument 2:  (1) aice, (2) vice, (3) vsno
 
   integer, dimension(4+2*IG%NkIce+IG%NkSnow,IG%CatIce) :: &
@@ -249,17 +254,22 @@ subroutine ice_ridging(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, d
        first_ice    ! true until ice forms
 
   type(SIS_tracer_type), dimension(:), pointer :: Tr => NULL() ! SIS2 tracers
-  real, dimension(:,:,:,:), pointer :: Tr_ice_enth_ptr => NULL()  !< A pointer to the named tracer
-  real, dimension(:,:,:,:), pointer :: Tr_snow_enth_ptr => NULL() !< A pointer to the named tracer
-  real, dimension(:,:,:,:), pointer :: Tr_ice_salin_ptr => NULL() !< A pointer to the named tracer
-  real, dimension(:,:,:),   pointer :: Tr_ice_alvl_ptr => NULL()  !< A pointer to the named tracer
-  real, dimension(:,:,:),   pointer :: Tr_ice_mlvl_ptr => NULL()  !< A pointer to the named tracer
+  real, dimension(:,:,:,:), pointer :: Tr_ice_enth_ptr => NULL()
+      !< A pointer to the ice enthalpy per unit mass tracer [Q ~> J kg-1]
+  real, dimension(:,:,:,:), pointer :: Tr_snow_enth_ptr => NULL()
+      !< A pointer to the snow enthalpy per unit mass tracer [Q ~> J kg-1]
+  real, dimension(:,:,:,:), pointer :: Tr_ice_salin_ptr => NULL()
+      !< A pointer to the ice salinity tracer [S ~> gSalt kg-1]
+  ! real, dimension(:,:,:),   pointer :: Tr_ice_alvl_ptr => NULL()
+      !< A pointer to the level area tracer, perhaps in [m2]?
+  ! real, dimension(:,:,:),   pointer :: Tr_ice_mlvl_ptr => NULL()
+      !< A pointer to the level mass tracer, perhaps in [kg]?
 
   real :: rho_ice, rho_snow, rho_water ! Density of ice, snow and water [R ~> kg m-3]
   real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
   real :: Tf          ! The freezing temperature of sea water [C ~> degC]
-  real :: divu_adv
-  real :: asum        ! Sum of ice concentrations
+  real :: divu_adv    ! Perhaps the rate of divergence due to riding [s-1]
+  real :: asum        ! Sum of ice concentrations [nondim]
   integer :: m, n ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
   integer :: nL_ice, nL_snow ! number of tracer levels
