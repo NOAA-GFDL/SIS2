@@ -45,7 +45,7 @@ type, public :: ice_ponds_CS ; private
   sealevel_pond = .false., &   !< .true. = ponds not draining below sealevel
   topo_pond = .false.          !< .true. = topographic ponds
   real :: area_underflow = 0.0 !< a non-dimesional fractional area underflow limit for the sea-ice
-                               !! ponding scheme. This is defaulted to zero, but a reasonable
+                               !! ponding scheme [nondim]. This is defaulted to zero, but a reasonable
                                !! value might be 10^-26 which for a km square grid cell
                                !! would equate to an Angstrom scale ice patch.
 end type ice_ponds_CS
@@ -57,7 +57,7 @@ subroutine ice_ponds_init(G, IG, PF, CS, US)
   type(SIS_hor_grid_type),    intent(in) :: G      !<  G The ocean's grid structure.
   type(ice_grid_type),        intent(in) :: IG     !<   The sea-ice-specific grid structure.
   type(param_file_type),      intent(in) :: PF     !< A structure to parse for run-time parameters
-  type(ice_ponds_CS),       pointer    :: CS     !< The ponds control structure.
+  type(ice_ponds_CS),         pointer    :: CS     !< The ponds control structure.
   type(unit_scale_type),      intent(in) :: US     !< A structure with unit conversion factors.
 
   integer(kind=int_kind) :: ntrcr, ncat, nilyr, nslyr, nblyr, nfsd, n_iso, n_aero
@@ -107,9 +107,12 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
   type(ice_state_type),              intent(inout) :: IST !< A type describing the state of the sea ice.
   type(SIS_hor_grid_type),           intent(inout) :: G   !< G The ocean's grid structure.
   type(ice_grid_type),               intent(inout) :: IG  !< The sea-ice-specific grid structure.
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_ice  !< mass of ice?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_snow !< mass of snow?
-  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout) :: mca_pond !< mass of pond water?
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                                     intent(inout) :: mca_ice  !< mass of ice per unit cell area [R Z ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                                     intent(inout) :: mca_snow !< mass of snow per unit cell area [R Z ~> kg m-2]
+  real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), &
+                                     intent(inout) :: mca_pond !< mass of pond water per unit cell area [R Z ~> kg m-2]
   type(SIS_tracer_registry_type),    pointer       :: TrReg  !< TrReg - The registry of registered SIS ice and
                                                           !! snow tracers.
   type(ice_ponds_CS),                intent(in)    :: CS  !< The ponds control structure.
@@ -117,13 +120,13 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
   real,                              intent(in)    :: dt  !< The amount of time over which the ice dynamics are to be.
                                                           !!    advanced in seconds. [T ~> s]
   real, dimension(SZI_(G),SZJ_(G)), intent(out), optional :: rdg_rate !< Diagnostic of the rate of fractional
-                                                              !! area loss-gain due to ridging (1/s)
+                                                              !! area loss-gain due to ridging [s-1]
   real, dimension(SZI_(G),SZJ_(G),SZCAT_(IG)), intent(inout), optional :: rdg_height !< A diagnostic of the ridged ice
                                                               !! height [Z ~> m]
 
 ! logical,                            intent(in)    :: dyn_Cgrid !<  True if using C-grid velocities, B-grid if False.
 
-  real :: dt_sec ! timestep in seconds
+  real :: dt_sec ! timestep in seconds [s]
 
   integer :: i, j, k, n ! loop vars
   integer :: isc, iec, jsc, jec ! loop bounds
@@ -133,44 +136,45 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
        nilyr , & ! number of ice layers
        nslyr     ! number of snow layers
 
-  real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
+  real, dimension(0:IG%CatIce) :: hin_max   ! category limits [m]
 
   real, dimension(IG%CatIce) :: &
-       aicen, & ! concentration of ice
-       vicen, & ! volume per unit area of ice          (m)
-       vsnon, & ! volume per unit area of snow         (m)
-       tr_tmp   ! for temporary storage
+       aicen, & ! concentration of ice  [nondim]
+       vicen, & ! volume per unit area of ice          [m]
+       vsnon, & ! volume per unit area of snow         [m]
+       tr_tmp   ! for temporary storage     [R Z ~> kg m-2]
+
   ! ice tracers; ntr*(NkIce+NkSnow) guaranteed to be enough for all (intensive)
   real, dimension(4+2*IG%NkIce+IG%NkSnow,IG%CatIce) :: trcrn
+       ! A cell's depth- and category-dependent tracers [various] or [R Z ~> kg m-2]?
 
   integer, dimension(4+2*IG%NkIce+IG%NkSnow) :: &
        trcr_depend, & ! = 0 for aicen tracers, 1 for vicen, 2 for vsnon (weighting to use)
        n_trcr_strata  ! number of underlying tracer layers
 
   real, dimension(4+2*IG%NkIce+IG%NkSnow,3) :: &
-       trcr_base      ! = 0 or 1 depending on tracer dependency
+       trcr_base    ! = 0 or 1 depending on tracer dependency [nondim]
                     ! argument 2:  (1) aice, (2) vice, (3) vsno
 
-  real :: meltt,  & ! top melt rate (m/s)
-          melts,  & ! snow melt rate (m/s)
-          frain,  & ! rainfall rate (kg/m2/s)
-          Tair,   & ! air temperature (K)
-          fsurfn, & ! atm-ice surface heat flux  (W/m2)
-          Tsfcn,  & ! surface temperature (C)
-          dhs,    & ! depth difference for snow on sea ice and pond ice
-          ffrac,  & ! fraction of fsurfn over pond used to melt ipond
-          meltsliqn,    & ! liquid contribution to meltponds in dt (kg/m^2)
-          apnd, hpnd, ipnd, & ! pond tracers
-          dpnd_freebdn, & ! pond drainage rate due to freeboard constraint (m/step)
-          dpnd_dlidn,   & ! pond loss/gain due to ice lid (m/step)
-          dpnd_flushn     ! pond flushing rate due to ice permeability (m/s)
+  real :: meltt,  & ! top melt rate [m s-1]
+          melts,  & ! snow melt rate [m s-1]
+          frain,  & ! rainfall rate [kg m-2 s-1]
+          Tair,   & ! air temperature [degK]
+          fsurfn, & ! atm-ice surface heat flux [W m-2]
+          Tsfcn,  & ! surface temperature [degC]
+          dhs,    & ! depth difference for snow on sea ice and pond ice [m]
+          ffrac,  & ! fraction of fsurfn over pond used to melt ipond [nondim]
+          meltsliqn,    & ! liquid contribution to meltponds in dt [kg m-2]
+          apnd, hpnd, ipnd, & ! pond masses per unit area [R Z ~> kg m-2]
+          dpnd_freebdn, & ! pond drainage rate due to freeboard constraint per time step [m]
+          dpnd_dlidn,   & ! pond loss/gain due to ice lid per time step [m]
+          dpnd_flushn     ! pond flushing rate due to ice permeability [m s-1]
 
   real, dimension(IG%NkIce) :: &
-          qicen, &      ! ice layer enthalpy (J m-3)
-          sicen         ! salinity (ppt)
+          qicen, &      ! ice layer enthalpy [J m-3].  (Following an IcePack convention, this is not in [J kg]?
+          sicen         ! salinity [ppt]
 
   real :: rho_ice, rho_snow ! Density of ice and snow [R ~> kg m-3]
-  real :: divu_adv
   integer :: m, ntrcr ! loop vars for tracer; n is tracer #; m is tracer layer
   integer :: nt_tsfc_in, nt_qice_in, nt_qsno_in, nt_sice_in
   integer :: nL_ice, nL_snow ! number of tracer levels
@@ -220,8 +224,8 @@ subroutine ice_ponds(IST, G, IG, mca_ice, mca_snow, mca_pond, TrReg, CS, US, dt,
       IST%part_size(i,j,0) = 1.0
     else
       ! set up ice and snow volumes
-      vicen(1:nCat) = mca_ice(i,j,1:nCat) /Rho_ice * US%Z_to_m  ! volume per unit area of ice (m)
-      vsnon(1:nCat) = mca_snow(i,j,1:nCat)/Rho_snow * US%Z_to_m ! volume per unit area of snow (m)
+      vicen(1:nCat) = mca_ice(i,j,1:nCat) /Rho_ice * US%Z_to_m  ! volume per unit area of ice [m]
+      vsnon(1:nCat) = mca_snow(i,j,1:nCat)/Rho_snow * US%Z_to_m ! volume per unit area of snow [m]
 
       ! call Icepack routine; how are ponds treated?
       do n=1,nCat
