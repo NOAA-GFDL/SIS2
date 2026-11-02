@@ -628,7 +628,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
     bsnk_i, &             ! The bottom melting mass sink of ice [R Z T-1 ~> kg m-2 s-1]
     bsnk_s, &             ! The bottom melting mass sink of snow [R Z T-1 ~> kg m-2 s-1]
     simass_evap, &        ! The mass of ice evaporated from the surface [R Z T-1 ~> kg m-2 s-1]
-    sisnmass_evap, &      ! The mass of snow evaporated from the surface [R Z T-1 ~> kg m-2 s-1] 
+    sisnmass_evap, &      ! The mass of snow evaporated from the surface [R Z T-1 ~> kg m-2 s-1]
     tmp2d, &              ! A temporary array for mass balance diagnostics [R Z yr-1 ~> kg m-2 s-1]
     qflx_lim_ice, &       ! Ice limiting heat flux [Q R Z T-1 ~> W m-2]
     qflx_res_ice, &       ! Ice restoring heat flux [Q R Z T-1 ~> W m-2]
@@ -1493,18 +1493,18 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   endif
   if (CS%id_bsrc_i>0) then
     !$OMP parallel do default(shared)
-    do j=jsc,jec ; do i=isc,iec   
+    do j=jsc,jec ; do i=isc,iec
       s2i_agg = 0.0
       do k=1,ncat
         s2i_agg = s2i_agg + IST%part_size(i,j,k) * snow_to_ice(i,j,k)
       enddo
-      tmp2d(i,j) = (max(h2o_change_i(i,j), 0.0)*Idt_slow -  s2i_agg*Idt_slow - OSS%frazil(i,j)*ILatHtFus*Idt_slow) 
+      tmp2d(i,j) = (max(h2o_change_i(i,j), 0.0)*Idt_slow -  s2i_agg*Idt_slow - OSS%frazil(i,j)*ILatHtFus*Idt_slow)
     enddo ; enddo
     call post_data(CS%id_bsrc_i, tmp2d(isc:iec,jsc:jec), CS%diag)
   endif
   if (CS%id_tsnk_i>0) then
     !$OMP parallel do default(shared)
-    do j=jsc,jec ; do i=isc,iec   
+    do j=jsc,jec ; do i=isc,iec
       tmp2d(i,j) = (min(h2o_change_i(i,j), 0.0)*Idt_slow -  bsnk_i(i,j) - simass_evap(i,j))
     enddo ; enddo
     call post_data(CS%id_tsnk_i, tmp2d(isc:iec,jsc:jec), CS%diag)
@@ -1764,7 +1764,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   CS%id_lsnk_c = register_diag_field('ice_model', 'LSNKc', diag%axesT1, Time, &
                'frozen water area local sink', units='s-1', conversion=US%s_to_T)
 
-  !CMOR diagnostics for thermodynamics             
+  !CMOR diagnostics for thermodynamics
   CS%id_tsnk_i = register_diag_field('ice_model', 'sidmassmelttop', diag%axesT1, Time, &
                'Sea-Ice Mass Change Through Surface Melting', &
                units='kg m-2 s-1', conversion=US%RZ_T_to_kg_m2s, &

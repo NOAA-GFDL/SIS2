@@ -136,7 +136,7 @@ subroutine SIS_initialize_fixed(G, US, PF, write_geom, output_dir, OBC)
       call write_ocean_geometry_file(G, PF, output_dir, &
                 geom_file="sea_ice_geometry", US=US)
     endif
-    
+
   endif
 
   call callTree_leave('SIS_initialize_fixed()')
