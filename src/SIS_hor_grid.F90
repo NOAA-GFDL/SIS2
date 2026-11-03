@@ -83,15 +83,15 @@ type, public :: SIS_hor_grid_type
     IareaT       !< 1/areaT [L-2 ~> m-2].
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: sin_rot
                  !< The sine of the angular rotation between the local model grid northward
-                 !! and the true northward directions.
+                 !! and the true northward directions [nondim]
   real ALLOCABLE_, dimension(NIMEM_,NJMEM_) :: cos_rot
                  !< The cosine of the angular rotation between the local model grid northward
-                 !! and the true northward directions.
+                 !! and the true northward directions [nondim]
 
   real ALLOCABLE_, dimension(NIMEMB_PTR_,NJMEM_) :: &
     mask2dCu, &  !< 0 for boundary points and 1 for ocean points on the u grid [nondim].
-    geoLatCu, &  !< The geographic latitude at u points in degrees of latitude or m.
-    geoLonCu, &  !< The geographic longitude at u points in degrees of longitude or m.
+    geoLatCu, &  !< The geographic latitude at u points [degrees_N] or [km] or [m]
+    geoLonCu, &  !< The geographic longitude at u points [degrees_E] or [km] or [m]
     dxCu, &      !< dxCu is delta x at u points [L ~> m].
     IdxCu, &     !< 1/dxCu [L-1 ~> m-1].
     dyCu, &      !< dyCu is delta y at u points [L ~> m].
@@ -102,8 +102,8 @@ type, public :: SIS_hor_grid_type
 
   real ALLOCABLE_, dimension(NIMEM_,NJMEMB_PTR_) :: &
     mask2dCv, &  !< 0 for boundary points and 1 for ocean points on the v grid [nondim].
-    geoLatCv, &  !< The geographic latitude at v points in degrees of latitude or m.
-    geoLonCv, &  !<  The geographic longitude at v points in degrees of longitude or m.
+    geoLatCv, &  !< The geographic latitude at v points [degrees_N] or [km] or [m]
+    geoLonCv, &  !<  The geographic longitude at v points [degrees_E] or [km] or [m]
     dxCv, &      !< dxCv is delta x at v points [L ~> m].
     IdxCv, &     !< 1/dxCv [L-1 ~> m-1].
     dyCv, &      !< dyCv is delta y at v points [L ~> m].
@@ -124,16 +124,20 @@ type, public :: SIS_hor_grid_type
     IareaBu      !< IareaBu = 1/areaBu [L-2 ~> m-2].
 
   real, pointer, dimension(:) :: gridLatT => NULL()
-        !< The latitude of T points for the purpose of labeling the output axes.
+        !< The latitude of T points for the purpose of labeling the output axes,
+        !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLatT.
   real, pointer, dimension(:) :: gridLatB => NULL()
-        !< The latitude of B points for the purpose of labeling the output axes.
+        !< The latitude of B points for the purpose of labeling the output axes,
+        !! often in units of [degrees_N] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLatBu.
   real, pointer, dimension(:) :: gridLonT => NULL()
-        !< The longitude of T points for the purpose of labeling the output axes.
+        !< The longitude of T points for the purpose of labeling the output axes,
+        !! often in units of [degrees_E] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLonT.
   real, pointer, dimension(:) :: gridLonB => NULL()
-        !< The longitude of B points for the purpose of labeling the output axes.
+        !< The longitude of B points for the purpose of labeling the output axes,
+        !! often in units of [degrees_E] or [km] or [m] or [gridpoints].
         !! On many grids this is the same as geoLonBu.
   character(len=40) :: &
     x_axis_units, &     !< The units that are used in labeling the x coordinate axes.
@@ -157,10 +161,10 @@ type, public :: SIS_hor_grid_type
 
   ! These parameters are run-time parameters that are used during some
   ! initialization routines (but not all)
-  real :: south_lat     !< The latitude (or y-coordinate) of the first v-line
-  real :: west_lon      !< The longitude (or x-coordinate) of the first u-line
-  real :: len_lat = 0.  !< The latitudinal (or y-coord) extent of physical domain
-  real :: len_lon = 0.  !< The longitudinal (or x-coord) extent of physical domain
+  real :: south_lat     !< The latitude (or y-coordinate) of the first v-line [degrees_N] or [km] or [m]
+  real :: west_lon      !< The longitude (or x-coordinate) of the first u-line [degrees_E] or [km] or [m]
+  real :: len_lat = 0.  !< The latitudinal (or y-coord) extent of physical domain [degrees_N] or [km] or [m]
+  real :: len_lon = 0.  !< The longitudinal (or x-coord) extent of physical domain [degrees_E] or [km] or [m]
   real :: Rad_Earth     !< The radius of the planet [L ~> m], by default 6.378e6 m
   real :: max_depth     !< The maximum depth of the ocean [m].
 end type SIS_hor_grid_type
@@ -374,8 +378,8 @@ end subroutine set_derived_SIS_metrics
 
 !> Adcroft_reciprocal(x) = 1/x for |x|>0 or 0 for x=0.
 function Adcroft_reciprocal(val) result(I_val)
-  real, intent(in) :: val  !< The value being inverted.
-  real :: I_val            !< The Adcroft reciprocal of val.
+  real, intent(in) :: val  !< The value being inverted [A].
+  real :: I_val            !< The Adcroft reciprocal of val [A-1].
 
   I_val = 0.0 ; if (val /= 0.0) I_val = 1.0/val
 end function Adcroft_reciprocal
@@ -385,12 +389,14 @@ logical function isPointInCell(G, i, j, x, y)
   type(SIS_hor_grid_type), intent(in) :: G !< Grid type
   integer,                 intent(in) :: i !< i index of cell to test
   integer,                 intent(in) :: j !< j index of cell to test
-  real,                    intent(in) :: x !< x coordinate of point
-  real,                    intent(in) :: y !< y coordinate of point
+  real,                    intent(in) :: x !< x coordinate of point [degrees_E]
+  real,                    intent(in) :: y !< y coordinate of point [degrees_N]
 
   ! Local variables
-  real :: xNE, xNW, xSE, xSW, yNE, yNW, ySE, ySW
-  real :: p0, p1, p2, p3, l0, l1, l2, l3
+  real :: xNE, xNW, xSE, xSW ! Longitudes of cell corners [degrees_E]
+  real :: yNE, yNW, ySE, ySW ! Latitudes of cell corners [degrees_N]
+  real :: l0, l1, l2, l3 ! Crossed products of differences in position [degrees_E degrees_N]
+  real :: p0, p1, p2, p3 ! Trinary unitary values reflecting the signs of the crossed products [nondim]
   ! This is a crude calculation that assume a geographic coordinate system
   isPointInCell = .false.
   xNE = G%geoLonBu(i  ,j  ) ; yNE = G%geoLatBu(i  ,j  )

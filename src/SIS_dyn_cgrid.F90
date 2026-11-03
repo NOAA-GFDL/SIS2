@@ -128,7 +128,7 @@ type, public :: SIS_C_dyn_CS ; private
   logical :: itd_landfast     !< If true, use the probabilistic landfast ice parameterization.
   real :: basal_stress_min_thick !< min ice thickness for grounding [Z ~> m]
   real :: basal_stress_max_depth !< max water depth for grounding [Z ~> m]
-  real :: basal_stress_mu_s   !< bottom drag parameter [L Z-1 ~> nondim]
+  real :: basal_stress_mu_s   !< bottom drag parameter [Z L-1 ~> nondim]
   real :: bathy_roughness_min !< minimum bathymetric roughness [z ~> m]
   real :: bathy_roughness_max !< maximum bathymetric roughness [z ~> m]
   real :: puny                !< small number [nondim]
@@ -191,7 +191,6 @@ subroutine SIS_C_dyn_init(Time, G, US, param_file, diag, CS, ntrunc)
   character(len=40) :: mdl = "SIS_C_dyn" ! This module's name.
   character(len=200) :: filename, h2_file, inputdir
   logical           :: debug
-  real, parameter   :: missing = -1e34
 
   if (.not.associated(CS)) then
     call SIS_error(FATAL, "SIS_C_dyn_init called with an unassociated control structure. \n"//&
@@ -642,7 +641,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     ci_proj, &  ! The projected ice concentration [nondim].
     zeta, &     ! The ice bulk viscosity [R Z L2 T-1 ~> Pa m s] (i.e., [N s m-1]).
     del_sh, &   ! The magnitude of the shear rates [T-1 ~> s-1].
-    diag_val, & ! A temporary diagnostic array.
+    diag_val, & ! A temporary diagnostic array, used with various units, often [nondim].
     del_sh_min_pr, &  ! When multiplied by pres_mice, this gives the minimum
                 ! value of del_sh that is used in the calculation of zeta [T-1 ~> s-1].
                 ! This is set based on considerations of numerical stability,
@@ -650,7 +649,7 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     dx2T, dy2T, &   ! dx^2 or dy^2 at T points [L2 ~> m2].
     dx_dyT, dy_dxT, &  ! dx/dy or dy_dx at T points [nondim].
     siu, siv, sispeed, & ! diagnostics on T points [L T-1 ~> m s-1].
-    itheta, &  ! Angle given by atan(shear/divergence)
+    itheta, &  ! Angle given by atan(shear/divergence) [radians]
     ui_east, & ! Surface velocity due east component [L T-1 ~> m s-1]
     vi_north   ! Surface velocity due north component [L T-1 ~> m s-1]
 
@@ -661,11 +660,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     fxic_t, & ! Zonal force due to tension internal stress [R Z L T-2 ~> Pa].
     fxic_s, & ! Zonal force due to shearing internal stress [R Z L T-2 ~> Pa].
     fxlf, &   ! Zonal landfast ice stress [R Z L T-2 ~> Pa]
-    ui_min_trunc, &  ! The range of v-velocities beyond which the velocities
-    ui_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
+    ui_min_trunc, ui_max_trunc, &  ! The range of u-velocities beyond which they are
+              ! truncated [L T-1 ~> m s-1], or 0 for land cells.
     Cor_u, & ! Zonal Coriolis acceleration [L T-2 ~> m s-2].
     PFu, &   ! Zonal hydrostatic pressure driven acceleration [L T-2 ~> m s-2].
-    diag_val_u, & ! A temporary diagnostic array.
+    diag_val_u, & ! A temporary diagnostic array used of mass-integrated accelerations
+             ! in [R Z L T-2 ~> kg m s-2]
     u_tmp, & ! A temporary copy of the old values of ui [L T-1 ~> m s-1].
     u_IC, &  ! The initial zonal ice velocities [L T-1 ~> m s-1].
     mi_u, &  ! The total ice and snow mass interpolated to u points [R Z ~> kg m-2].
@@ -678,11 +678,12 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     fyic_t, & ! Meridional force due to tension internal stress [R Z L T-2 ~> Pa].
     fyic_s, & ! Meridional force due to shearing internal stress [R Z L T-2 ~> Pa].
     fylf, &   ! Meridional landfast ice stress [R Z L T-2 ~> Pa]
-    vi_min_trunc, &  ! The range of v-velocities beyond which the velocities
-    vi_max_trunc, &  ! are truncated [L T-1 ~> m s-1], or 0 for land cells.
+    vi_min_trunc, vi_max_trunc, & ! The range of v-velocities beyond which they are
+              ! truncated [L T-1 ~> m s-1], or 0 for land cells.
     Cor_v, &  ! Meridional Coriolis acceleration [L T-2 ~> m s-2].
     PFv, &   ! Meridional hydrostatic pressure driven acceleration [L T-2 ~> m s-2].
-    diag_val_v, & ! A temporary diagnostic array.
+    diag_val_v, & ! A temporary diagnostic array used of mass-integrated accelerations
+             ! in [R Z L T-2 ~> kg m s-2]
     v_IC, &  ! The initial meridional ice velocities [L T-1 ~> m s-1].
     mi_v, &  ! The total ice and snow mass interpolated to v points [R Z ~> kg m-2].
     f2dt_v, &! The squared effective Coriolis parameter at v-points times a
@@ -698,12 +699,14 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
     dx2B, dy2B, &   ! dx^2 or dy^2 at B points [L2 ~> m2].
     dx_dyB, dy_dxB  ! dx/dy or dy_dx at B points [nondim].
   real, dimension(SZIB_(G),SZJ_(G)) :: &
-    azon, bzon, & !  _zon & _mer are the values of the Coriolis force which
-    czon, dzon, & ! are applied to the neighboring values of vi & ui,
-    amer, bmer, & ! respectively to get the barotropic inertial rotation,
-    cmer, dmer    ! in units of [T-1 ~> s-1].  azon and amer couple the same pair of
-                  ! velocities, but with the influence going in opposite
-                  ! directions.
+    azon, bzon, czon, dzon, & !  _zon are the values of the Coriolis force which are applied to the
+                  ! neighboring values of vi to get the zonal barotropic inertial rotation in units
+                  ! of [T-1 ~> s-`]
+    amer, bmer, cmer, dmer ! _mer are the values of the Coriolis force which are applied to the
+                  ! neighboring values of ui to get the meridional barotropic inertial rotation,
+                  ! in units of [T-1 ~> s-1].
+                  ! Note that azon and amer couple the same pair of velocities, but with the
+                  ! influence going in opposite directions.
 
   real :: Cor       ! A Coriolis acceleration [L T-2 ~> m s-2].
   real :: fxic_now  ! Zonal ice internal stress convergence [R Z L T-2 ~> Pa].
@@ -749,23 +752,23 @@ subroutine SIS_C_dynamics(ci, mis, mice, ui, vi, uo, vo, fxat, fyat, &
   real :: dt_cumulative ! The elapsed time within this call to EVP dynamics [T ~> s].
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
   real :: I_sub_steps  ! The number inverse of the number of EVP time steps per
-                  ! slow time step.
-  real :: EC2     ! EC^2, where EC is the yield curve axis ratio.
-  real :: I_EC2   ! 1/EC^2, where EC is the yield curve axis ratio.
-  real :: I_EC    ! 1/EC, where EC is the yield curve axis ratio.
-  real :: I_2EC   ! 1/(2*EC), where EC is the yield curve axis ratio.
+                  ! slow time step [nondim]
+  real :: EC2     ! EC^2, where EC is the yield curve axis ratio [nondim].
+  real :: I_EC2   ! 1/EC^2, where EC is the yield curve axis ratio [nondim].
+  real :: I_EC    ! 1/EC, where EC is the yield curve axis ratio [nondim].
+  real :: I_2EC   ! 1/(2*EC), where EC is the yield curve axis ratio [nondim].
   real, parameter :: H_subroundoff = 1e-30 ! A negligible ice thickness [m].
   real :: m_neglect  ! A tiny mass per unit area [R Z ~> kg m-2].
   real :: m_neglect2 ! A tiny mass per unit area squared [R2 Z2 ~> kg2 m-4].
   real :: m_neglect4 ! A tiny mass per unit area to the 4th power [R4 Z4 ~> kg4 m-8].
   real :: sum_area   ! The sum of ocean areas around a vorticity point [L2 ~> m2].
-  real :: half_pi    ! pi/2.
+  real :: half_pi    ! pi/2 [radians]
 
   type(time_type) :: &
     time_it_start, &  ! The starting time of the iterative steps.
     time_step_end, &  ! The end time of an iterative step.
     time_end_in       ! The end time for diagnostics when this routine started.
-  real :: time_int_in ! The diagnostics' time interval when this routine started.
+  real :: time_int_in ! The diagnostics' time interval when this routine started [s].
   logical :: do_hifreq_output  ! If true, output occurs every iterative step.
   logical :: do_trunc_its  ! If true, overly large velocities in the iterations are truncated.
   integer :: halo_sh_Ds  ! The halo size that can be used in calculating sh_Ds.
@@ -1921,40 +1924,40 @@ subroutine basal_stress_coeff_itd(G, IG, IST, sea_lev, CS)
   type(SIS_C_dyn_CS),                 pointer     :: CS    !< The control structure for this module
 
   real, dimension(CS%ncat_i) :: & ! log-normal for ice thickness
-           x_k, & ! center of thickness categories (m)
-           g_k, & ! probability density function (thickness, 1/m)
-           P_x    ! probability for each thickness category
+           x_k, & ! center of thickness categories [Z ~> m]
+           g_k, & ! probability density function for thickness [Z-1 ~> m-1]
+           P_x    ! probability for each thickness category [nondim]
 
   real, dimension(CS%ncat_b) :: & ! normal dist for bathymetry
-           y_n, & ! center of bathymetry categories (m)
-           b_n, & ! probability density function (bathymetry, 1/m)
-           P_y    ! probability for each bathymetry category
+           y_n, & ! center of bathymetry categories [Z ~> m]
+           b_n, & ! probability density function for bathymetry [Z-1 ~> m-1]
+           P_y    ! probability for each bathymetry category [nondim]
 
-  integer, dimension(CS%ncat_b) :: tmp
-  real, dimension(0:IG%CatIce) :: hin_max   ! category limits (m)
+  integer, dimension(CS%ncat_b) :: tmp    ! 1 for categories that would ground, 0 otherwise [nondim]
+  real, dimension(0:IG%CatIce) :: hin_max ! category limits [Z ~> m]
 
   logical, dimension(CS%ncat_b) :: gt    ! result of comparison between x_k and y_n
 
-  real, dimension(IG%CatIce) :: vcat   ! category limits (m)
-  real, dimension(IG%CatIce) :: acat   ! category limits (m)
+  real, dimension(IG%CatIce) :: vcat   ! Thickness of ice within each categrory [Z ~> m]
+  real, dimension(IG%CatIce) :: acat   ! Area of ice within each category [nondim]
 
   !  parameters for PDFs
-  real :: wid_i     ! (m)
-  real :: wid_b     ! (m)
-  real :: mu_i      ! [nondim]
-  real :: sigma_i   ! [nondim]
-  real :: mu_b      ! (m)
-  real :: m_i       ! (m)
-  real :: v_i       ! (m2)
+  real :: wid_i     ! Width of ice categories [Z ~> m]
+  real :: wid_b     ! Width of bathymetry categories [Z ~> m]
+  real :: mu_i      ! A term in the log-normal distribution of the ice thickness [nondim]
+  real :: sigma_i   ! A term in the log-normal distribution of the ice thickness [nondim]
+  real :: mu_b      ! Mean bathymetric depth [Z ~> m]
+  real :: m_i       ! The average thickness of the ice [Z ~> m]
+  real :: v_i       ! Squared variance in the thickness of the ice [Z2 ~> m2]
 
-  real, dimension(CS%ncat_i):: tb_tmp
+  real, dimension(CS%ncat_i):: tb_tmp ! Contributions to the seabed stress factor [R Z L T-2 ~> kg m-1 s-2]
   real, dimension(SZI_(G),SZJ_(G)):: Tbt ! seabed stress factor at t point [R Z L T-2 -> kg m-1 s-2]
-  real :: atot       ! [nondim]
-  real :: x_kmax     ! thickest ice? [m]
-  real :: cut        ! thinnest ice thickness [m]
+  real :: atot       ! The total fraction of the area coverd by ice [nondim]
+  real :: x_kmax     ! thickest ice? [Z ~> m]
+  real :: cut        ! thinnest ice thickness [Z ~> m]
   real :: rho_ice    ! ice density [R ~> kg m-3]
   real :: rho_water  ! water density [R ~> kg m-3]
-  real :: pi         ! [nondim]
+  real :: pi         ! 3.1415926... [nondim]
   integer :: i, ii, j, isc, iec, jsc, jec, k, n, ncat
   real :: ci_u       ! Concentration at u-points [nondim]
   real :: ci_v       ! Concentration at u-points [nondim]
@@ -2134,7 +2137,7 @@ subroutine SIS_C_dyn_read_alt_restarts(CS, G, US, Ice_restart, restart_dir)
 
   ! These are temporary variables that will be used only here for reading and
   ! then discarded.
-  real, allocatable, target, dimension(:,:) :: str_tmp
+  real, allocatable, target, dimension(:,:) :: str_tmp ! A temporay copy of the stresses [R Z L2 T-2 ~> Pa m].
   type(MOM_domain_type),   pointer :: domain_tmp => NULL()
   logical :: read_values
   integer :: i, j, id
@@ -2207,7 +2210,10 @@ subroutine write_u_trunc(I, j, ui, u_IC, uo, mis, fxoc, fxic, Cor_u, PFu, fxat, 
   type(unit_scale_type),             intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
-  real :: dt_mi, dt_usc, u_scale, CFL
+  real :: dt_mi   ! The timestep divided by the ice mass [T R-1 Z-1 ~> s m2 kg-1]
+  real :: dt_usc  ! The timestpe times the scaling factor for velocities [T2 m L-1 s-1 ~> s]
+  real :: u_scale ! The scaling factor for velocites [T m L-1 s-1 ~> 1]
+  real :: CFL     ! The local upwinded CFL number [nondim]
   real :: m_neglect  ! A tiny mass per unit area [R Z ~> kg m-2].
   real, parameter :: H_subroundoff = 1e-30 ! A negligible ice thickness [m]
   integer :: file
@@ -2283,7 +2289,10 @@ subroutine write_v_trunc(i, J, vi, v_IC, vo, mis, fyoc, fyic, Cor_v, PFv, fyat, 
   type(unit_scale_type),             intent(in) :: US   !< A structure with unit conversion factors
   type(SIS_C_dyn_CS),                pointer    :: CS   !< The control structure for this module
 
-  real :: dt_mi, dt_usc, u_scale, CFL
+  real :: dt_mi   ! The timestep divided by the ice mass [T R-1 Z-1 ~> s m2 kg-1]
+  real :: dt_usc  ! The timestpe times the scaling factor for velocities [T2 m L-1 s-1 ~> s]
+  real :: u_scale ! The scaling factor for velocites [T m L-1 s-1 ~> 1]
+  real :: CFL     ! The local upwinded CFL number [nondim]
   real :: m_neglect  ! A tiny mass per unit area [R Z ~> kg m-2].
   real, parameter :: H_subroundoff = 1e-30 ! A negligible ice thickness [m].
   integer :: file

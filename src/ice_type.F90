@@ -466,8 +466,8 @@ subroutine Ice_public_type_bounds_check(Ice, G, msg)
   integer :: i, j, k, l, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: n_bad, i_bad, j_bad, k_bad
   logical :: fluxes_avail
-  real    :: t_min, t_max
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real    :: t_min, t_max ! The permitted range of temperatures [degK]
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -552,10 +552,10 @@ subroutine ice_stock_pe(Ice, index, value)
 
   type(ice_data_type), intent(in) :: Ice !< The publicly visible ice data type.
   integer, intent(in) :: index !< A coded integer indicating which stock to find
-  real, intent(out)   :: value !< The integrated stock quantity
+  real, intent(out)   :: value !< The integrated stock quantity [various]
 
   type(ice_state_type), pointer :: IST => NULL()
-  real :: icebergs_value
+  real :: icebergs_value ! The contribution to the integrated stock quantity from icebergs [various]
   real :: LI  ! Latent heat of fusion [Q ~> J kg-1]
   real :: part_area ! The area of an ice thickness partition in a cell [m2]
   real :: kg_H    ! A conversion factor from the ice thickness units to kg m-2 [kg m-2 H-1 ~> 1]

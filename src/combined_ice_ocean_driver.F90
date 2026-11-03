@@ -49,7 +49,7 @@ type, public :: ice_ocean_driver_type ; private
   logical :: use_intersperse_bug !< If true, use a bug in the intersperse option where the ocean
                               !! state was not being passed to the sea ice.
   real :: dt_coupled_dyn      !< The time step for coupling the ice and ocean dynamics when
-                              !! INTERSPERSE_ICE_OCEAN is true, or <0 to use the coupled timestep.
+                              !! INTERSPERSE_ICE_OCEAN is true [s], or <0 to use the coupled timestep.
                               !! The default is -1.
 end type ice_ocean_driver_type
 

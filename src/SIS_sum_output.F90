@@ -309,13 +309,13 @@ subroutine write_ice_statistics(IST, day, n, G, US, IG, CS, message, check_colum
   integer :: i, j, k, isc, iec, jsc, jec, isr, ier, jsr, jer, L, m, nlay, ncat, hem
   integer :: start_of_day, num_days
   integer :: iyear, imonth, iday, ihour, iminute, isecond, itick ! For call to get_date()
-  real    :: reday     ! A real representation of the output time.
+  real    :: reday     ! A real representation of the output time in units given by CS%Timeunit, often [days]
   character(len=120) :: statspath_nc
   character(len=300) :: mesg
   character(len=48)  :: msg_start
   character(len=32)  :: mesg_intro, time_units, day_str, n_str, trunc_str
 
-  real :: Tr_stocks(MAX_FIELDS_)
+  real :: Tr_stocks(MAX_FIELDS_)  ! Globally integrated amounts of each tracer [kg conc]
   character(len=40), dimension(MAX_FIELDS_) :: &
     Tr_names, Tr_units
   integer :: nTr_stocks

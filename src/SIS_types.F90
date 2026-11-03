@@ -235,7 +235,7 @@ type fast_ice_avg_type
   real, allocatable, dimension(:,:) :: ice_free  !< The fractional open water used in calculating
                     !! WindStr_[xy]_A, between 0 & 1 [nondim].
   real, allocatable, dimension(:,:) :: ice_cover !< The fractional ice coverage, summed across all
-                    !! thickness categories, used in calculating WindStr_[xy]_A, between 0 & 1 [nondim].q
+                    !! thickness categories, used in calculating WindStr_[xy]_A, between 0 & 1 [nondim].
 
   integer :: copy_calls = 0 !< The number of times this structure has been
                     !! copied from the fast ice to the slow ice.
@@ -702,7 +702,8 @@ subroutine rescale_ice_state_restart_fields(IST, G, US, IG, Rho_ice, Rho_snow)
   real,                    intent(in)    :: Rho_snow !< The nominal density of snow [R ~> kg m-3]
 
   ! Local variables
-  real :: H_rescale_ice, H_rescale_snow
+  real :: H_rescale_ice  ! Rescaling factor for ice in a restart file [kg m-3] or [kg m-2 R-1 Z-1 ~> 1]
+  real :: H_rescale_snow ! Rescaling factor for snow in a restart file [kg m-3] or [kg m-2 R-1 Z-1 ~> 1]
   integer :: i, j, k, m
 
   ! Redo the dimensional rescaling of the ice state type variables as necessary.
@@ -1113,8 +1114,8 @@ subroutine redistribute_IST_to_IST(IST_in, IST_out, domain_in, domain_out)
   type(domain2d),       intent(in) :: domain_in  !< The source data domain.
   type(domain2d),       intent(in) :: domain_out !< The target data domain.
 
-  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
-  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()   ! A null pointer reoresenting an invalid 3-d array [various]
+  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL() ! A null pointer reoresenting an invalid 4-d array [various]
 
   ! The velocity components, rdg_mice, rdg_height, TrReg, and ITV are deliberately not being copied.
   if (associated(IST_out) .and. associated(IST_in)) then
@@ -1304,7 +1305,7 @@ subroutine redistribute_sOSS_to_sOSS(OSS_in, OSS_out, domain_in, domain_out, HI_
   type(domain2d),                 intent(in) :: domain_out !< The target data domain.
   type(hor_index_type), optional, intent(in) :: HI_out     !< The hor_index_type on the target domain; HI_out
                                                            !! may be omitted if this is not a target PE.
-  real, pointer, dimension(:,:) :: null_ptr => NULL()
+  real, pointer, dimension(:,:) :: null_ptr => NULL() ! A null pointer reoresenting an invalid 2-d array [various]
   type(coupler_2d_bc_type)  :: null_bc
 
   if (.not. (associated(OSS_out) .or. associated(OSS_in))) &
@@ -1486,9 +1487,9 @@ subroutine redistribute_FIA_to_FIA(FIA_in, FIA_out, domain_in, domain_out, G_out
   type(SIS_hor_grid_type), optional, intent(in) :: G_out !< The horizontal grid on the target domain.
   type(ice_grid_type),     optional, intent(in) :: IG    !< The ice grid on the target domain.
 
-  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
-  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
-  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL()
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL()     ! A null pointer reoresenting an invalid 2-d array [various]
+  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()   ! A null pointer reoresenting an invalid 3-d array [various]
+  real, pointer, dimension(:,:,:,:) :: null_ptr4D => NULL() ! A null pointer reoresenting an invalid 4-d array [various]
   type(coupler_3d_bc_type)  :: null_bc
   integer :: copy_calls  ! The number of times these FIA_types have been copied.
   integer :: i, j, b, isd, ied, jsd, jed, ncat
@@ -1809,7 +1810,7 @@ subroutine redistribute_TSF_to_TSF(TSF_in, TSF_out, domain_in, domain_out, HI_ou
   type(hor_index_type), optional, intent(in) :: HI_out !< The hor_index_type on the target domain; HI_out
                                                        !! may be omitted if this is not a target PE.
 
-  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL() ! A null pointer reoresenting an invalid 2-d array [various]
   type(coupler_2d_bc_type)  :: null_bc
   integer :: copy_calls  ! The number of times these TSF_types have been copied.
   integer :: b, m, num_tr
@@ -1945,8 +1946,8 @@ subroutine redistribute_Rad_to_Rad(Rad_in, Rad_out, domain_in, domain_out)
   type(domain2d),     intent(in) :: domain_in  !< The source data domain.
   type(domain2d),     intent(in) :: domain_out !< The target data domain.
 
-  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL()
-  real, pointer, dimension(:,:) :: null_ptr2D => NULL()
+  real, pointer, dimension(:,:,:) :: null_ptr3D => NULL() ! A null pointer reoresenting an invalid 3-d array [various]
+  real, pointer, dimension(:,:) :: null_ptr2D => NULL()   ! A null pointer reoresenting an invalid 2-d array [various]
   integer :: m
 
   if (associated(Rad_out) .and. associated(Rad_in)) then
@@ -2485,7 +2486,7 @@ subroutine IST_bounds_check(IST, G, US, IG, msg, OSS, Rad)
 
   character(len=512) :: mesg1, mesg2
   character(len=24) :: err
-  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz
+  real, dimension(G%isd:G%ied,G%jsd:G%jed) :: sum_part_sz ! The total fractional ice coverage [nondim]
   real, dimension(IG%NkIce) :: S_col  ! A column of salinities [S ~> ppt]
   real    :: tsurf_min, tsurf_max ! Minimum and maximum permitted surface temperatures [C ~> degC]
   real    :: tice_min, tice_max   ! Minimum and maximum permitted ice temperatures [C ~> degC]

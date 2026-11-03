@@ -109,10 +109,10 @@ type slow_thermo_CS ; private
                             !! observations [Q R Z T-1 ~> W m-2].  A suggested value is of order 10000 W m-2.
   real    :: nudge_stab_fac !< A factor that determines whether the buoyancy flux associated with
                             !! the sea ice nudging of warm water includes a freshwater flux so as to
-                            !! be destabilizing on net (<1), stabilizing (>1), or neutral (=1).
+                            !! be destabilizing on net (<1), stabilizing (>1), or neutral (=1) [nondim].
                             !!  The default is 1.
   real    :: nudge_conc_tol !< The tolerance for mismatch in the sea ice concentrations
-                            !! before nudging begins to be applied.
+                            !! before nudging begins to be applied [nondim].
   logical :: transmute_ice  !< If true, allow ice to be transmuted directly into seawater with a
                             !! spatially varying rate as a form of outflow open boundary condition.
   real, allocatable, dimension(:,:) :: transmutation_rate  !< A spatially varying rate with which
@@ -174,7 +174,6 @@ subroutine post_flux_diagnostics(IST, FIA, IOF, CS, G, US, IG, Idt_slow)
 
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: tmp2d, net_sw, sw_dn ! Shortwave fluxes[Q R Z T-1 ~> W m-2]
   real :: sw_cat ! [Q R Z T-1 ~> W m-2]
-  real, parameter :: missing = -1e34  ! A missing data fill value
   integer :: i, j, k, m, n, b, nb, isc, iec, jsc, jec, ncat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
@@ -616,7 +615,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   ! but with a greater emphasis on enthalpy as the dominant state variable.
 
   real, dimension(SZI_(G),SZJ_(G),1:IG%CatIce) :: snow_to_ice ! The flux of snow to the ice [R Z ~> kg m-2]
-  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_h_ice ! Observed ice thickness for qflux calculation
+  real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_h_ice ! Observed ice thickness for qflux calculation [m]
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: Obs_cn_ice ! Observed total ice concentration [nondim]
   real, dimension(G%isc:G%iec,G%jsc:G%jec)   :: icec  ! Total ice concentration [nondim]
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -668,7 +667,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
                               ! calculations; otherwise use the prognostic
                               ! salinity fields for these calculations.
   real, dimension(:,:), allocatable :: TrLay
-                          ! Passive tracer slice through categories
+                          ! Passive tracer slice through categories [CU ~> conc]
                           ! By default, both the 0 (snow layer) boundary and
                           ! the NkIce+1 (surface ocean layer) are both set to 0
                           ! for all tracers
@@ -677,7 +676,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: Cp_water    ! The heat capacity of sea water [Q C-1 ~> J kg-1 degC-1]
   real :: drho_dT(1)  ! The partial derivative of density with temperature [R C-1 ~> kg m-3 degC-1]
   real :: drho_dS(1)  ! The partial derivative of density with salinity [R S-1 ~> kg m-3 ppt-1]
-  real :: pres_0(1)   ! An array of pressures [Pa]
+  real :: pres_0(1)   ! An array of pressures [R L2 T-2 ~> Pa]
   real :: rho_ice     ! The nominal density of sea ice [R ~> kg m-3].
 
   real :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
@@ -730,8 +729,17 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
   real :: LatHtFus     ! The latent heat of fusion of ice [Q ~> J kg-1].
   real :: ILatHtFus    ! The inverse latent heat of fusion of ice [Q-1 ~> kg J-1].
   real :: LatHtVap     ! The latent heat of vaporization of water at 0C [Q ~> J kg-1].
+  real :: s2i_agg      ! The snow to ice conversion aggregated across categories [R Z ~> kg m-2]
 
-  real :: tot_heat_in, enth_here, enth_imb, norm_enth_imb, emic2, tot_heat_in2, enth_imb2, s2i_agg
+  ! These are calculated for use in debugging when CS%column_check is true, but do not actually
+  ! play a role in the solution.
+  real :: tot_heat_in  ! The total enthaly being added to a column from both heat and mass fluxes [Q R Z ~> J m-2]
+  real :: enth_here    ! The final column integrated enthalpy [Q R Z ~> J m-2]
+  real :: enth_imb     ! The difference between the final enthalpy and the expected value [Q R Z ~> J m-2]
+  real :: norm_enth_imb ! The enthalpy imbalance normalized by the absolute value of the sources [nondim]
+  real :: emic2        ! The net enthalpy fluxes into the ice from mass fluxes [Q R Z ~> J m-2]
+  real :: tot_heat_in2 ! The total enthalpy in the column after fluxes are applied [Q R Z ~> J m-2]
+  real :: enth_imb2    ! A difference between the final enthalpy and the expected value [Q R Z ~> J m-2]
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   NkIce = IG%NkIce ; I_Nk = 1.0 / NkIce
@@ -821,6 +829,7 @@ subroutine SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
           enddo ; endif
         endif
       enddo
+      ! ### This expression for qflx_res_ice is missing a factor of US%m_to_Z
       qflx_res_ice(i,j) = -(LatHtFus*rho_ice*Obs_h_ice(i,j)*Obs_cn_ice(i,j) - e2m_tot) / &
                            CS%ice_restore_timescale
       if (qflx_res_ice(i,j) < 0.0) then
@@ -1571,11 +1580,10 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   character(len=40) :: mdl = "SIS_slow_thermo" ! This module's name.
   logical           :: debug
   logical           :: use_isponge
-  real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate.
+  real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate [nondim]
   character(len=64)  :: transmute_var   ! Transmutation rate variable name in file
   character(len=200) :: filename, transmute_file, inputdir ! Strings for file/path
   integer :: i, j
-  real, parameter   :: missing = -1e34
 
   call callTree_enter("SIS_slow_thermo_init(), SIS_slow_thermo.F90")
 

@@ -43,7 +43,7 @@ type, public :: SIS_B_dyn_CS ; private
   real :: p0_rho              !< The pressure constant divided by ice density [L2 T-2 ~> N m kg-1].
   real :: c0                  !< another pressure constant [nondim]
   real :: cdw                 !< ice/water drag coef. [nondim]
-  real :: blturn              !< air/water surf. turning angle (degrees)
+  real :: blturn              !< air/water surf. turning angle [degrees]
   real :: EC = 2.0            !< yield curve axis ratio [nondim]
   real :: MIV_MIN             !< min ice mass to do dynamics [R Z ~> kg m-2]
   real :: Rho_ocean           !< The nominal density of sea water [R ~> kg m-3].
@@ -88,7 +88,6 @@ subroutine SIS_B_dyn_init(Time, G, US, param_file, diag, CS)
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_dyn_bgrid" ! This module's name.
   logical           :: debug
-  real, parameter   :: missing = -1e34
 
   if (.not.associated(CS)) then
     call SIS_error(FATAL, "SIS_B_dyn_init called with an unassociated control structure. \n"//&
@@ -207,12 +206,11 @@ subroutine find_ice_strength(mi, ci, ice_strength, G, US, CS) !, nCat)
   logical :: prs_rothrock = .false.
   !Niki: TOM has a new option for calculating ice strength. If you want to use it set
   !      prs_rothrock=.true.  In that case we need to review and fix the new code
-  !      inside if (prs_rothrock), particularly work on getting hi3,ci3,hi3v,Cp & Cf.
+  !      inside if (prs_rothrock), particularly work on getting hi3, ci3 and i3v.
   logical :: rdg_lipscomb = .true.
-  !Niki: What are ci3,hi3,Cp, Cf?
+  !Niki: What are ci3 and hi3?
 !  real, dimension(SZI_(G),SZJ_(G),nCat) :: hi3, ci3
 !  real, dimension(nCat) :: hi3v
-  real :: Cp, Cf
 
   integer :: i, j, isc, iec, jsc, jec, k
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -300,16 +298,13 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
 
   real, dimension(SZIB_(G),SZJB_(G)) :: miv                 ! mass on v-points [R Z ~> kg m-2]
   real, dimension(SZIB_(G),SZJB_(G)) :: civ                 ! conc. on v-points [nondim]
-  real, dimension(SZI_(G),SZJ_(G))   :: diag_val            ! A temporary diagnostic array
+  real, dimension(SZI_(G),SZJ_(G))   :: diag_val            ! A temporary diagnostic array, often [nondim]
   complex                            :: rr                  ! linear drag rate [T-1 ~> s-1]
   real                               :: fxic_now, fyic_now  ! ice internal stresses [R Z L2 T-2 ~> Pa m]
 
-  logical, dimension(SZI_(G),SZJ_(G))   :: ice_present
-  logical :: evp_new = .false.
-  real    :: edt_new, e0 !Niki: What is e0
-  ! temporaries for strain calculation
+  logical, dimension(SZI_(G),SZJ_(G)) :: ice_present  ! True in cells where ice is present and sufficiently thick.
   real, dimension(SZI_(G),SZJ_(G)) :: &
-       grid_fac1, grid_fac2, grid_fac3, grid_fac4
+       grid_fac1, grid_fac2, grid_fac3, grid_fac4 ! Ratios of grid metrics for strain calculation [nondim]
 
   ! temporaries for ice stress calculation
   real                             :: del2  ! The squared magnitude of the strain rate ellipse [T-2 ~> s-2]
@@ -323,17 +318,19 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   real, dimension(SZIB_(G),SZJB_(G)) :: sldx, sldy  ! Pressure accelerations due to the sloping
                                                     ! sea surface integrated over a timestep [L T-1 ~> m s-1]
   real, dimension(SZIB_(G),SZJB_(G)) :: dydx, dxdy  ! Differences in grid spacings between adjacent points [L ~> m].
-  real   :: tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8, tmp9
+  real   :: tmp1, tmp2  ! Combinations of stresses times grid spacings [R Z L3 T-2 ~> Pa m2]
+  real   :: tmp3, tmp4, tmp5  ! Combinations of stresses [R Z L2 T-2 ~> Pa m]
+  real   :: tmp6, tmp7  ! Combinations of stresses times grid spacings [R Z L3 T-2 ~> Pa m2]
 
   ! for velocity calculation
   real,    dimension(SZIB_(G),SZJB_(G)) :: dtmiv  ! The timestep divided by the ice mass [T R-1 Z-1 ~> s m2 kg-1]
   real :: dt_Rheo  ! The short timestep associated with the rheology [T ~> s].
   real :: I_2dt_Rheo ! 1.0 / (2*dt_Rheo) [T-1 ~> s-1]
   integer :: EVP_steps ! The number of EVP sub-steps that will actually be taken.
-  real :: I_sub_steps
-  real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio.
+  real :: I_sub_steps  ! THe inverse of the number of EVP sub-steps [nondim]
+  real :: EC2I    ! 1/EC^2, where EC is the yield curve axis ratio [nondim]
   complex                             :: newuv
-  real :: pi
+  real :: pi  ! 3.1415926... [nondim]
 
   logical :: sent
   integer :: l
@@ -402,23 +399,15 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
   !
   call find_ice_strength(mice, ci, prs, G, US, CS)
 
-  !TOM> towards a leaner calculation of the ice stress
-  if (evp_new) then
-    ! calculate elastic parameter:
-    ! E=zeta/(E_0*dt) => E*dt_Rheo=zeta/(E_0*N_evp), where dt_Rheo=dt/N_evp
-    ! here, edt_new is 2*zeta/(E*dt_Rheo) = 2*E_0*N_evp for computational reasons
-    edt_new = 2. * e0 * REAL(EVP_steps)
-  else
-    ! This is H&D97, Eq. 44, with their E_0 = 0.25.
-    I_2dt_Rheo = 1.0 / (2.0*dt_Rheo)
-    do j=jsc,jec ; do i=isc,iec
-      if (G%dxT(i,j) < G%dyT(i,j) ) then
-        edt(i,j) = I_2dt_Rheo * (G%dxT(i,j)**2 * mice(i,j))
-      else
-        edt(i,j) = I_2dt_Rheo * (G%dyT(i,j)**2 * mice(i,j))
-      endif
-    enddo ; enddo
-  endif
+  ! This is H&D97, Eq. 44, with their E_0 = 0.25.
+  I_2dt_Rheo = 1.0 / (2.0*dt_Rheo)
+  do j=jsc,jec ; do i=isc,iec
+    if (G%dxT(i,j) < G%dyT(i,j) ) then
+      edt(i,j) = I_2dt_Rheo * (G%dxT(i,j)**2 * mice(i,j))
+    else
+      edt(i,j) = I_2dt_Rheo * (G%dyT(i,j)**2 * mice(i,j))
+    endif
+  enddo ; enddo
 
   do J=jsc-1,jec ; do I=isc-1,iec
     if ((G%mask2dBu(I,J)>0.0) .and. (miv(I,J) > CS%MIV_MIN) ) then ! values for velocity calculation (on v-grid)
@@ -517,24 +506,6 @@ subroutine SIS_B_dynamics(ci, misp, mice, ui, vi, uo, vo, &
         if (abs(CS%sig12(i,j)) < CS%str_underflow) CS%sig12(i,j) = 0.0
       enddo ; enddo
     endif
-
-    !Niki:
-    !Instead of the above block for calculating stresses TOM uses subroutine calls below
-    !I have ported these subroutines to this file for completeness.
-    !TOM> viscosity and ice stress calculation in subroutines
-    !     a) new: EVP solver as documented for CICE 4.0
-    !     b) old: solver as in H&D and omsk_2008_03
-    !  if (evp_new) then
-    !    call ice_stress_new(prs,strn11,strn22,strn12,edt_new, CS%EC,        &
-    !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
-    !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
-    !  else
-    !    call ice_stress_old(prs,strn11,strn22,strn12,edt, CS%EC,            &
-    !                        sig11(isc:iec,jsc:jec), sig22(isc:iec,jsc:jec), &
-    !                        sig12(isc:iec,jsc:jec), del2, ice_present       )
-    !  endif
-    !
-
 
     ! ### SIG11 and SIG22  SHOULD BE PAIRED ON A CUBED SPHERE.
     call pass_var(CS%sig11, G%Domain, complete=.false.)
@@ -760,149 +731,5 @@ subroutine SIS_B_dyn_end(CS)
 
   deallocate(CS)
 end subroutine SIS_B_dyn_end
-
-!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_stress_old derives the ice stress as in SIS of CM2.1 (after Hunke and Dukowicz, 1997)
-subroutine ice_stress_old(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt,EC, &
-                          sig11,sig22,sig12,del2,ice_present)
-  integer,                          intent(in   ) :: isc !< The starting i-index to work on
-  integer,                          intent(in   ) :: iec !< The ending i-index to work on
-  integer,                          intent(in   ) :: jsc !< The starting i-index to work on
-  integer,                          intent(in   ) :: jec !< The ending j-index to work on
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure [Pa m].
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate [s-1]
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate [s-1]
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate [s-1]
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
-  real,                             intent(in   ) :: EC    !< The yield curve axis ratio
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor [N m-1]
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor [N m-1]
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor [N m-1]
-  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An ellipticity modulated estimate of
-                                                           !! the squared strain rate [s-2].
-  logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
-  !
-  integer                          :: i, j
-  real, dimension(isc:iec,jsc:jec) :: mp4z, t0, t1, t2
-  real, dimension(isc:iec,jsc:jec) :: f11, f22
-  real                             :: a, b, tmp
-  real                             :: zeta, eta               ! bulk/shear viscosities
-  !
-  real :: EC2I
-
-  EC2I = 1.0 / (EC*EC)
-
-  do j=jsc,jec ; do i=isc,iec
-    del2(i,j) = (strn11(i,j)*strn11(i,j)+strn22(i,j)*strn22(i,j))*(1+EC2I)     &
-                    + 4*EC2I*strn12(i,j)*strn12(i,j) +2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
-    !
-    ! calculate viscosities
-    if (del2(i,j) > 4e-18 ) then
-      zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
-    else
-      zeta = 2.5e8*prs(i,j)
-    endif
-    if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
-
-    eta = zeta*EC2I
-    !
-    ! timestep stress tensor (H&D eqn 21)
-    !
-    if (ice_present(i,j)) then
- ! some helpful temporaries
-      mp4z(i,j) = -prs(i,j)/(4*zeta)
-      t0(i,j)   = 2*eta/(2*eta+edt(i,j))
-      tmp       = 1/(4*eta*zeta)
-      a         = 1/edt(i,j)+(zeta+eta)*tmp
-      b         = (zeta-eta)*tmp
-      t1(i,j)   = b/a
-      t2(i,j)   = a-b*b/a
-
-      f11(i,j)   = mp4z(i,j)+sig11(i,j)/edt(i,j)+strn11(i,j)
-      f22(i,j)   = mp4z(i,j)+sig22(i,j)/edt(i,j)+strn22(i,j)
-      ! stresses
-      sig11(i,j) = (t1(i,j)*f22(i,j)+f11(i,j))/t2(i,j)
-      sig22(i,j) = (t1(i,j)*f11(i,j)+f22(i,j))/t2(i,j)
-      sig12(i,j) = t0(i,j)*(sig12(i,j)+edt(i,j)*strn12(i,j))
-    else
-      sig11(i,j) = 0.0
-      sig22(i,j) = 0.0
-      sig12(i,j) = 0.0 ! eliminate internal ice forces
-    endif
-  !
-  enddo ; enddo
-  !
-end subroutine ice_stress_old
-
-!TOM>~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!
-!> ice_stress_new derives the ice stress as in CICE 4.0
-subroutine ice_stress_new(isc,iec,jsc,jec,prs,strn11,strn22,strn12,edt, EC, &
-                          sig11,sig22,sig12,del2,ice_present)
-  integer,                          intent(in   ) :: isc !< The starting i-index to work on
-  integer,                          intent(in   ) :: iec !< The ending i-index to work on
-  integer,                          intent(in   ) :: jsc !< The starting i-index to work on
-  integer,                          intent(in   ) :: jec !< The ending j-index to work on
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: prs !< The internal ice pressure [Pa m].
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn11 !< The xx component of the strain rate
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn22 !< The yy component of the strain rate
-  real, dimension(isc:iec,jsc:jec), intent(in   ) :: strn12 !< The xy & yx component of the strain rate
-  real,                             intent(in   ) :: edt   !< The ice elasticity times a time-step [Pa m s].
-  real,                             intent(in   ) :: EC    !< The yield curve axis ratio
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig11 !< The xx component of the stress tensor
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig22 !< The yy component of the stress tensor
-  real, dimension(isc:iec,jsc:jec), intent(inout) :: sig12 !< The xy & yx component of the stress tensor
-  real, dimension(isc:iec,jsc:jec), intent(  out) :: del2  !< An ellipticity modulated estimate of
-                                                           !! the squared strain rate [s-2].
-  logical, dimension(isc:iec,jsc:jec), intent(in) :: ice_present !< True where there is any ice present in a cell
-  !
-  integer :: i, j
-  real    :: zeta, eta               ! bulk/shear viscosities
-  real    :: strn1, strn2, sig1, sig2
-  real    :: tmp
-  real :: EC2I
-
-  EC2I = 1.0 / (EC*EC)
-
-  do j=jsc,jec ; do i=isc,iec
-    del2(i,j) = (strn11(i,j)*strn11(i,j) + strn22(i,j)*strn22(i,j))*(1+EC2I) + &
-                 4*EC2I*strn12(i,j)*strn12(i,j) + 2*strn11(i,j)*strn22(i,j)*(1-EC2I)  ! H&D eqn 9
-    !
-    ! calculate viscosities
-    if (del2(i,j) > 4e-18 ) then
-      zeta = 0.5*prs(i,j)/sqrt(del2(i,j))
-    else
-      zeta = 2.5e8*prs(i,j)
-    endif
-    if (zeta<4e8) zeta = 4e8 ! Hibler uses to prevent nonlinear instability
-    zeta = 2.*zeta
-    eta = zeta*EC2I
-
-    ! calculate stresses
-    if (ice_present(i,j)) then
-      strn1      = strn11(i,j) + strn22(i,j)
-      strn2      = strn11(i,j) - strn22(i,j)
-      sig1       = sig11(i,j)  + sig22(i,j)
-      sig2       = sig11(i,j)  - sig22(i,j)
-
-      sig1       =      edt*sig1       + zeta*strn1 - prs(i,j)
-      sig2       = EC2I*edt*sig2       +  eta*strn2
-      sig12(i,j) = EC2I*edt*sig12(i,j) +  eta*strn12(i,j)
-
-      sig1       = sig1       * 1./(1.+     edt)
-      tmp        =              1./(1.+EC2I*edt)
-      sig2       = sig2       * tmp
-      sig12(i,j) = sig12(i,j) * tmp
-
-      sig11(i,j) = 0.5*(sig1+sig2)
-      sig22(i,j) = 0.5*(sig1-sig2)
-    else
-      sig11(i,j) = 0.0
-      sig22(i,j) = 0.0
-      sig12(i,j) = 0.0 ! eliminate internal ice forces
-    endif
-
-  enddo ; enddo
-
-end subroutine ice_stress_new
 
 end module SIS_dyn_bgrid

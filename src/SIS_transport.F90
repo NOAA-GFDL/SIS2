@@ -45,10 +45,10 @@ type, public :: SIS_transport_CS ; private
   real :: Rho_ice             !< The nominal density of sea ice [R ~> kg m-3], used here only in
                               !! rolling and setting ridging parameters
   real :: roll_factor         !< A factor by which the propensity of small amounts of thick sea-ice
-                              !! to become thinner by rolling is increased, or 0 to disable rolling.
+                              !! to become thinner by rolling is increased [nondim], or 0 to disable rolling.
                               !! Sensible values are 0 or larger than 1.
   real :: ice_cover_discard   !< A tiny fractional ice coverage which if positive causes the mass
-                              !! in categories with less than this coverage to be discarded.
+                              !! in categories with less than this coverage to be discarded [nondim].
   logical :: mass_neglect_ice_snow_pond !< If true, massless snow and pond values are discarded
   logical :: readjust_categories !< If true, readjust the distribution into
                               !! ice thickness categories after advection.
@@ -285,8 +285,12 @@ subroutine finish_ice_transport(CAS, IST, TrReg, G, US, IG, dt, CS, OSS, rdg_rat
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_s ! The convergence of frozen water transport of snow [R Z ~> kg m-2].
   real, dimension(SZI_(G),SZJ_(G)) :: trans_conv_c ! The convergence of frozen water fractional area [nondim] then [s-1 ~> T-1]
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
-  type(EFP_type) :: tot_ice, tot_snow, enth_ice, enth_snow
-  real :: I_tot_ice, I_tot_snow
+  type(EFP_type) :: tot_ice   ! The globally integrated total mass of ice [kg]
+  type(EFP_type) :: tot_snow  ! The globally integrated total mass of snow [kg]
+  type(EFP_type) :: enth_ice  ! The globally integrated total enthalpy of ice [J]
+  type(EFP_type) :: enth_snow  ! The globally integrated total enthalpy of snow [J]
+  real :: I_tot_ice  ! The inverse of the globally integrated total amount of ice in unscaled units [kg-1]
+  real :: I_tot_snow ! The inverse of the globally integrated total amount of snow in unscaled units [kg-1]
   real :: Idt  ! The reciprocal of the accumulated time [T-1 ~> s-1]
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
@@ -549,7 +553,8 @@ subroutine cell_ave_state_to_ice_state(CAS, G, US, IG, CS, IST, TrReg)
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G)) :: ice_cover ! The summed fractional ice concentration [nondim].
   real :: mass_neglect    ! A negligible mass per unit area [R Z ~> kg m-2].
-  real :: L_to_H
+  real :: L_to_H          ! A conversion factor between units of horizontal distance
+                          ! and ice thickness [R Z L-1 ~> kg m-3]
   integer :: i, j, k, isc, iec, jsc, jec, nCat
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
@@ -927,12 +932,12 @@ subroutine compress_ice(part_sz, mH_ice, mH_snow, mH_pond, TrReg, G, US, IG, CS,
 ! allow the fractional ice coverage to drop below 1.
 
   ! Local variables
-  real, dimension(SZI_(G),SZJ_(G)) :: excess_cover
-  real :: compression_ratio
-  real :: Icompress_here
-  real :: mca_old
-!  real :: Imca_new
-  real :: mass_neglect
+  real, dimension(SZI_(G),SZJ_(G)) :: excess_cover  ! Ice coverage relative to 1 [nondim]
+  real :: compression_ratio ! A fraction by which ice is compressed horizontally [nondim]
+  real :: Icompress_here    ! The inverse of the local compression factor [nondim]
+  real :: mca_old           ! The previous value of mass per unit grid-cell area
+                            ! of the ice in each category [R Z ~> kg m-2].
+  real :: mass_neglect    ! A negligible mass per unit area [R Z ~> kg m-2].
   real :: part_trans ! The fractional area transferred into a thicker category [nondim].
   real, dimension(SZI_(G),SZCAT_(IG)) :: &
     m0_ice, &  ! The initial mass per unit grid-cell area of ice in each category [R Z ~> kg m-2].
@@ -1109,11 +1114,15 @@ subroutine get_total_mass(IST, G, US, IG, tot_ice, tot_snow, tot_pond, tot_pond_
   type(EFP_type),          intent(out)   :: tot_snow !< The globally integrated total snow [kg].
   type(EFP_type), optional, intent(out)  :: tot_pond !< The globally integrated total pond water [kg].
   type(EFP_type), optional, intent(out)  :: tot_pond_ice !< The globally integrated total pond ice [kg].
-  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
+  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units,
+                                                  !! typically [kg m-2 R-1 Z-1 ~> 1]
 
-  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_ice, sum_snow, sum_pond, sum_pond_ice
-  real :: H_to_units ! A conversion factor from H to the desired output units.
-  real :: total
+  real :: sum_ice(G%isc:G%iec, G%jsc:G%jec) ! The sum across categories of ice mass in a cell [kg]
+  real :: sum_snow(G%isc:G%iec, G%jsc:G%jec) ! The sum across categories of ice mass in a cell [kg]
+  real :: sum_pond(G%isc:G%iec, G%jsc:G%jec) ! The sum across categories of pond water mass in a cell [kg]
+  real :: sum_pond_ice(G%isc:G%iec, G%jsc:G%jec) ! The sum across categories of pond ice mass in a cell [kg]
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
+  real :: total  ! A globally integrated mass [kg]
   integer :: i, j, k, m, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1147,9 +1156,10 @@ subroutine get_cell_mass(IST, G, IG, cell_mass, scale)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of ice and snow [R Z ~> kg m-2].
-  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
+  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units,
+                                                       !! typically [kg m-2 R-1 Z-1 ~> 1]
 
-  real :: H_to_units ! A conversion factor from H to the desired output units.
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1170,9 +1180,10 @@ subroutine get_ice_mass(IST, G, IG, cell_mass, scale)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of ice [R Z ~> kg m-2].
-  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
+  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units,
+                                                       !! typically [kg m-2 R-1 Z-1 ~> 1]
 
-  real :: H_to_units ! A conversion factor from H to the desired output units.
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1191,9 +1202,10 @@ subroutine get_snow_mass(IST, G, IG, cell_mass, scale)
   type(SIS_hor_grid_type),          intent(in)  :: G   !< The horizontal grid type
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cell_mass !< The total amount of snow [R Z ~> kg m-2].
-  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
+  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units,
+                                                       !! typically [kg m-2 R-1 Z-1 ~> 1]
 
-  real :: H_to_units ! A conversion factor from H to the desired output units.
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
   integer :: i, j, k, isc, iec, jsc, jec
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
@@ -1230,9 +1242,10 @@ subroutine cell_mass_from_CAS(CAS, G, IG, mca, scale)
   type(ice_grid_type),              intent(in)  :: IG  !< The sea-ice specific grid type
   real, dimension(SZI_(G),SZJ_(G)), intent(out) :: mca !< The combined mass of ice, snow, and
                                                        !! melt pond water in each cell [R Z ~> kg m-2].
-  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units.
+  real,                   optional, intent(in)  :: scale !< A scaling factor from H to the desired units,
+                                                       !! typically [kg m-2 R-1 Z-1 ~> 1]
 
-  real :: H_to_units ! A conversion factor from H to the desired output units.
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
   integer :: i, j, k, isc, iec, jsc, jec, nCat
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; nCat = IG%CatIce
 
@@ -1254,8 +1267,8 @@ subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
   type(ice_grid_type),     intent(in)    :: IG  !< The sea-ice specific grid type
   type(EFP_type),          intent(out)   :: enth_ice !< The globally integrated total ice enthalpy [J].
   type(EFP_type),          intent(out)   :: enth_snow !< The globally integrated total snow enthalpy [J].
-  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units.
-
+  real,          optional, intent(in)    :: scale !< A scaling factor from H to the desired units,
+                                                  !! typically [kg m-2 R-1 Z-1 ~> 1]
   ! Local variables
   real, dimension(:,:,:,:), &
     pointer :: heat_ice => NULL() ! Pointer to the enth_ice array from the SIS tracer registry.
@@ -1263,14 +1276,16 @@ subroutine get_total_enthalpy(IST, G, US, IG, enth_ice, enth_snow, scale)
   real, dimension(:,:,:,:), &
     pointer :: heat_snow => NULL() ! Pointer to the enth_snow array from the SIS tracer registry.
                         ! Enth_snow is the enthalpy of the snow atop the ice in each category [Q ~> J kg-1].
-  real, dimension(G%isc:G%iec, G%jsc:G%jec) :: sum_enth_ice, sum_enth_snow
-  real :: H_to_units ! A conversion factor from H to the desired output units.
+  real :: sum_enth_ice(G%isc:G%iec, G%jsc:G%jec)  ! The total ice enthalpy in a cell [Q kg ~> J]
+  real :: sum_enth_snow(G%isc:G%iec, G%jsc:G%jec) ! The total snow enthalpy in a cell [J]
+  real :: H_to_units ! A conversion factor from H to the desired output units, often [kg m-2 R-1 Z-1 ~> 1]
   real :: total      ! The returned total enthalpy [J]
   real :: I_Nk       ! The inverse of the number of internal ice layers [nondim].
   integer :: i, j, k, m, isc, iec, jsc, jec, nLay
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
 
   H_to_units = US%RZ_to_kg_m2*US%L_to_m**2 ; if (present(scale)) H_to_units = scale*US%L_to_m**2
+  !### There is a missing a factor of US%Q_to_J_kg unless it is embedded in scale.
 
   call get_SIS_tracer_pointer("enth_ice", IST%TrReg, heat_ice, nLay)
   call get_SIS_tracer_pointer("enth_snow", IST%TrReg, heat_snow, nLay)
@@ -1316,7 +1331,6 @@ subroutine SIS_transport_init(Time, G, IG, US, param_file, diag, CS, continuity_
   character(len=40)  :: mdl = "SIS_transport" ! This module's name.
   character(len=80)  :: scheme   ! A string for identifying an advection scheme.
   logical :: merged_cont
-  real, parameter :: missing = -1e34
 
   if (associated(CS)) then
     call SIS_error(WARNING, "SIS_transport_init called with an associated control structure.")

@@ -64,12 +64,12 @@ subroutine get_sea_surface(Time, HI, SST, ice_conc, ice_thick, ice_domain, ice_d
 
   character(len=128), parameter :: version = '$Id: ice_spec.F90,v 1.1.2.1.6.1.2.1.2.1 2013/06/18 22:24:14 nnz Exp $'
   character(len=128), parameter :: tagname = '$Name: siena_201305_ice_sis2_5layer_dEdd_nnz $'
-  real ::  t_sw_freeze0 = -1.8
-  real ::  t_sw_freeze
+  real ::  t_sw_freeze0 = -1.8 ! A typical freezing temperature [degC]
+  real ::  t_sw_freeze ! A typiical freezing temperature in [degC] or [degK]
   real :: SST_offset ! An offset between the observed SST and the output value, either to correct
                      ! for differences in temperature units or to apply a perturbation [degC]
   real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
-  real    :: degC_scale ! A scaling factor to the internal units of temperature
+  real    :: degC_scale ! A scaling factor to the internal units of temperature [C degC-1 ~> 1]
   integer :: i, j
   integer :: ierr, io, unit
   type(time_type) :: Spec_Time

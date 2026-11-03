@@ -611,7 +611,6 @@ subroutine set_ocean_top_fluxes(Ice, IST, IOF, FIA, OSS, G, US, IG, sCS)
   type(ice_grid_type),        intent(in)    :: IG  !< The sea-ice specific grid type
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
-  real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec, m, n
   integer :: i2, j2, i_off, j_off, ncat, NkIce
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -741,7 +740,6 @@ subroutine set_ocean_top_dyn_fluxes(Ice, IOF, FIA, G, US, sCS)
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(SIS_slow_CS),          intent(in)    :: sCS !< The slow ice control structure
 
-  real :: I_count
   integer :: i, j, k, isc, iec, jsc, jec
   integer :: i2, j2, i_off, j_off, ind
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -910,7 +908,7 @@ subroutine unpack_ocn_ice_bdry(OIB, OSS, ITV, G, US, specified_ice, ocean_fields
                                                                 !! related to passive tracers.
 
   real, dimension(G%isd:G%ied, G%jsd:G%jed) :: u_nonsym, v_nonsym ! Nonsymmetric velocities [L T-1 ~> m s-1]
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
   logical :: Cgrid_ocn
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, i_off, j_off, index
   integer :: isd, ied, jsd, jed
@@ -1067,12 +1065,12 @@ subroutine set_ice_surface_state(Ice, IST, OSS, Rad, FIA, G, US, IG, fCS)
                                           ! absorbed in each of the ice layers, <=1, [nondim].
   real, dimension(size(FIA%flux_sw_top,4)) :: &
     albedos        ! The albedos for the various wavelength and direction bands
-                   ! for the current partition, non-dimensional and 0 to 1.
+                   ! for the current partition [nondim], 0 to 1.
   real :: u, v     ! Ice velocity components [m s-1]
 
   integer :: i, j, k, m, n, i2, j2, k2, isc, iec, jsc, jec, ncat, i_off, j_off
   integer :: index
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   i_off = LBOUND(Ice%t_surf,1) - G%isc ; j_off = LBOUND(Ice%t_surf,2) - G%jsc
@@ -1311,7 +1309,7 @@ subroutine set_fast_ocean_sfc_properties( Atmos_boundary, Ice, IST, Rad, FIA, &
   type(time_type),               intent(in)    :: Time_start !< The start of the time covered by this call
   type(time_type),               intent(in)    :: Time_end   !< The end of the time covered by this call
 
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
   logical :: coszen_changed
   integer :: i, j, k, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
@@ -1366,10 +1364,11 @@ subroutine set_ocean_albedo_from_astronomy(Ice, G, Time_start, Time_end)
   type(time_type),         intent(in)    :: Time_end   !< The end of the time covered by this call
 
   real, dimension(G%isc:G%iec,G%jsc:G%jec) :: &
-    dummy, &  ! A dummy array that is not used again.
+    dummy, &  ! A dummy array that is not used again [nondim]
     cosz_alb  ! The cosine of the solar zenith angle for calculating albedo [nondim].
-  real :: rad
-  real :: rrsun_dt_ice
+  real :: rad ! A conversion factor from degrees to radians [rad degree-1]
+  real :: rrsun_dt_ice  ! The earth-sun distance (r) relative to the semi-major axis of the orbital
+                        ! ellipse (a), calculated as (a/r)**2 [nondim]. This is not used here.
   type(time_type) :: dT_ice   ! The time interval for this update.
   integer :: i, j, isc, iec, jsc, jec
 
@@ -1396,9 +1395,9 @@ subroutine set_ocean_albedo_from_coszen(Ice, G, coszen)
   type(ice_data_type),     intent(inout) :: Ice !< The publicly visible ice data type.
   type(SIS_hor_grid_type), intent(inout) :: G   !< The horizontal grid type
   real, dimension(G%isd:G%ied, G%jsd:G%jed), &
-                           intent(in)    :: coszen !< Cosine of the solar zenith angle for this step
+                           intent(in)    :: coszen !< Cosine of the solar zenith angle for this step [nondim]
 
-  real :: rad
+  real :: rad   ! A conversion factor from degrees to radians [rad degree-1]
   integer :: i, j, isc, iec, jsc, jec
 
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec
@@ -1432,16 +1431,19 @@ subroutine fast_radiation_diagnostics(ABT, Ice, IST, Rad, FIA, G, US, IG, CS, &
   type(time_type),         intent(in)    :: Time_start !< The start time of the diagnostics in this call
   type(time_type),         intent(in)    :: Time_end   !< The end time of the diagnostics in this call
 
-  real, dimension(G%isd:G%ied, G%jsd:G%jed) :: tmp_diag, sw_dn, net_sw, avg_alb
+  real :: tmp_diag(G%isd:G%ied, G%jsd:G%jed) ! A diagnostic of the fractional absorption of heat fluxes [nondim]
+  real :: sw_dn(G%isd:G%ied, G%jsd:G%jed)  ! The downward shortwave radiation summed over radiation bands [W m-2]
+  real :: net_sw(G%isd:G%ied, G%jsd:G%jed) ! The net downward shortwave radiation summed over radiation bands [W m-2]
+  real :: avg_alb(G%isd:G%ied, G%jsd:G%jed)  ! The band-averaged albedo [nondim]
   real, dimension(G%isd:G%ied, G%jsd:G%jed,size(FIA%flux_sw_dn,3)) :: &
     sw_dn_bnd  ! The downward shortwave radiation by frequency and angular band
                ! averaged over all of the ice thickness categories [W m-2].
   real, dimension(G%isd:G%ied) :: Tskin_avg ! Average skin temperature [C ~> degC]
-  real, dimension(G%isd:G%ied) :: ice_conc
-  real :: dt_diag
+  real, dimension(G%isd:G%ied) :: ice_conc  ! The ice concentration summed over categories [nondim]
+  real :: dt_diag  ! The time interval for this diagnostic [s]
   real    :: Stefan ! The Stefan-Boltzmann constant [W m-2 degK-4] as used for
                     ! strictly diagnostic purposes.
-  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin
+  real, parameter :: T_0degC = 273.15 ! 0 degrees C in Kelvin [degK]
   integer :: i, j, k, m, i2, j2, k2, i3, j3, isc, iec, jsc, jec, ncat, NkIce
   integer :: b
   integer :: io_A, jo_A, io_I, jo_I  ! Offsets for indexing conventions.
@@ -1592,10 +1594,19 @@ subroutine add_diurnal_SW(ABT, G, Time_start, Time_end)
   type(time_type),               intent(in)    :: Time_start !< The start time for this step.
   type(time_type),               intent(in)    :: Time_end   !< The ending time for this step.
 
-  real :: diurnal_factor, time_since_ae, rad
-  real :: fracday_dt, fracday_day
-  real :: cosz_day, cosz_dt, rrsun_day, rrsun_dt
-  type(time_type) :: dt_here
+  real :: diurnal_factor  ! A scaling factor to translate the daily mean shortwave into the average
+                          ! value over this time period with a synthetic diurnal cycle [nondim]
+  real :: time_since_ae   ! Time since the autumnal equinox in radians per year [rad]
+  real :: rad             ! A conversion factor from degrees to radians [degrees rad-1]
+  real :: fracday_dt      ! Daylight fraction of the time interval [nondim]
+  real :: fracday_day     ! Daylight fraction averaged over the whole day [nondim]
+  real :: cosz_day        ! The cosine of the solar zenith angle averaged over the whole day [nondim]
+  real :: cosz_dt         ! The cosine of the solar zenith angle averaged over the time interval [nondim]
+  real :: rrsun_day       ! The square of the distance to the sun normalized by its mean averaged
+                          ! over the whole day [nondim]
+  real :: rrsun_dt        ! The square of the distance to the sun normalized by its mean averaged
+                          ! over the whole time interval [nondim]
+  type(time_type) :: dt_here  ! The timestep used here, expressed as a time type
 
   integer :: i, j, k, i2, j2, isc, iec, jsc, jec, ncat, i_off, j_off
 
@@ -1682,8 +1693,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
 
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
-  real :: enth_spec_snow, enth_spec_ice
-  real :: pi ! pi = 3.1415926... calculated as 4*atan(1)
+  real :: pi ! pi = 3.1415926... calculated as 4*atan(1) [nondim]
   integer :: i, j, k, l, i2, j2, k2, i_off, j_off, n
   integer :: isc, iec, jsc, jec, nCat_dflt
   character(len=120) :: restart_file, fast_rest_file
@@ -1713,23 +1723,24 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   real :: heat_rough_ice ! heat roughness length [m].
   real :: dt_Rad_real    ! The radiation timestep [s].
   type(time_type) :: dt_Rad ! The radiation timestep, used initializing albedos.
-  real :: rad            ! The conversion factor from degrees to radians.
-  real :: rrsun          ! An unused temporary factor related to the Earth-sun distance.
+  real :: rad            ! The conversion factor from degrees to radians [rad degree-1]
+  real :: rrsun          ! An unused temporary factor related to the Earth-sun distance [nondim]
 
   ! Parameters that properly belong exclusively to ice_thm.
   real :: massless_ice_enth, massless_snow_enth ! Enthalpy fill values [Q ~> J kg-1]
   real :: massless_ice_salin  ! A salinity fill value [S ~> ppt]
 
   real, allocatable, dimension(:,:) :: &
-    h_ice_input, dummy   ! Temporary arrays.
+    h_ice_input, &       ! Specified ice thicknesses [m]
+    dummy                ! A dummy array that is not used again [nondim]
   real, allocatable, dimension(:,:) :: &
-    str_x, str_y, stress_mag ! Temporary stress arrays
+    str_x, str_y, stress_mag ! Temporary stress arrays [Pa]
 
   real :: g_Earth        !   The gravitational acceleration [L2 Z-1 T-2 ~> m s-2].
   real :: ice_rel_salin  ! The initial bulk salinity of sea-ice relative to the
                          ! salinity of the water from which it formed [nondim].
   real :: coszen_IC      ! A constant value that is used to initialize
-                         ! coszen if it is not read from a restart file, or a
+                         ! coszen if it is not read from a restart file [nondim], or a
                          ! negative number to use the time and geometry.
   real :: rho_ice        ! The nominal density of sea ice [R ~> kg m-3].
   real :: rho_snow       ! The nominal density of snow [R ~> kg m-3].
@@ -1740,7 +1751,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
                          ! depth of the reported value of t_ocn.
   real :: opm_dflt       ! The default value for ocean_part_min, which is the
                          ! minimum value for the fractional open-ocean
-                         ! area.  With redo_fast_update, this is set to 1e-40 so
+                         ! area [nondim].  With redo_fast_update, this is set to 1e-40 so
                          ! that the open ocean fluxes can be used in
                          ! interpolation across categories; otherwise it is 0
                          ! to reduce the number of categories being evaluated.
@@ -1803,7 +1814,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
   logical :: allow_carbon_flux_exchange ! If true, allow carbon fluxes between the ocean, ice, and atmosphere.
 
   real,  allocatable, dimension(:) :: &
-    hlim_vals                 ! List of lower limits on ice thickness categories.
+    hlim_vals   ! List of lower limits on ice thickness categories [L ~> m] !### These units are inappropriate
   logical :: Verona
   logical :: split_fast_slow_flag
   logical :: read_aux_restart
@@ -2303,6 +2314,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
         call get_param(param_file, mdl, "HLIM_VALS", hlim_string, &
                      "This sets the list of lower limits on the ice thickness "//&
                      "categories.", default="1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5")
+        !### I think that the factor of US%m_to_L here is wrong.
         hlim_vals = extract_real(hlim_string, ',', CatIce) * US%m_to_L
       endif
       call initialize_ice_categories(Ice%fCS%IG, Rho_ice, US, param_file, hLim_vals=hlim_vals)

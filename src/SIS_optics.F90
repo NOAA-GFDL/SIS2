@@ -74,11 +74,13 @@ subroutine SIS_optics_init(param_file, US, CS, slab_optics)
   !  parameterization for solar radiation in the sea ice component of the
   !  Community Climate System Model, NCAR/TN+472+STR.
   !
-  real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning, non-dim.
-  real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning, non-dim.
-  real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning, non-dim.
+  real :: deltaEdd_R_ice  ! delta-Eddington ice albedo tuning [nondim]
+  real :: deltaEdd_R_snow ! delta-Eddington snow albedo tuning [nondim]
+  real :: deltaEdd_R_pond ! delta-Eddington pond albedo tuning [nondim]
 
-  real :: T_range_dflt, alb_ice_dflt
+  real :: T_range_dflt  ! The default temperature range below freezing over which the
+                        ! albedos are changed by partial melting [degC]
+  real :: alb_ice_dflt  ! The default albedo of dry bare sea ice [nondim]
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   character(len=40)  :: mdl = "SIS_optics" ! This module's name.
@@ -193,7 +195,7 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
   real :: snow_cover      ! The fraction of the area covered by snow, 0-1 [nondim].
   real :: fh              ! A weighting fraction of the ice albedo (as compared
                           ! with the albedo of water) when ice is thin, 0-1 [nondim].
-  real :: coalb, I_coalb  ! The coalbedo (0-1) and its reciprocal.
+  real :: coalb, I_coalb  ! The coalbedo (0-1) and its reciprocal [nondim]
   real :: SW_frac_top     ! The fraction of the SW at the top of the snow that
                           ! is still present at the top of each ice layer [nondim].
   real :: opt_decay_lay   ! The optical extinction in each ice layer [nondim].
@@ -226,7 +228,6 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     vsno   , & ! volume of snow [m]
     Tsfc   , & ! surface temperature [degC]
     coszen , & ! cosine of solar zenith angle [nondim]
-    tarea  , & ! cell area - not used
     swvdr  , & ! sw down, visible, direct  [W m-2]
     swvdf  , & ! sw down, visible, diffuse [W m-2]
     swidr  , & ! sw down, near IR, direct  [W m-2]
@@ -241,9 +242,6 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
   real(kind=dbl_kind), dimension(1,1,1) :: &
     rhosnw , & ! density in snow layer [kg m-3]
     rsnw       ! grain radius in snow layer [micro-meters]
-
-  real(kind=dbl_kind), dimension(1,1,18) :: &
-    trcr        ! aerosol tracers
 
   real(kind=dbl_kind), dimension(1,1) :: &
     alvdr   , & ! visible, direct, albedo [nondim]
@@ -265,7 +263,9 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     albsno  , & ! snow albedo, for history [nondim]
     albpnd      ! pond albedo, for history [nondim]
 
-  real(kind=dbl_kind) :: hs_mask_pond, pond_decr
+  real(kind=dbl_kind) :: hs_mask_pond ! The depth of snow over which the pond becomes masked by snow [m]
+  real(kind=dbl_kind) :: pond_decr    ! The decrease due to masking by snow in the fractional pond
+                                      ! coverage for radiation calculations [nondim]
 
   nb = size(albedos)
 
@@ -308,7 +308,6 @@ subroutine ice_optics_SIS2(m_pond, m_snow, m_ice, ts, tfw, NkIce, albedos, abs_s
     nx_block = 1 ; ny_block = 1
     icells = 1 ; indxi(1) = 1 ; indxj(1) = 1
     aice(1,1) = 1.0
-    tarea(1,1) = 1.0 ! not used
 
     ! stuff that matters
     coszen(1,1) = cos(3.14*67.0/180.0) ! NP summer solstice

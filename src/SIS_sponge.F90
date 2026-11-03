@@ -541,7 +541,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   type(SIS_hor_grid_type), intent(in)  :: G        !< The horizontal grid type
   logical, optional,       intent(in)  :: scaled   !< true if input hice (m) converted to kg/m2 and scaled
                                                    !! default = .false. hice units: (m) = m3/m2 vol/m2
-  real, optional,          intent(in)  :: eps_err  !< error allowed for hice, cice after redistribution
+  real, optional,          intent(in)  :: eps_err  !< error allowed for hice after redistribution [m]
 
   ! local variables
   integer :: isd, ied, jsd, jed      !< Data domain indices
@@ -580,6 +580,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
 
   scaled_hice = .false.
   if (present(scaled)) scaled_hice = scaled
+  !### This is a hard-coded dimensional value, and would fail under dimensional rescaling.
   eps0 = 1.e-10  !< 0-checking
   if (present(eps_err)) eps0 = eps_err
 
@@ -747,9 +748,10 @@ subroutine check_hcice(hcat, ccat, hice, cice, iG, jG, str)
   character(len=*),  optional, intent(in) :: str !< A string for an error message
 
   ! Local variables
-  real    :: hice_tot, cice_tot  !< Aggregated ice volume [m3*m-2] derived from hcat and ccat
+  real    :: hice_tot            !< Aggregated ice volume [m3*m-2] derived from hcat and ccat
+  real    :: cice_tot            !< Total ice concentration derived from ccat [nondim]
   logical :: err_hice, err_cice  !< Errors of the total ice volume and concentration
-  real    :: eps_err             !< Error tolerance margin
+  real    :: eps_err             !< Error tolerance margin for ice volume per unit area [m] and area [nondim]
   integer :: iG, jG              !< Global ice indices for warning message
   integer :: CatIce
   character(len=40) :: msg_info
@@ -809,8 +811,8 @@ end function find_icat
 !> The subroutine computes aggregated partial area
 !! given a 1D array of cice(1:CatIce) partial areas by cats.
 subroutine partial_area_total(cice_cat, cice_tot)
-  real, intent(in)    :: cice_cat(:)   !< 1D array of partial areas by cats.
-  real, intent(inout) :: cice_tot      !< Aggregated ice partial area of the grid cell
+  real, intent(in)  :: cice_cat(:)   !< 1D array of partial areas by cats [nondim]
+  real, intent(out) :: cice_tot      !< Aggregated ice partial area of the grid cell [nondim]
 
   ! Local variable
   integer :: k
@@ -826,9 +828,9 @@ end subroutine partial_area_total
 !! which is also equal to the grid cell mean ice thickness,
 !! for 1D arrays of thiknesses and partial area by cats.
 subroutine ice_thkn_total(cice_cat, hice_cat, hice_tot)
-  real, intent(in)    :: cice_cat(:)  !< 1D array of partial areas by cats.
-  real, intent(in)    :: hice_cat(:)  !< 1D array of ice thickn. by cats.
-  real, intent(inout) :: hice_tot     !< Aggregated ice volume per unit area [m3*m-2]
+  real, intent(in)  :: cice_cat(:)  !< 1D array of partial areas by category [nondim]
+  real, intent(in)  :: hice_cat(:)  !< 1D array of ice thickness by category [m]
+  real, intent(out) :: hice_tot     !< Aggregated ice volume per unit area [m3*m-2]
 
   ! Local variables
   integer :: k

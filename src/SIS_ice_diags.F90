@@ -92,7 +92,7 @@ subroutine post_ice_state_diagnostics(IDs, IST, OSS, IOF, dt_slow, Time, G, US, 
     mass_by_cat ! Sea ice mass per unit ocean area by thickness category [R Z ~> kg m-2]
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     thick_by_cat ! Sea ice thickness by thickness category [Z ~> m]
-  real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics.
+  real, dimension(SZI_(G),SZJ_(G)) :: diagVar ! A temporary array for diagnostics [nondim]
   real, dimension(IG%NkIce) :: S_col ! Specified thermodynamic salinity of each
                                      ! ice layer if spec_thermo_sal is true [S ~> gSalt kg-1]
   real :: rho_ice  ! The nominal density of sea ice [R ~> kg m-3].
@@ -338,7 +338,7 @@ subroutine register_ice_state_diagnostics(Time, IG, US, param_file, diag, IDs)
   character(len=40) :: mdl = "SIS_ice_diags" ! This module's name.
   logical :: do_ridging
   integer :: n, nLay
-  real, parameter :: missing = -1e34
+  real, parameter :: missing = -1e34 ! A missing value for the snow area percentage [nondim]
 
   nLay = IG%NkIce
 

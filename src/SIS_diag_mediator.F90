@@ -1886,7 +1886,7 @@ end subroutine SIS_diag_mediator_init
 subroutine diag_masks_set(G, IG, missing_value, diag_cs)
   type(SIS_hor_grid_type), target, intent(in)    :: G   !< The horizontal grid type
   type(ice_grid_type),             intent(in)    :: IG  !< The sea-ice specific grid type
-  real,                            intent(in)    :: missing_value !< A fill value for missing points
+  real,                            intent(in)    :: missing_value !< A fill value for missing points [arbitrary]
   type(SIS_diag_ctrl),             intent(inout) :: diag_cs !< A structure that is used to regulate diagnostic output
 
   ! Local variables

@@ -290,7 +290,7 @@ subroutine ice_cover_transport(u, v, cvr, dt, G, US, IG, CS, masking_uhtot, mask
   type(loop_bounds_type) :: LB  ! A structure with the active loop bounds.
   real, dimension(SZIB_(G),SZJ_(G)) :: ucvr ! Ice cover flux through zonal faces = u*cvr*dy [L2 T-1 ~> m2 s-1].
   real, dimension(SZI_(G),SZJB_(G)) :: vcvr ! Ice cover flux through meridional faces = v*cvr*dx [L2 T-1 ~> m2 s-1].
-  real    :: cvr_up
+  real    :: cvr_up  ! The upwind value of cvr [nondim]
   integer :: is, ie, js, je, stencil
   integer :: i, j
 
@@ -421,7 +421,7 @@ subroutine summed_continuity(u, v, h_in, h, uh, vh, dt, G, US, IG, CS, h_ice)
                                               ! [R Z L2 T-1 ~> kg s-1].
   real, dimension(SZI_(G),SZJB_(G)) :: vh_ice ! Ice mass flux through meridional faces = v*h*dx
                                               ! [R Z L2 T-1 ~> kg s-1].
-  real    :: h_up
+  real    :: h_up  ! The upwind value of h [R Z ~> kg m-2]
   integer :: is, ie, js, je, stencil
   integer :: i, j
 
@@ -1276,7 +1276,7 @@ subroutine meridional_mass_flux(v, dt, G, US, IG, CS, LB, h_in, vh, htot_in, vh_
     vhtot      ! The total transports [R Z L2 T-1 ~> kg s-1].
   real :: CFL ! The CFL number based on the local velocity and grid spacing [nondim].
   real :: curv_3 ! A measure of the thickness curvature over a grid length,
-                 ! with the same units as h_in.
+                 ! with the same units as h_in [R Z ~> kg m-2].
   real :: h_marg ! The marginal thickness of a flux [R Z ~> kg m-2].
 !  real :: dy_N, dy_S ! Effective y-grid spacings to the north and south [L ~> m].
   integer :: i, j, k, ish, ieh, jsh, jeh, nCat
@@ -1417,10 +1417,11 @@ subroutine PPM_reconstruction_x(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
 ! This subroutine calculates left/right edge values for PPM reconstruction.
 
   ! Local variables with useful mnemonic names.
-  real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes.
-  real, parameter :: oneSixth = 1./6.
-  real :: h_ip1, h_im1
-  real :: dMx, dMn
+  real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes times the grid spacing [R Z ~> kg m-2]
+  real, parameter :: oneSixth = 1./6.  ! One sixth [nondim]
+  real :: h_ip1, h_im1  ! Thicknesses one point away or extrapolated values [R Z ~> kg m-2]
+  real :: dMx, dMn      ! The abolute difference between the local thickness and the near-neigbor
+                        ! maximum or minumum thickness [R Z ~> kg m-2].
   logical :: use_CW84, use_2nd
   character(len=256) :: mesg
   integer :: i, j, isl, iel, jsl, jel, stencil
@@ -1509,10 +1510,11 @@ subroutine PPM_reconstruction_y(h_in, h_l, h_r, G, LB, h_min, monotonic, simple_
 ! This subroutine calculates left/right edge values for PPM reconstruction.
 
 ! Local variables with useful mnemonic names.
-  real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes.
-  real, parameter :: oneSixth = 1./6.
-  real :: h_jp1, h_jm1
-  real :: dMx, dMn
+  real, dimension(SZI_(G),SZJ_(G))  :: slp ! The slopes times the grid spacing [R Z ~> kg m-2]
+  real, parameter :: oneSixth = 1./6.  ! One sixth [nondim]
+  real :: h_jp1, h_jm1  ! Thicknesses one point away or extrapolated values [R Z ~> kg m-2]
+  real :: dMx, dMn      ! The abolute difference between the local thickness and the near-neigbor
+                        ! maximum or minumum thickness [R Z ~> kg m-2].
   logical :: use_CW84, use_2nd
   character(len=256) :: mesg
   integer :: i, j, isl, iel, jsl, jel, stencil
@@ -1599,7 +1601,9 @@ subroutine PPM_limit_pos(h_in, h_L, h_R, h_min, G, iis, iie, jis, jie)
 ! than h_min, with a minimum of h_min otherwise.
 
 ! Local variables
-  real    :: curv, dh, scale
+  real    :: curv  ! The curvature in the neighboring thicknesses [R Z ~> kg m-2]
+  real    :: dh    ! The difference between the neighboring thicknesses [R Z ~> kg m-2]
+  real    :: scale ! A factor by which the edge values are flattened for positive deviniteness [nondim]
   character(len=256) :: mesg
   integer :: i, j
 
@@ -1640,7 +1644,12 @@ subroutine PPM_limit_CW84(h_in, h_l, h_r, G, iis, iie, jis, jie)
 ! according to the monotonic prescription of Colella and Woodward, 1984.
 
 ! Local variables
-  real    :: h_i, RLdiff, RLdiff2, RLmean, FunFac
+  real    :: h_i      ! The local thickness [R Z ~> kg m-2]
+  real    :: RLdiff   ! The difference between the neighboring thicknesses [R Z ~> kg m-2]
+  real    :: RLdiff2  ! The square of the difference between the neighboring thicknesses [R2 Z2 ~> kg2 m-4]
+  real    :: RLmean   ! The arithmetic mean of the neighboring thicknesses [R Z ~> kg m-2]
+  real    :: FunFac   ! A factor used to determning when the edge values need to be modified to
+                      ! give monotonicity [R2 Z2 ~> kg2 m-4]
   character(len=256) :: mesg
   integer :: i, j
 

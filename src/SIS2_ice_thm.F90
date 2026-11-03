@@ -203,7 +203,7 @@ subroutine ice_temp_SIS2(m_pond, m_snow, m_ice, enthalpy, sice, SF_0, dSF_dT, so
   real :: mL_snow  ! The mass-per-unit-area of each snow layer [R Z ~> kg m-2]
   real :: e_extra  ! [Q R Z ~> J m-2]
   real, dimension(0:NkIce) :: m_lay     ! Masses of all layers [R Z ~> kg m-2].
-  real :: enth_fp  ! The enthalpy at the freezing point (solid for fresh ice).
+  real :: enth_fp  ! The enthalpy at the freezing point (solid for fresh ice) [Q ~> J kg-1].
   real :: kk        ! The conductive thermal coupling coefficient between adjacent
                     ! ice sublayers [Q R Z T-1 C-1 ~> W m-2 degC-1].
   real :: k10       ! The conductive thermal coupling coefficient between the
@@ -561,7 +561,7 @@ function laytemp_SIS2(m_ice, T_fr, Qf, bf, tp, enth, salin, dtt, ITV, US) result
   real :: Err_Tmin, Err_Tmax ! The errors at T_min and T_max [Q R Z ~> J m-2].
   real :: T_prev  ! The previous value of T_g [C ~> degC].
   real :: dErr_dT ! The partial derivative of Err with T_g [Q R Z C-1 ~> J m-2 degC-1].
-  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence.
+  real :: Enth_tol = 1.0e-15 ! The fractional Enthalpy difference tolerance for convergence [Q ~> J kg-1]
   real :: TfmxdCp_BI ! The vertically integrated freezing temperature times the difference
                    ! between the freezing capacities of brine and ice.  [Q R Z ~> J m-2]
 
@@ -963,8 +963,8 @@ subroutine ice_check(ms, mi, enthalpy, s_ice, NkIce, msg_part, ITV, &
   type(unit_scale_type), optional, intent(in) :: US  !< A structure with unit conversion factors
 
   ! Local variables
-  real :: RZ_scale  ! A column mass conversion factor
-  real :: QRZ_scale  ! A column mass conversion factor
+  real :: RZ_scale  ! A column mass conversion factor [kg R-1 Z-1 m-2 ~> 1]
+  real :: QRZ_scale  ! A column mass conversion factor [J Q-1 R-1 Z-1 m-2 ~> 1]
   character(len=300) :: mesg
   character(len=80) :: msg2
   integer :: k, bad
@@ -1033,7 +1033,7 @@ subroutine ice_resize_SIS2(a_ice, m_pond, m_pond_ice, m_lay, Enthalpy, Sice_ther
   integer, intent(in) :: NkIce       !< The number of ice layers.
   integer, intent(in) :: npassive    !< Number of passive tracers
   real, dimension(0:NkIce+1,npassive), &
-        intent(inout) :: TrLay       !< Passive tracer slice
+        intent(inout) :: TrLay       !< Passive tracer slice [conc]
   real, intent(  out) :: heat_to_ocn !< energy left after ice all melted [Q R Z ~> J m-2]
   real, intent(  out) :: h2o_ice_to_ocn !< liquid water flux to ocean [R Z ~> kg m-2]
   real, intent(  out) :: h2o_ocn_to_ice !< liquid water flux from ocean [R Z ~> kg m-2]
@@ -1679,7 +1679,7 @@ end function enth_from_TS
 function enthalpy_liquid_freeze(S, ITV)
   real, intent(in)  :: S  !< The ice bulk salinity [S ~> gSalt kg-1]
   type(ice_thermo_type), intent(in) :: ITV !< The ice thermodynamic parameter structure.
-  real :: enthalpy_liquid_freeze
+  real :: enthalpy_liquid_freeze ! The enthalpy of liquid water at the freezing point [Q ~> J kg-1].
 
   enthalpy_liquid_freeze = ITV%Cp_water*(ITV%dTf_dS*S) + ITV%enth_liq_0
 

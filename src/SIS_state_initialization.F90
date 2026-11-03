@@ -52,7 +52,8 @@ subroutine initialize_ice_categories(IG, Rho_ice, US, PF, hLim_vals)
   ! Initialize IG%cat_thick_lim and IG%mH_cat_bound here.
   !  ###This subroutine should be extended to add more options.
 
-  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /) ! lower thickness limits 1...CatIce
+  real :: hlim_dflt(8) = (/ 1.0e-10, 0.1, 0.3, 0.7, 1.1, 1.5, 2.0, 2.5 /)
+     ! Lower thickness limits for each category [m] 1...CatIce
   integer :: k, CatIce, list_size
 
   CatIce = IG%CatIce
@@ -648,7 +649,7 @@ subroutine initialize_salinity_from_file(salin, G, IG, US, PF, just_read_params)
   ! Local variables
   logical :: just_read    ! If true, just read parameters but set nothing.
   logical :: file_is_2d   ! If true, the salinity file has 2-d data.  Otherwise it includes a depth profile.
-  real :: salin_scale     ! A scaling factor to use when reading salinity.
+  real :: salin_scale     ! A scaling factor to use when reading salinity [nondim]
   character(len=40)  :: mdl = "initialize_salinity_from_file" ! This subroutine's name.
   character(len=64)  :: salin_var ! Ice salinity variable name in files
   character(len=200) :: filename, salinity_file, inputdir ! Strings for file/path
